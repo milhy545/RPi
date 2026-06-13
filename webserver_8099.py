@@ -796,10 +796,10 @@ def youtube_age_check(url):
 def selftest_testaudio():
     html_doc=page()
     required=[
-        'data-t="audio"', 'data-t="devices"', 'id="p-audio"', 'id="p-devices"',
+        'data-t="audio"', 'data-t="devices"', 'id="p-player"', 'id="p-audio"', 'id="p-devices"',
         'id="ta-sinks"', 'id="ta-sources"', 'id="ta-mixer"',
-        'id="ta-routes"', 'id="ta-summary"', 'id="ta-raw"',
-        "sw('audio');taRefresh();ytCookieStatus()",
+        'id="ta-routes"', 'id="ta-summary"', 'id="ta-raw"', 'id="yt-cookie-status"',
+        "sw('player');ytCookieStatus()", "sw('audio');taRefresh()",
     ]
     missing=[x for x in required if x not in html_doc]
     state=audio_state()
@@ -980,7 +980,7 @@ function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117
 function termDrawSnapshot(output,cursor){let row=1,col=1;if(cursor){row=Math.max(1,Math.min(term.rows,(cursor.y||0)+1));col=Math.max(1,Math.min(term.cols,(cursor.x||0)+1))}else{let lines=(output||'').split(/\r?\n/);let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+output+'\x1b['+row+';'+col+'H')}
 function termConnect(){termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg('Connected','ok');$('#term-status').textContent='Connected';term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent='Disconnected';msg('Disconnected','info')};termWs.onerror=()=>msg('Connection error','err')}
 function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent='Disconnected'}
-setInterval(()=>{st();updBr()},3000);kStat();
+setInterval(()=>{st();updBr()},3000);kStat();ytCookieStatus();
 """
 
 QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
@@ -990,11 +990,11 @@ def page():
 <title>RPi-TV</title><style>{CSS}</style></head><body>
 <h1>RPi-TV</h1><div id="toast"></div>
 <div class="tabs">
-<button class="tab active" data-t="player" onclick="sw('player')">🎬 Player</button>
+<button class="tab active" data-t="player" onclick="sw('player');ytCookieStatus()">🎬 Player</button>
 <button class="tab" data-t="apps" onclick="sw('apps')">🚀 Apps</button>
 <button class="tab" data-t="cec" onclick="sw('cec')">📺 CEC</button>
 <button class="tab" data-t="kodi" onclick="sw('kodi')">📦 Kodi</button>
-<button class="tab" data-t="audio" onclick="sw('audio');taRefresh();ytCookieStatus()">🔊 Audio</button>
+<button class="tab" data-t="audio" onclick="sw('audio');taRefresh()">🔊 Audio</button>
 <button class="tab" data-t="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
 <button class="tab" data-t="terminal" onclick="sw('terminal')">💻 Terminal</button></div>
 <div id="p-player" class="pnl active"><div class="sec">
@@ -1007,7 +1007,8 @@ def page():
 <div class="sec"><h3>Status</h3><div id="st">—</div></div>
 <div class="sec"><h3>Quick</h3><div class="row">
 <button onclick="qu('https://www.youtube.com/watch?v=dQw4w9WgXcQ')" style="font-size:.75rem">🎵 Rick Astley</button>
-<button onclick="qu('https://www.youtube.com/watch?v=9bZkp7q19f0')" style="font-size:.75rem">🎵 Gangnam</button></div></div></div>
+<button onclick="qu('https://www.youtube.com/watch?v=9bZkp7q19f0')" style="font-size:.75rem">🎵 Gangnam</button></div></div>
+<div class="sec"><h3>YouTube Age / Cookies</h3><div class="media-meta">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div><div class="row" style="margin-top:.35rem"><input id="yt-age-url" placeholder="YouTube URL for age-check..." style="flex:1"><button onclick="ytCookieStatus()">🍪 Cookie status</button><button onclick="ytAgeCheck()">🔞 Age check</button></div><pre id="yt-cookie-status">Click Cookie status</pre></div></div>
 </div>
 <div id="p-apps" class="pnl"><div class="sec"><h3>Spustit aplikaci</h3>
 <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:.5rem">
@@ -1045,7 +1046,7 @@ def page():
 <div class="row" style="margin-top:.35rem"><input id="kurl" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button></div>
 <div id="kst" style="font-size:.8em;color:#8b949e;margin-top:.2rem">—</div></div></div>
 <div id="p-audio" class="pnl">
-<div class="sec"><div class="media-head"><div><h3>Audio & Media</h3><div class="media-meta">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div></div><div class="row"><button onclick="taRefresh()">🔄 Refresh</button><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
+<div class="sec"><div class="media-head"><div><h3>Audio & Media</h3><div class="media-meta">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div></div><div class="row"><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button><button onclick="taRefresh()">🔄 Refresh</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
 <div class="media-grid"><div><div class="sec"><h3>Output Sinks</h3><div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div><div><div class="sec"><h3>Input Sources</h3><div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div></div>
 <div class="sec"><h3>Mixer — Active Streams</h3><div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
 <div class="sec"><h3>Audio Routing</h3><div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
@@ -1054,7 +1055,6 @@ def page():
 <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px">
 <button onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save + Apply</button>
 <span class="media-meta">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio; negative advances audio/video sync.</span></div></div>
-<div class="sec"><h3>YouTube Age / Cookies</h3><div class="media-meta">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div><div class="row" style="margin-top:.35rem"><input id="yt-age-url" placeholder="YouTube URL for age-check..." style="flex:1"><button onclick="ytCookieStatus()">🍪 Cookie status</button><button onclick="ytAgeCheck()">🔞 Age check</button></div><pre id="yt-cookie-status">Click Cookie status</pre></div>
 <div class="sec"><h3>Diagnostics</h3><div id="ta-summary" class="media-meta">Click Refresh</div><details style="margin-top:.5rem"><summary class="media-meta" style="cursor:pointer">Raw technical JSON</summary><pre id="ta-raw">Click Refresh</pre></details></div>
 </div>
 <div id="p-devices" class="pnl">

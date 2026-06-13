@@ -40,7 +40,8 @@ def main() -> int:
     failures += check("primary Audio tab exists", 'data-t="audio"' in html)
     failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
-    failures += check("Audio refresh hook exists", "sw('audio');taRefresh();ytCookieStatus()" in html)
+    failures += check("Audio refresh hook exists", "sw('audio');taRefresh()" in html)
+    failures += check("Player tab loads YouTube diagnostics", "sw('player');ytCookieStatus()" in html)
     failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
     failures += check("DLNA latency range is aligned", 'min="-5000" max="5000"' in html)
@@ -50,6 +51,7 @@ def main() -> int:
     failures += check("DLNA keepalive badge is sink-specific", "hasDlnaKeepalive" in html)
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
+    failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "sw('player');ytCookieStatus()" in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
