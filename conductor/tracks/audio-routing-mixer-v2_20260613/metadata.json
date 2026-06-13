@@ -1,0 +1,11 @@
+{
+  "track_id": "audio-routing-mixer-v2_20260613",
+  "title": "Audio Routing and Mixer V2",
+  "type": "feature",
+  "status": "planned",
+  "created": "2026-06-13T00:00:00Z",
+  "updated": "2026-06-13T00:00:00Z",
+  "priority": "high",
+  "tags": ["webui", "audio", "pipewire", "dlna", "bluetooth", "mixer", "latency"],
+  "dependencies": ["audio-tab-refactor_20260613", "dlna-scan_20260611", "bt-audio-loopback_20260611"]
+}
