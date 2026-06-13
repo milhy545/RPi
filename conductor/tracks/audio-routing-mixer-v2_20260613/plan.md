@@ -30,6 +30,14 @@
 - [ ] Verify volume endpoint rejects invalid device names.
 - [ ] Verify UI still contains both stable `Audio` and `🧪 Test Audio` tabs.
 
-## Phase 5: Future Renderer Research Gate
+## Phase 5: User Review Fixes
+- [x] Keep original layout unchanged: outputs left, inputs right, switch buttons at top.
+- [x] Always show BT Soundbar in output list even when paired but not connected.
+- [x] Always show DLNA Output in output list even when not connected.
+- [x] Add DLNA renderer selection after scan and persist selected target locally.
+- [x] Replace confusing mixer sink IDs with human-readable sink names.
+- [x] Replace raw diagnostics-first view with human-readable diagnostics and collapsible raw JSON.
+
+## Phase 6: Future Renderer Research Gate
 - [ ] Research `pa-dlna`/`pulseaudio-dlna`, `gmrender-resurrect`, `rygel`, GStreamer, and `mkchromecast` for Debian 12 aarch64 and 731 MiB RAM.
 - [ ] Choose implementation only after research and user approval.
