@@ -271,6 +271,11 @@ BT_SOUNDBAR_SINK="bluez_output.24_4B_03_92_0B_8C.1"
 HDMI_SINK="alsa_output.platform-3f902000.hdmi.hdmi-stereo"
 DLNA_SINK_KEYWORDS=["uuid_","WiiMu","LinkPlayer","Sphere","TIBO"]
 AUDIO_LATENCY_FILE=os.path.expanduser("~/rpi-dashboard/.audio-latency.json")
+SILENT_WAV="/tmp/rpi-silent-48k.wav"
+PA_DLNA_LOG="/tmp/pa-dlna-webui.log"
+_PA_DLNA_PORT="8088"
+_pa_dlna_proc=None
+_ka_procs={}  # sink_name -> subprocess.Popen
 
 def _run(cmd, t=5):
     return subprocess.run(cmd,capture_output=True,text=True,timeout=t)
@@ -279,8 +284,12 @@ def _pactl_lines(kind):
     r=_run(["pactl","list","short",kind])
     out=[]
     for l in r.stdout.strip().split("\n"):
-        p=l.split()
-        if len(p)>=2: out.append({"id":p[0],"name":p[1],"state":p[-1] if len(p)>4 else ""})
+        if not l.strip(): continue
+        # pactl uses tabs as column separators: ID<TAB>NAME<TAB>DRIVER<TAB>SAMPLE_SPEC<TAB>STATE
+        # Name may contain spaces but NOT tabs, so split on tab is safe
+        p=l.split("\t")
+        if len(p)<5: continue
+        out.append({"id":p[0].strip(),"name":p[1].strip(),"state":p[-1].strip()})
     return out
 
 def _sink_volume(name):
@@ -405,6 +414,8 @@ def audio_state():
         "bluetooth": {"soundbar": soundbar},
         "latency": latency,
         "paired_bt": paired,
+        "dlna_connected": _pa_dlna_running(),
+        "keepalive": _keepalive_status(),
     }
 
 def audio_set_volume(kind, name, volume):
@@ -426,13 +437,121 @@ def audio_set_latency(key, value_ms):
     _save_audio_latency(lat)
     return {"ok":True,"latency":lat}
 
-def audio_select_dlna_renderer(name, location):
+def _ensure_silent_wav():
+    if os.path.exists(SILENT_WAV): return
+    import struct, wave
+    f=wave.open(SILENT_WAV,'w')
+    f.setnchannels(1); f.setsampwidth(2); f.setframerate(48000)
+    f.writeframes(struct.pack('<'+'h'*48000, *([0]*48000)))
+    f.close()
+
+def _keepalive_start(sink_name):
+    global _ka_procs
+    if sink_name in _ka_procs and _ka_procs[sink_name].poll() is None: return True
+    _ensure_silent_wav()
+    try:
+        proc=subprocess.Popen(
+            ["bash","-c",f'while true; do pw-cat -p --target "{sink_name}" --format s16le --rate 48000 --channels 1 "{SILENT_WAV}" 2>/dev/null; sleep 0.5; done'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _ka_procs[sink_name]=proc
+        return True
+    except Exception: return False
+
+def _keepalive_stop(sink_name=None):
+    global _ka_procs
+    if sink_name:
+        proc=_ka_procs.pop(sink_name, None)
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try: proc.wait(timeout=3)
+            except: proc.kill()
+        return True
+    for sn in list(_ka_procs):
+        _keepalive_stop(sn)
+    return True
+
+def _keepalive_status():
+    active=[]
+    for sn,proc in list(_ka_procs.items()):
+        if proc.poll() is None: active.append(sn)
+    return active
+
+def audio_select_dlna_renderer(name, location, usn=""):
     if not location.startswith("http://") and not location.startswith("https://"):
         return {"ok":False,"error":"invalid renderer location"}
     lat=_load_audio_latency()
-    lat["selected_dlna_renderer"]={"name": name or location, "location": location}
+    lat["selected_dlna_renderer"]={"name": name or location, "location": location, "usn": usn}
     _save_audio_latency(lat)
     return {"ok":True,"selected":lat["selected_dlna_renderer"]}
+
+def _pa_dlna_running():
+    global _pa_dlna_proc
+    if _pa_dlna_proc and _pa_dlna_proc.poll() is None: return True
+    try:
+        r=subprocess.run(["pgrep","-f",f"pa-dlna.*--port {_PA_DLNA_PORT}"],capture_output=True,text=True,timeout=2)
+        return r.returncode==0 and bool(r.stdout.strip())
+    except Exception: return False
+
+def _start_pa_dlna():
+    global _pa_dlna_proc
+    if _pa_dlna_running(): return True
+    try:
+        log=open(PA_DLNA_LOG,"ab")
+        _pa_dlna_proc=subprocess.Popen(["pa-dlna","--nics","eth0","--loglevel","info","--port",_PA_DLNA_PORT],stdout=log,stderr=log)
+        return True
+    except Exception:
+        return False
+
+def _selected_dlna_sink_name():
+    lat=_load_audio_latency(); sel=lat.get("selected_dlna_renderer") or {}
+    usn=(sel.get("usn") or "").replace("uuid:","").split("::")[0]
+    name=(sel.get("name") or "").replace("uuid:","")
+    needles=[x for x in (usn, name, name[:12]) if x]
+    sinks=_pactl_lines("sinks")
+    dlna=[s for s in sinks if _classify_sink(s["name"])=="dlna_output"]
+    for s in dlna:
+        if any(n and n in s["name"] for n in needles): return s["name"]
+    return dlna[0]["name"] if dlna else None
+
+def audio_connect_dlna():
+    lat=_load_audio_latency()
+    if not lat.get("selected_dlna_renderer"):
+        return {"ok":False,"error":"select DLNA renderer first"}
+    if not _start_pa_dlna():
+        return {"ok":False,"error":"failed to start pa-dlna"}
+    sink=None
+    for _ in range(20):
+        sink=_selected_dlna_sink_name()
+        if sink: break
+        time.sleep(1)
+    if not sink:
+        return {"ok":False,"error":"pa-dlna started but no DLNA sink appeared yet", "running": _pa_dlna_running()}
+    r=_run(["pactl","set-default-sink",sink], t=5)
+    _keepalive_start(sink)
+    return {"ok":r.returncode==0,"sink":sink,"running":_pa_dlna_running(),"keepalive":_keepalive_status(),"out":(r.stdout+r.stderr).strip()[:200]}
+
+def audio_disconnect_dlna():
+    global _pa_dlna_proc
+    _keepalive_stop()
+    if _pa_dlna_proc and _pa_dlna_proc.poll() is None:
+        _pa_dlna_proc.terminate()
+        try: _pa_dlna_proc.wait(timeout=5)
+        except Exception: _pa_dlna_proc.kill()
+    else:
+        subprocess.run(["pkill","-f",f"pa-dlna.*--port {_PA_DLNA_PORT}"],capture_output=True,text=True,timeout=5)
+    return {"ok":True,"running":_pa_dlna_running()}
+
+def audio_keepalive(action, sink=None):
+    if action=="start" and sink:
+        ok=_keepalive_start(sink)
+        return {"ok":ok,"active":_keepalive_status()}
+    elif action=="stop" and sink:
+        _keepalive_stop(sink)
+        return {"ok":True,"active":_keepalive_status()}
+    elif action=="stop_all":
+        _keepalive_stop()
+        return {"ok":True,"active":_keepalive_status()}
+    return {"ok":True,"active":_keepalive_status()}
 
 def audio_route_alexa_bt(action):
     if action=="stop":
@@ -576,8 +695,8 @@ function meter(v){let n=(v==null?0:v);return '<div class="meter"><span style="wi
 function shortName(n){return (n||'').replace('alsa_output.platform-3f902000.hdmi.hdmi-stereo','HDMI').replace('alsa_output.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-stereo','USB audio output').replace('alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.mono-fallback','Alexa USB input').replace('alsa_input.usb-XING_WEI_2.4G_USB_USB_Composite_Device-00.mono-fallback','Remote microphone')}
 function deviceCard(icon,title,d){let ok=d&&d.present;return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">'+esc(shortName((d&&d.name)||'not detected'))+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
 function btSoundbarCard(d){let ok=d&&d.present,paired=d&&d.paired;let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+'</h4>'+meter(d&&d.volume);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+esc(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
-function dlnaOutputCard(d,selected){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let h='<div class="media-card"><h4>📡 DLNA Output '+badge(ok,ok?'ONLINE':'NOT CONNECTED')+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button></div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
-function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?'connected':'paired but not connected'));lines.push('DLNA Output: '+((d.dlna_output&&d.dlna_output.present)?'active':'not connected'));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));lines.push('DLNA delay offset: '+(lat.dlna_output_offset_ms||0)+' ms');return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
+function dlnaOutputCard(d,selected,connected,keepalive){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let connectBtns='';if(selected){if(connected){connectBtns='<button onclick="taDlnaDisconnect()" class="danger" style="font-size:.8em">⏹ Disconnect</button>'}else{connectBtns='<button onclick="taDlnaConnect()" style="font-size:.8em">🔌 Connect</button>'}}let kaBadge='';if(keepalive&&keepalive.length){kaBadge='<span class="badge green" style="font-size:.65em;margin-left:.3rem">KEEPALIVE</span>'}let status=connected?badge(true,'CONNECTED'):(ok?badge(ok,'NOT CONNECTED'):badge(false,'NOT CONNECTED'));let h='<div class="media-card"><h4>📡 DLNA Output '+status+kaBadge+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem;gap:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button>'+connectBtns+'</div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
+function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));lines.push('DLNA delay offset: '+(lat.dlna_output_offset_ms||0)+' ms');return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
 async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';if(d.hdmi&&d.hdmi.present)outHtml+=deviceCard('📺','HDMI',d.hdmi);outHtml+=btSoundbarCard(d.bt_soundbar||{});outHtml+=dlnaOutputCard(d.dlna_output||{},lat.selected_dlna_renderer);if(d.usb_output&&d.usb_output.present)outHtml+=deviceCard('🔌','USB Output',d.usb_output);$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});srcHtml+='<div class="media-card"><h4>📡 DLNA Input '+badge(false,'PLANNED')+'</h4><div class="media-meta">Receive audio from another PC/device on the network. Requires renderer configuration.</div></div>';$('#ta-sources').innerHTML=srcHtml;let mixerHtml='';if(inputs.length){inputs.forEach(i=>{mixerHtml+='<div class="media-card route-card"><h4>🎵 Playing through '+esc(i.sink)+'</h4><div class="media-meta">Audio is currently routed to '+esc(i.sink)+'. Format: '+esc(i.format||'—')+'</div></div>'});}else{mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">No active audio streams.</div></div>'}$('#ta-mixer').innerHTML=mixerHtml;let route=r.routes&&r.routes.alexa_to_bt;let ready=route&&route.ready;let warn=ready?'Ready.':'Needs online BT Soundbar and USB Alexa input before Start.';let startDisabled=ready?'':' disabled title="BT Soundbar or USB input missing"';$('#ta-routes').innerHTML='<div class="media-card route-card '+(route&&route.on?'on':'off')+'"><h4>🔁 Alexa AUX → BT Soundbar '+badge(route&&route.on,route&&route.on?'ON':(ready?'READY':'NOT READY'))+'</h4><div class="media-meta">USB C-Media mono input → PipeWire loopback → Samsung Soundbar A2DP<br>'+warn+'</div><div class="row" style="margin-top:.45rem"><button onclick="taRoute(\'start\')"'+startDisabled+'>▶ Start</button><button onclick="taRoute(\'stop\')" class="danger">⏹ Stop</button></div><div class="media-meta">Module: '+esc((route&&route.module_id)||'—')+'</div></div>';$('#ta-default').textContent=shortName(r.default_sink||'—');$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-summary').innerHTML=taHumanSummary(r);$('#ta-raw').textContent=JSON.stringify(r,null,2)}
 async function taRoute(a){let r=await api('/audio/route/alexa-bt?action='+a);msg(r.ok?'Route '+a+' OK':(r.error||r.out||'Route failed'),r.ok?'ok':'err');setTimeout(taRefresh,800)}
 async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
@@ -585,8 +704,11 @@ async function taSwitch(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.re
 async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
 async function taSetDefault(name){let r=await api('/audio/default-sink?name='+encodeURIComponent(name));msg(r.ok?'Default → '+name.split('.').pop():r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
 async function taSetLatency(key,v){let r=await api('/audio/latency?key='+key+'&value='+v);msg(r.ok?'Latency saved':r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
-async function taDlnaSelect(name,location){let r=await api('/dlna/select?name='+encodeURIComponent(name)+'&location='+encodeURIComponent(location));msg(r.ok?'DLNA target selected':(r.error||'select failed'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
-async function taDlnaScan(){msg('Scanning DLNA renderers...','info');let r=await api('/dlna/scan');if(r.devices&&r.devices.length){let h='<div style="margin-top:.3rem">';r.devices.forEach(d=>{h+='<div style="margin:3px 0;display:flex;gap:6px;align-items:center;border:1px solid #30363d;border-radius:.3rem;padding:.3rem .5rem;flex-wrap:wrap">📡 <b>'+esc(d.name)+'</b> <span style="color:#8b949e;font-size:.7em">'+esc(d.location||'')+'</span><button onclick="taDlnaSelect(\''+esc(d.name||'DLNA renderer')+'\',\''+esc(d.location||'')+'\')" style="font-size:.7em;padding:2px 8px">Select</button></div>'});h+='</div>';let el=$('#ta-dlna-out-list');if(el)el.innerHTML=h;msg('Found '+r.count+' DLNA renderers','ok')}else{let el=$('#ta-dlna-out-list');if(el)el.innerHTML='<div style="color:#8b949e">No renderers found</div>';msg(r.error||'No DLNA renderers found','err')}}
+async function taDlnaSelect(name,location,usn){let r=await api('/dlna/select?name='+encodeURIComponent(name)+'&location='+encodeURIComponent(location)+'&usn='+encodeURIComponent(usn||''));msg(r.ok?'DLNA target selected':(r.error||'select failed'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
+async function taDlnaConnect(){msg('Connecting DLNA renderer...','info');let r=await api('/dlna/connect');msg(r.ok?'Connected to DLNA':(r.error||'connect failed'),r.ok?'ok':'err');setTimeout(taRefresh,3000)}
+async function taDlnaDisconnect(){msg('Disconnecting DLNA...','info');let r=await api('/dlna/disconnect');msg(r.ok?'DLNA disconnected':(r.error||'failed'),r.ok?'ok':'err');setTimeout(taRefresh,1000)}
+async function taKeepalive(action,sink){let r=await api('/keepalive?action='+action+(sink?'&sink='+encodeURIComponent(sink):''));return r}
+async function taDlnaScan(){msg('Scanning DLNA renderers...','info');let r=await api('/dlna/scan');if(r.devices&&r.devices.length){let h='<div style="margin-top:.3rem">';r.devices.forEach(d=>{h+='<div style="margin:3px 0;display:flex;gap:6px;align-items:center;border:1px solid #30363d;border-radius:.3rem;padding:.3rem .5rem;flex-wrap:wrap">📡 <b>'+esc(d.name)+'</b> <span style="color:#8b949e;font-size:.7em">'+esc(d.location||'')+'</span><button onclick="taDlnaSelect(\''+esc(d.name||'DLNA renderer')+'\',\''+esc(d.location||'')+'\',\''+esc(d.usn||'')+'\')" style="font-size:.7em;padding:2px 8px">Select</button></div>'});h+='</div>';let el=$('#ta-dlna-out-list');if(el)el.innerHTML=h;msg('Found '+r.count+' DLNA renderers','ok')}else{let el=$('#ta-dlna-out-list');if(el)el.innerHTML='<div style="color:#8b949e">No renderers found</div>';msg(r.error||'No DLNA renderers found','err')}}
 async function launchApp(mode){msg('Launching '+mode+'...','info');let r=await fetch('http://192.168.0.205:8090/mode/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})}).then(r=>r.json());msg(r.status?'OK: '+mode:(r.error||'fail'),r.status?'ok':'err')}
 async function stopApp(){msg('Stopping...','info');let r=await fetch('http://192.168.0.205:8090/mode/stop',{method:'POST'}).then(r=>r.json());msg(r.message||'Stopped','ok')}
 // Terminal
@@ -764,7 +886,16 @@ class H(BaseHTTPRequestHandler):
             elif path=="/dlna/select":
                 name=(q.get("name")or[""])[0].strip()
                 location=(q.get("location")or[""])[0].strip()
-                self.sj(200,audio_select_dlna_renderer(name,location))
+                usn=(q.get("usn")or[""])[0].strip()
+                self.sj(200,audio_select_dlna_renderer(name,location,usn))
+            elif path=="/dlna/connect":
+                self.sj(200,audio_connect_dlna())
+            elif path=="/dlna/disconnect":
+                self.sj(200,audio_disconnect_dlna())
+            elif path=="/keepalive":
+                action=(q.get("action")or["status"])[0].strip()
+                sink=(q.get("sink")or[""])[0].strip()
+                self.sj(200,audio_keepalive(action,sink))
             elif path=="/audio/route/alexa-bt":
                 a=(q.get("action")or["status"])[0].strip()
                 if a=="status": return self.sj(200,{"ok":True,"route":"alexa_to_bt","on":bool(_loopback_module_id()),"module_id":_loopback_module_id()})
@@ -856,12 +987,20 @@ class H(BaseHTTPRequestHandler):
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
                 r=subprocess.run(["bluetoothctl","connect",mac],capture_output=True,text=True,timeout=10)
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+                out=(r.stdout+r.stderr).strip()[:300]
+                bt_sink=None
+                for _ in range(10):
+                    bt_sink=next((s["name"] for s in _pactl_lines("sinks") if s["name"].startswith("bluez_")),None)
+                    if bt_sink: break
+                    time.sleep(1)
+                if bt_sink: _keepalive_start(bt_sink)
+                self.sj(200,{"result":out,"bt_sink":bt_sink,"keepalive":_keepalive_status()})
             elif path=="/bt/disconnect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
                 r=subprocess.run(["bluetoothctl","disconnect",mac],capture_output=True,text=True,timeout=5)
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+                _keepalive_stop()
+                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300],"keepalive":_keepalive_status()})
             elif path=="/bt/remove":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
