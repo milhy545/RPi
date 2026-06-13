@@ -17,4 +17,4 @@
 - [ ] **Track: milhy-pc-firewall** — Milhy-PC Firewall Rules (Tailscale-only access to ports 9000/9108/9200) | [Plan](./tracks/milhy-pc-firewall_20260611/plan.md)
 - [ ] **Track: playback-resume-memory** — Remember interrupted playback position and offer WebUI resume prompt | [Plan](./tracks/playback-resume-memory_20260613/plan.md)
 - [x] **Track: safe-webserver-restart** — Restart WebUI server without unlinking active mpv IPC socket | [Plan](./tracks/safe-webserver-restart_20260613/plan.md)
-- [~] **Track: git-live-dev-workflow** — Make RPi live tree the development Git repo, Milhy-PC push gateway | [Plan](./tracks/git-live-dev-workflow_20260613/plan.md)
+- [x] **Track: git-live-dev-workflow** — Make RPi live tree the development Git repo, Milhy-PC push gateway | [Plan](./tracks/git-live-dev-workflow_20260613/plan.md)
