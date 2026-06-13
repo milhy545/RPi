@@ -22,3 +22,4 @@
 - [x] **Track: audio-routing-mixer-v2** — HDMI-first audio mixer with DLNA input/output and latency controls | [Plan](./tracks/audio-routing-mixer-v2_20260613/plan.md)
 - [ ] **Track: webui-report-conductor-intake** — WebUI bug/feature modal that creates draft Conductor tracks | [Plan](./tracks/webui-report-conductor-intake_20260613/plan.md)
 - [x] **Track: test-audio-hardening** — Harden Test Audio WebUI validation, keepalive cleanup, escaping, and self-tests | [Plan](./tracks/test-audio-hardening_20260613/plan.md)
+- [x] **Track: test-audio-review-fixes** — Layout-preserving Test Audio fixes discovered during review | [Plan](./tracks/test-audio-review-fixes_20260613/plan.md)

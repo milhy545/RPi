@@ -43,6 +43,10 @@ def main() -> int:
     failures += check("Test Audio refresh hook exists", "sw('testaudio');taRefresh()" in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
     failures += check("DLNA latency range is aligned", 'min="-5000" max="5000"' in html)
+    failures += check("latency label matches audio-delay", "Audio delay (ms)" in html)
+    failures += check("input devices use source volume API", "includes('input')?'source':'sink'" in html)
+    failures += check("connected badges use existing ok style", 'class="badge ok"' in html)
+    failures += check("DLNA keepalive badge is sink-specific", "hasDlnaKeepalive" in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
