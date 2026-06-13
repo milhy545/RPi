@@ -1,30 +1,51 @@
-# RPi (Raspberry Pi) Development & Monitoring Platform
+# Raspberry Pi Dumb TV Dashboard
 
-This repository manages automation scripts, environment configurations, and monitoring utilities for the Raspberry Pi (`KODI-TV` running Debian 13/Trixie) and its associated build/chroot environments.
+Lightweight, TUI-based dashboard and controller for a low-RAM (1GB) Raspberry Pi connected to a living room TV.
 
-## Architecture & Environments
+## Project Structure
+* `main.py` - Minimal CLI entry point.
+* `tui.py` - Interactive dashboard prototype (Textual).
+* `qemu-start.sh` - Script to boot the emulated Raspberry Pi OS in QEMU.
+* `qemu-stop.sh` - Script to cleanly shut down QEMU.
+* `chroot-mount.sh` - Script to mount the rootfs for local chroot environments.
+* `chroot-umount.sh` - Script to unmount the rootfs.
+* `conductor/` - Framework planning, architecture notes, style guides, and tracks registry.
 
-1. **Local Workspace (`Milhy-PC`)**: This repository acts as the single source of truth for all tools and configurations.
-2. **Build Server (`LLMS`)**: Contains the active `qemu-arm-static` chroot environment under `/home/milhy777/Develop/RPi/rootfs/` where target packages and agent components are built/configured.
-3. **Target Device (`KODI-TV / RPi`)**: The actual hardware node (`192.168.0.205`) hosting services, media players, and remote AI agents.
+## Local QEMU & Chroot Development
 
-## Repository Contents
+The project environment is emulated on x86_64 host using `qemu-system-aarch64` and `qemu-aarch64-static` for chroot.
 
-* `chroot-mount.sh`: Mounts proc, sysfs, dev, and copies `qemu-arm-static` to initialize the ARM chroot on the build host.
-* `chroot-umount.sh`: Safely unmounts chroot filesystems.
-* `bin/agy`: Real-time monitoring wrapper script for the Pibot CLI (`pi`). Writes execution state to RAM (`/dev/shm/agy_status`).
-* `bin/agy-hud`: Terminal dashboard display tracking running agent sheep.
-
-## Getting Started
-
-### Initializing the Chroot on LLMS
+### 1. Booting QEMU VM
+To boot the full RPi OS Lite image in QEMU:
 ```bash
+./qemu-start.sh
+```
+This boots the system in headless mode, mapping the serial console to your terminal. To stop it, run the shutdown script from another terminal:
+```bash
+./qemu-stop.sh
+```
+Or exit manually inside the console by pressing `Ctrl-A` then `x`.
+
+### 2. Mounting Chroot for Validation
+Alternatively, you can work inside the image's filesystem directly via `chroot` with QEMU static binary interpreter:
+```bash
+# Mount rootfs and map system virtual directories:
 ./chroot-mount.sh
+
+# Enter the chroot:
 sudo chroot rootfs /bin/bash
+
+# Work inside the image...
+# Once done, exit the chroot and unmount the virtual directories:
+./chroot-umount.sh
 ```
 
-### Exiting and Cleaning Up Chroot
+## Running the Dashboard
+All dependencies are managed via `uv`.
 ```bash
-exit
-./chroot-umount.sh
+# Sync dependencies
+uv sync
+
+# Run the TUI
+uv run python tui.py
 ```

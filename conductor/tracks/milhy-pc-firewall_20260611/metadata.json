@@ -1,0 +1,11 @@
+{
+  "track_id": "milhy-pc-firewall_20260611",
+  "title": "Milhy-PC Firewall Rules",
+  "type": "security",
+  "status": "planned",
+  "created": "2026-06-11T00:00:00Z",
+  "updated": "2026-06-11T00:00:00Z",
+  "priority": "high",
+  "tags": ["firewall", "nftables", "security", "tailscale"],
+  "dependencies": []
+}

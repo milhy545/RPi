@@ -68,11 +68,12 @@ class ModeSwitcher:
         self.state = new_state
 
     async def launch(self, command: list[str], timeout: float = 0):
-        # Concurrency guard: reject immediately if not in IDLE state
-        if self.state != ModeSwitcherState.IDLE:
-            self.log_buffer.write(f"[WARNING] Launch rejected: switcher is in state {self.state.name}")
-            return False
         async with self.lock:
+            # Concurrency guard: reject immediately if not in IDLE state
+            if self.state != ModeSwitcherState.IDLE:
+                self.log_buffer.write(f"[WARNING] Launch rejected: switcher is in state {self.state.name}")
+                return False
+
             self._transition(ModeSwitcherState.SUSPENDING)
             self.log_buffer.write(f"[SYSTEM] Suspending TUI. Executing: {' '.join(command)}")
 
@@ -156,13 +157,13 @@ class ModeSwitcher:
                         break
                     await asyncio.sleep(0.1)
 
-    def _handle_sigterm(self, *args):
+    def _handle_sigterm(self):
         if self.state == ModeSwitcherState.RUNNING:
             asyncio.create_task(self._teardown_and_exit())
         elif self.state == ModeSwitcherState.IDLE:
             self.app.exit()
 
-    def _handle_sigint(self, *args):
+    def _handle_sigint(self):
         if self.state == ModeSwitcherState.RUNNING:
             asyncio.create_task(self._teardown_only())
 

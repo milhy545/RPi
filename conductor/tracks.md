@@ -1,0 +1,20 @@
+# Tracks Registry
+
+<!-- Register new tracks below. Format: - [ ] **Track: <id>** — <description> | [Plan](./tracks/<id>/plan.md) -->
+
+- [x] **Track: network-cast-api** — Network Cast API (Port 8099) | [Plan](./tracks/network-cast-api_20260602/plan.md)
+- [x] **Track: automated-provisioning** — Automated Provisioning (Ansible/Shell) | [Plan](./tracks/automated-provisioning_20260602/plan.md)
+- [x] **Track: mode-switcher-engine** — Zero-Overhead Mode Switcher Engine (TUI suspension, subprocess spawning & recovery) | [Plan](./tracks/mode-switcher-engine/plan.md)
+- [x] **Track: devices-connections** — Devices & Connections Management (Audio output, Bluetooth pairing, Wi-Fi configuration, Tailscale info) | [Plan](./tracks/devices-connections/plan.md)
+- [x] **Track: youtube-cookies-cdp** — YouTube Cookies via CDP (BrowserOS on Milhy-PC, 61 cookies, age-restricted videos) | [Plan](./tracks/youtube-cookies-cdp_20260611/plan.md)
+- [x] **Track: cec-controls** — CEC Controls (Power, Navigation, Volume, Bridge, Input Switching) | [Plan](./tracks/cec-controls_20260611/plan.md)
+- [x] **Track: terminal-tab-webui** — Terminal Tab in WebUI (WebSocket 8098 → tmux RPi:1, xterm.js) | [Plan](./tracks/terminal-tab-webui_20260611/plan.md)
+- [x] **Track: dlna-scan** — DLNA Scan (gssdp-discover, 2 MediaRenderers found) | [Plan](./tracks/dlna-scan_20260611/plan.md)
+- [x] **Track: bt-audio-loopback** — Bluetooth Audio Loopback (USB Input → BT Soundbar via PipeWire) | [Plan](./tracks/bt-audio-loopback_20260611/plan.md)
+- [x] **Track: mpv-keep-open-fix** — mpv --keep-open=always Fix (prevents socket freeze on video end) | [Plan](./tracks/mpv-keep-open-fix_20260611/plan.md)
+- [ ] **Track: cpuset-monitor-fix** — Fix cpuset-monitor Bug (pins mpv to wrong cores on start) | [Plan](./tracks/cpuset-monitor-fix_20260611/plan.md)
+- [ ] **Track: dlna-rendering** — DLNA/UPnP Rendering (gmrender-resurrect or Kodi headless) | [Plan](./tracks/dlna-rendering_20260611/plan.md)
+- [ ] **Track: milhy-pc-firewall** — Milhy-PC Firewall Rules (Tailscale-only access to ports 9000/9108/9200) | [Plan](./tracks/milhy-pc-firewall_20260611/plan.md)
+- [ ] **Track: playback-resume-memory** — Remember interrupted playback position and offer WebUI resume prompt | [Plan](./tracks/playback-resume-memory_20260613/plan.md)
+- [x] **Track: safe-webserver-restart** — Restart WebUI server without unlinking active mpv IPC socket | [Plan](./tracks/safe-webserver-restart_20260613/plan.md)
+- [~] **Track: git-live-dev-workflow** — Make RPi live tree the development Git repo, Milhy-PC push gateway | [Plan](./tracks/git-live-dev-workflow_20260613/plan.md)

@@ -15,6 +15,7 @@ sudo mount -t sysfs /sys $ROOTFS_DIR/sys
 sudo mount -o bind /dev $ROOTFS_DIR/dev
 sudo mount -o bind /dev/pts $ROOTFS_DIR/dev/pts
 sudo mount -o bind /run $ROOTFS_DIR/run
+
 # Povolení DNS v chrootu
 sudo cp /etc/resolv.conf $ROOTFS_DIR/etc/resolv.conf
 

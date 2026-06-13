@@ -1,21 +1,65 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
 .venv/
-env/
 venv/
-ENV/
-
-# OS / IDE
-.DS_Store
-.vscode/
-.idea/
-
-# Local configuration
 .env
-.env.local
+.env.*
 
-# Logs
+# Runtime logs/cache
 *.log
-agy_status
+*.pid
+*.sock
+*.tmp
+.DS_Store
+
+# Secrets / session data
+yt-cookies.txt
+*cookies*.txt
+*.sqlite
+*.sqlite3
+*.db
+
+# Agent/editor local state
+.codex/
+.kilo/node_modules/
+.kilo/package-lock.json
+.kilo/package.json
+
+# Build/output/runtime images
+output/
+rootfs/
+mnt_root/
+boot_mnt/
+qemu/
+*.img
+*.qcow2
+*.iso
+
+# Browser profiles / caches
+**/chromium*/
+**/browser-os/
+**/Default/Cache/
+**/Default/Code Cache/
+**/Default/GPUCache/
+**/Default/Service Worker/
+
+# Local generated media/screenshots
+*.svg
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Keep source/docs/tests/conductor tracked explicitly.
+
+# Backups
+*.bak

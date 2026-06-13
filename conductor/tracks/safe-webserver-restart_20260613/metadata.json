@@ -1,0 +1,11 @@
+{
+  "track_id": "safe-webserver-restart_20260613",
+  "title": "Safe Webserver Restart Without Breaking mpv",
+  "type": "bugfix",
+  "status": "done",
+  "created": "2026-06-13T00:00:00Z",
+  "updated": "2026-06-13T00:00:00Z",
+  "priority": "high",
+  "tags": ["mpv", "webserver", "ipc", "safety"],
+  "dependencies": ["mpv-keep-open-fix_20260611"]
+}
