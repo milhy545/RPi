@@ -18,3 +18,4 @@
 - [ ] **Track: playback-resume-memory** — Remember interrupted playback position and offer WebUI resume prompt | [Plan](./tracks/playback-resume-memory_20260613/plan.md)
 - [x] **Track: safe-webserver-restart** — Restart WebUI server without unlinking active mpv IPC socket | [Plan](./tracks/safe-webserver-restart_20260613/plan.md)
 - [x] **Track: git-live-dev-workflow** — Make RPi live tree the development Git repo, Milhy-PC push gateway | [Plan](./tracks/git-live-dev-workflow_20260613/plan.md)
+- [x] **Track: audio-tab-refactor** — Refine Test Audio prototype before replacing stable Audio tab | [Plan](./tracks/audio-tab-refactor_20260613/plan.md)
