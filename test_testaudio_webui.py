@@ -37,11 +37,13 @@ def main() -> int:
 
     status, html = get("/")
     failures += check("GET /", status == 200, status)
+    failures += check("header language switch exists", 'id="lang-switch"' in html and 'data-lang-btn="en"' in html and 'data-lang-btn="cz"' in html)
     failures += check("primary Audio tab exists", 'data-t="audio"' in html)
     failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
     failures += check("Audio refresh hook exists", "sw('audio');taRefresh()" in html)
     failures += check("Player tab loads YouTube diagnostics", "sw('player');ytCookieStatus()" in html)
+    failures += check("language apply helper exists", 'function applyLang()' in html and 'const I18N=' in html)
     failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
     failures += check("DLNA latency range is aligned", 'min="-5000" max="5000"' in html)
