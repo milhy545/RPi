@@ -369,14 +369,15 @@ def audio_state():
     for s in sinks:
         t=_classify_sink(s["name"])
         vol=_sink_volume(s["name"])
-        classified_sinks.append({"id":s["id"],"name":s["name"],"type":t,"volume":vol,"state":s.get("state","")})
+        classified_sinks.append({"id":s["id"],"name":s["name"],"type":t,"present":True,"volume":vol,"state":s.get("state","")})
     order=["hdmi","bt","dlna_output","usb_output","other"]
     classified_sinks.sort(key=lambda x: order.index(x["type"]) if x["type"] in order else 99)
     classified_sources=[]
     for s in sources:
         t=_classify_source(s["name"])
+        if t=="monitor": continue
         vol=_source_volume(s["name"])
-        classified_sources.append({"id":s["id"],"name":s["name"],"type":t,"volume":vol,"state":s.get("state","")})
+        classified_sources.append({"id":s["id"],"name":s["name"],"type":t,"present":True,"volume":vol,"state":s.get("state","")})
     return {
         "default_sink": default_sink,
         "default_source": default_source,
