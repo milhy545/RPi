@@ -42,7 +42,8 @@ def resolve(url, q=None):
     try: import yt_dlp as youtube_dl
     except Exception as e: return url, {"error":str(e)}
     _co=os.path.join(os.path.dirname(os.path.abspath(__file__)),"yt-cookies.txt")
-    _opts={"quiet":True,"no_warnings":True,"noplaylist":True,"format":fmt}
+    _opts={"quiet":True,"no_warnings":True,"noplaylist":True,"format":fmt,
+           "extractor_args":{"youtube":{"player_client":["default","android","web"]}}}
     if os.path.exists(_co): _opts["cookiefile"]=_co
     else: print(f"[WARN] Cookie file not found: {_co}", file=sys.stderr)
     with youtube_dl.YoutubeDL(_opts) as y:
@@ -276,6 +277,10 @@ PA_DLNA_LOG="/tmp/pa-dlna-webui.log"
 _PA_DLNA_PORT="8088"
 _pa_dlna_proc=None
 _ka_procs={}  # sink_name -> subprocess.Popen
+_audio_state_cache={"ts": 0.0, "data": None}
+_audio_state_lock=threading.Lock()
+AUDIO_STATE_CACHE_TTL=0.75
+
 
 def _run(cmd, t=5):
     return subprocess.run(cmd,capture_output=True,text=True,timeout=t)
@@ -377,7 +382,7 @@ def _sink_input_streams(sinks=None):
         return out
     except Exception: return []
 
-def audio_state():
+def _audio_state_uncached():
     sinks=_pactl_lines("sinks"); sources=_pactl_lines("sources")
     default_sink=_run(["pactl","get-default-sink"]).stdout.strip()
     default_source=_run(["pactl","get-default-source"]).stdout.strip()
@@ -425,6 +430,22 @@ def audio_state():
         "dlna_connected": _pa_dlna_running(),
         "keepalive": _keepalive_status(),
     }
+
+def audio_state(force=False):
+    """Return cached audio state briefly to avoid repeated pactl/bluetooth pressure."""
+    now=time.monotonic()
+    with _audio_state_lock:
+        cached=_audio_state_cache.get("data")
+        if (not force) and cached is not None and now-_audio_state_cache.get("ts",0) < AUDIO_STATE_CACHE_TTL:
+            data=json.loads(json.dumps(cached))
+            data["cache"]={"hit": True, "ttl_ms": int(AUDIO_STATE_CACHE_TTL*1000)}
+            return data
+        data=_audio_state_uncached()
+        _audio_state_cache["ts"]=time.monotonic()
+        _audio_state_cache["data"]=json.loads(json.dumps(data))
+        data["cache"]={"hit": False, "ttl_ms": int(AUDIO_STATE_CACHE_TTL*1000)}
+        return data
+
 
 def audio_set_volume(kind, name, volume):
     if kind not in ("sink", "source"): return {"ok":False,"error":"kind must be sink or source"}
@@ -660,13 +681,125 @@ def audio_route_alexa_bt(action):
         return {"ok":r.returncode==0,"route":"alexa_to_bt","on":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
     return {"ok":False,"error":"bad action"}
 
+# ── Devices, Wi-Fi, and YouTube diagnostics ───────────────────────────
+def _bt_kind(name):
+    n=(name or "").lower()
+    if "xbox" in n or "wireless controller" in n or "gamepad" in n:
+        return "xbox_controller"
+    if any(x in n for x in ("soundbar", "speaker", "headphone", "buds", "audio")):
+        return "speaker"
+    return "unknown"
+
+def _bt_paired_devices():
+    out=[]
+    r=_run(["bluetoothctl","devices","Paired"], t=5)
+    for line in r.stdout.splitlines():
+        p=line.split()
+        if len(p)>=3 and p[0]=="Device":
+            mac=p[1]; name=" ".join(p[2:])
+            info=_run(["bluetoothctl","info",mac], t=5).stdout
+            connected="Connected: yes" in info
+            trusted="Trusted: yes" in info
+            paired="Paired: yes" in info or True
+            out.append({"mac":mac,"name":name,"kind":_bt_kind(name),"paired":paired,"connected":connected,"trusted":trusted})
+    return out
+
+def _bt_scanned_devices():
+    r=_run(["bluetoothctl","devices"], t=5)
+    out=[]
+    known={d["mac"] for d in _bt_paired_devices()}
+    for line in r.stdout.splitlines():
+        p=line.split()
+        if len(p)>=3 and p[0]=="Device":
+            mac=p[1]; name=" ".join(p[2:])
+            if mac in known: continue
+            out.append({"mac":mac,"name":name,"kind":_bt_kind(name),"paired":False,"connected":False,"trusted":False})
+    return out
+
+def devices_state():
+    audio=audio_state()
+    return {"ok":True,"bluetooth":{"paired":_bt_paired_devices()},"audio_devices":audio.get("devices",{}),"default_sink":audio.get("default_sink")}
+
+def bluetooth_scan_devices(seconds=5):
+    seconds=max(2,min(12,int(seconds or 5)))
+    subprocess.Popen(["bluetoothctl","scan","on"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    time.sleep(seconds)
+    _run(["bluetoothctl","scan","off"], t=3)
+    return {"ok":True,"devices":_bt_scanned_devices(),"paired":_bt_paired_devices()}
+
+def _wifi_nmcli_available():
+    return subprocess.run(["bash","-lc","command -v nmcli >/dev/null"],capture_output=True).returncode==0
+
+def wifi_status():
+    if _wifi_nmcli_available():
+        r=_run(["nmcli","-t","-f","DEVICE,TYPE,STATE,CONNECTION","device"], t=5)
+        devs=[]
+        for line in r.stdout.splitlines():
+            p=line.split(":")
+            if len(p)>=4 and p[1]=="wifi": devs.append({"device":p[0],"state":p[2],"connection":p[3]})
+        return {"ok":True,"backend":"nmcli","devices":devs}
+    iw=_run(["bash","-lc","iw dev 2>/dev/null | awk '/Interface/{print $2}'"], t=5).stdout.split()
+    return {"ok":True,"backend":"iw","devices":[{"device":x,"state":"unknown","connection":""} for x in iw]}
+
+def wifi_scan():
+    if _wifi_nmcli_available():
+        r=_run(["nmcli","-t","-f","SSID,SIGNAL,SECURITY","device","wifi","list","--rescan","yes"], t=15)
+        nets=[]
+        for line in r.stdout.splitlines():
+            p=line.split(":")
+            if not p or not p[0]: continue
+            nets.append({"ssid":p[0],"signal":p[1] if len(p)>1 else "", "security":p[2] if len(p)>2 else ""})
+        return {"ok":r.returncode==0,"backend":"nmcli","networks":nets,"error":r.stderr.strip()[:200]}
+    r=_run(["bash","-lc","iw dev 2>/dev/null | awk '/Interface/{print $2; exit}'"], t=5)
+    dev=r.stdout.strip()
+    if not dev: return {"ok":False,"backend":"iw","error":"no Wi-Fi interface found"}
+    r=_run(["sudo","-n","iw",dev,"scan"], t=15)
+    ssids=sorted(set(re.findall(r"SSID: (.+)", r.stdout)))
+    return {"ok":r.returncode==0,"backend":"iw","networks":[{"ssid":s,"signal":"","security":""} for s in ssids],"error":r.stderr.strip()[:200]}
+
+def wifi_connect(ssid, password):
+    if not ssid: return {"ok":False,"error":"ssid required"}
+    if not _wifi_nmcli_available(): return {"ok":False,"error":"Wi-Fi connect requires nmcli on this system"}
+    cmd=["nmcli","device","wifi","connect",ssid]
+    if password: cmd += ["password", password]
+    r=_run(cmd, t=30)
+    return {"ok":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
+
+def youtube_cookie_status():
+    path=os.path.join(os.path.dirname(os.path.abspath(__file__)),"yt-cookies.txt")
+    info={"ok":False,"path":path,"exists":os.path.exists(path),"cookie_count":0,"age_seconds":None,"has_auth_cookies":False,"has_youtube_domain":False}
+    if not info["exists"]: return info
+    st=os.stat(path); info["age_seconds"]=int(time.time()-st.st_mtime); info["size_bytes"]=st.st_size
+    auth_names={"SID","HSID","SSID","APISID","SAPISID","__Secure-1PSID","__Secure-3PSID","LOGIN_INFO"}
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if not line.strip() or line.startswith("#"): continue
+                info["cookie_count"]+=1
+                if "youtube.com" in line or "google.com" in line: info["has_youtube_domain"]=True
+                parts=line.rstrip("\n").split("\t")
+                if parts and parts[-2] in auth_names: info["has_auth_cookies"]=True
+    except Exception as e:
+        info["error"]=str(e)
+    info["ok"]=info["cookie_count"]>0 and info["has_youtube_domain"]
+    info["recommendation"]="OK" if info["ok"] and info["has_auth_cookies"] else "Refresh BrowserOS YouTube cookies from a logged-in browser session."
+    return info
+
+def youtube_age_check(url):
+    if not url: return {"ok":False,"error":"url required"}
+    try:
+        surl, meta=resolve(url, DQ)
+        return {"ok":True,"title":meta.get("title"),"id":meta.get("id"),"duration":meta.get("dur"),"height":meta.get("h"),"cookies":youtube_cookie_status(),"playable_url":bool(surl)}
+    except Exception as e:
+        return {"ok":False,"error":str(e)[:400],"cookies":youtube_cookie_status()}
+
 def selftest_testaudio():
     html_doc=page()
     required=[
-        'data-t="audio"', 'data-t="testaudio"', 'id="p-testaudio"',
+        'data-t="audio"', 'data-t="devices"', 'id="p-audio"', 'id="p-devices"',
         'id="ta-sinks"', 'id="ta-sources"', 'id="ta-mixer"',
         'id="ta-routes"', 'id="ta-summary"', 'id="ta-raw"',
-        "sw('testaudio');taRefresh()",
+        "sw('audio');taRefresh();ytCookieStatus()",
     ]
     missing=[x for x in required if x not in html_doc]
     state=audio_state()
@@ -799,14 +932,17 @@ async function btScan(){
   $('#bt-list').innerHTML=h||'No devices found';
   $('#bt-status').textContent=lines.length+' found';
   msg('Found '+lines.length+' devices','ok')}
-async function btPair(mac){msg('Pairing '+mac+'...','info');let r=await api('/bt/pair?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(()=>devs(),2000)}
-async function btConnect(mac){msg('Connecting '+mac+'...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(()=>devs(),2000)}
-async function btDisconnect(mac){msg('Disconnecting '+mac+'...','info');let r=await api('/bt/disconnect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(()=>devs(),2000)}
-async function btRemove(mac){msg('Removing '+mac+'...','info');let r=await api('/bt/remove?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(()=>devs(),2000)}
-async function btTrust(mac){msg('Trusting '+mac+'...','info');let r=await api('/bt/trust?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(()=>devs(),2000)}
+async function refreshDeviceViews(){try{devicesRefresh()}catch(e){}try{devs()}catch(e){}}
+async function btPair(mac){msg('Pairing '+mac+'...','info');let r=await api('/bt/pair?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btConnect(mac){msg('Connecting '+mac+'...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btDisconnect(mac){msg('Disconnecting '+mac+'...','info');let r=await api('/bt/disconnect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btRemove(mac){msg('Removing '+mac+'...','info');let r=await api('/bt/remove?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btTrust(mac){msg('Trusting '+mac+'...','info');let r=await api('/bt/trust?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
 async function dlnaScan(){msg('Scanning DLNA...','info');let r=await api('/dlna/scan');if(r.devices){let h=r.devices.map(d=>`<div>${d.usn.split('::')[0]} → ${d.location}</div>`).join('');$('#dlna-list').innerHTML=h;$('#dlna-status').textContent=r.count+' renderers';msg('Found '+r.count+' DLNA renderers','ok')}else{msg(r.error||'Scan failed','err')}}
 function badge(on,label){return '<span class="badge '+(on?'ok':'err')+'">'+label+'</span>'}
-function meter(v,kind,name){let n=(v==null?0:v);if(!kind||!name)return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>';let id='vol-'+kind+'-'+esc(name).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);return '<div style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0"><input type="range" id="'+id+'" min="0" max="150" value="'+n+'" step="1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="taSetVol(\''+kind+'\',\''+jsarg(name)+'\',this.value)" ontouchstart="event.stopPropagation()"><span style="min-width:36px;font-size:.8em;text-align:right">'+(v==null?'—':v+'%')+'</span><button onclick="taMute(\''+kind+'\',\''+jsarg(name)+'\')" style="font-size:.75em;padding:2px 6px" title="Mute/unmute">🔇</button></div>'}
+let taVolTimers={};
+function taSetVolDebounced(kind,name,v){let key=kind+':'+name;clearTimeout(taVolTimers[key]);taVolTimers[key]=setTimeout(()=>taSetVol(kind,name,v),250)}
+function meter(v,kind,name){let n=(v==null?0:v);if(!kind||!name)return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>';let id='vol-'+kind+'-'+esc(name).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);return '<div style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0"><input type="range" id="'+id+'" min="0" max="150" value="'+n+'" step="1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="taSetVolDebounced(\''+kind+'\',\''+jsarg(name)+'\',this.value)" onchange="taSetVol(\''+kind+'\',\''+jsarg(name)+'\',this.value)" ontouchstart="event.stopPropagation()"><span style="min-width:36px;font-size:.8em;text-align:right">'+(v==null?'—':v+'%')+'</span><button onclick="taMute(\''+kind+'\',\''+jsarg(name)+'\')" style="font-size:.75em;padding:2px 6px" title="Mute/unmute">🔇</button></div>'}
 function shortName(n){let s=(n||'').replace('alsa_output.platform-3f902000.hdmi.hdmi-stereo','HDMI').replace('alsa_output.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-stereo','USB audio output').replace('alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.mono-fallback','Alexa USB input').replace('alsa_input.usb-XING_WEI_2.4G_USB_USB_Composite_Device-00.mono-fallback','Remote microphone');if(s.startsWith('bluez_output.'))s='BT Soundbar';if(s.includes('WiiMu')||s.includes('LinkPlayer'))s='DLNA Output';if(s.includes('LG TV'))s='DLNA LG TV';return s}
 function deviceCard(icon,title,d,isDefault){let ok=d&&d.present;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let kind=String((d&&d.type)||'').includes('input')?'source':'sink';return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+defBadge+'</h4>'+meter(d&&d.volume,kind,d.name)+'<div class="media-meta">'+esc(shortName((d&&d.name)||'not detected'))+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
 function btSoundbarCard(d,isDefault){let ok=d&&d.present,paired=d&&d.paired;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+defBadge+'</h4>'+meter(d&&d.volume,'sink',d.name);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+jsarg(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
@@ -825,6 +961,15 @@ async function taDlnaConnect(){msg('Connecting DLNA renderer...','info');let r=a
 async function taDlnaDisconnect(){msg('Disconnecting DLNA...','info');let r=await api('/dlna/disconnect');msg(r.ok?'DLNA disconnected':(r.error||'failed'),r.ok?'ok':'err');setTimeout(taRefresh,1000)}
 async function taKeepalive(action,sink){let r=await api('/keepalive?action='+action+(sink?'&sink='+encodeURIComponent(sink):''));return r}
 async function taDlnaScan(){msg('Scanning DLNA renderers...','info');let r=await api('/dlna/scan');if(r.devices&&r.devices.length){let h='<div style="margin-top:.3rem">';r.devices.forEach(d=>{h+='<div style="margin:3px 0;display:flex;gap:6px;align-items:center;border:1px solid #30363d;border-radius:.3rem;padding:.3rem .5rem;flex-wrap:wrap">📡 <b>'+esc(d.name)+'</b> <span style="color:#8b949e;font-size:.7em">'+esc(d.location||'')+'</span><button onclick="taDlnaSelect(\''+jsarg(d.name||'DLNA renderer')+'\',\''+jsarg(d.location||'')+'\',\''+jsarg(d.usn||'')+'\')" style="font-size:.7em;padding:2px 8px">Select</button></div>'});h+='</div>';let el=$('#ta-dlna-out-list');if(el)el.innerHTML=h;msg('Found '+r.count+' DLNA renderers','ok')}else{let el=$('#ta-dlna-out-list');if(el)el.innerHTML='<div style="color:#8b949e">No renderers found</div>';msg(r.error||'No DLNA renderers found','err')}}
+function devIcon(k){return k==='xbox_controller'?'🎮':(k==='speaker'?'🔊':'📡')}
+function renderBtDevices(devs){if(!devs||!devs.length)return '<div>No Bluetooth devices listed.</div>';return devs.map(d=>'<div class="media-card" style="min-height:70px;margin:.3rem 0"><h4>'+devIcon(d.kind)+' '+esc(d.name||'Unknown')+' '+badge(!!d.connected,d.connected?'CONNECTED':(d.paired?'PAIRED':'FOUND'))+'</h4><div class="media-meta">MAC: '+esc(d.mac)+'<br>Role: '+esc(d.kind||'unknown')+' · Trusted: '+(d.trusted?'yes':'no')+'</div><div class="row" style="margin-top:.35rem"><button onclick="btPair(\''+jsarg(d.mac)+'\')">Pair</button><button onclick="btConnect(\''+jsarg(d.mac)+'\')">Connect</button><button onclick="btTrust(\''+jsarg(d.mac)+'\')">Trust</button><button class="danger" onclick="btRemove(\''+jsarg(d.mac)+'\')">Remove</button></div></div>').join('')}
+async function devicesRefresh(){let r=await api('/devices/state');if(r.error){msg(r.error,'err');return}$('#dev-bt-list').innerHTML=renderBtDevices((r.bluetooth&&r.bluetooth.paired)||[]);$('#dev-bt-status').textContent=((r.bluetooth&&r.bluetooth.paired)||[]).length+' paired'}
+async function deviceBtScan(){msg('Scanning Bluetooth...','info');let r=await api('/devices/bt/scan?seconds=6');let all=[...(r.paired||[]),...(r.devices||[])];$('#dev-bt-list').innerHTML=renderBtDevices(all);$('#dev-bt-status').textContent=(r.devices||[]).length+' found, '+(r.paired||[]).length+' paired';msg('Bluetooth scan done','ok')}
+async function wifiStatus(){let r=await api('/wifi/status');$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>'}
+async function wifiScan(){msg('Scanning Wi-Fi...','info');let r=await api('/wifi/scan');if(r.networks){let h=r.networks.map(n=>'<div style="margin:3px 0"><button onclick="$(\'#wifi-ssid\').value=\''+jsarg(n.ssid)+'\'" style="font-size:.72em;padding:2px 8px">Use</button> '+esc(n.ssid)+' <span style="color:#8b949e">'+esc(n.signal||'')+' '+esc(n.security||'')+'</span></div>').join('');$('#wifi-list').innerHTML=h||'No networks found';msg('Wi-Fi scan done','ok')}else{$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>';msg(r.error||'Wi-Fi scan failed','err')}}
+async function wifiConnect(){let ssid=$('#wifi-ssid').value.trim(),pw=$('#wifi-pass').value;if(!ssid){msg('SSID required','err');return}let r=await api('/wifi/connect?ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pw));msg(r.ok?'Wi-Fi connected':(r.error||r.out||'Wi-Fi failed'),r.ok?'ok':'err');wifiStatus()}
+async function ytCookieStatus(){let r=await api('/youtube/cookies/status');$('#yt-cookie-status').textContent=JSON.stringify(r,null,2)}
+async function ytAgeCheck(){let u=$('#yt-age-url').value.trim();if(!u){msg('Enter YouTube URL','err');return}msg('Checking YouTube age/cookies...','info');let r=await api('/youtube/age-check?url='+encodeURIComponent(u));$('#yt-cookie-status').textContent=JSON.stringify(r,null,2);msg(r.ok?'Video is extractable':'Age/cookie check failed',r.ok?'ok':'err')}
 async function launchApp(mode){msg('Launching '+mode+'...','info');let r=await fetch('http://192.168.0.205:8090/mode/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})}).then(r=>r.json());msg(r.status?'OK: '+mode:(r.error||'fail'),r.status?'ok':'err')}
 async function stopApp(){msg('Stopping...','info');let r=await fetch('http://192.168.0.205:8090/mode/stop',{method:'POST'}).then(r=>r.json());msg(r.message||'Stopped','ok')}
 // Terminal
@@ -835,7 +980,7 @@ function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117
 function termDrawSnapshot(output,cursor){let row=1,col=1;if(cursor){row=Math.max(1,Math.min(term.rows,(cursor.y||0)+1));col=Math.max(1,Math.min(term.cols,(cursor.x||0)+1))}else{let lines=(output||'').split(/\r?\n/);let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+output+'\x1b['+row+';'+col+'H')}
 function termConnect(){termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg('Connected','ok');$('#term-status').textContent='Connected';term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent='Disconnected';msg('Disconnected','info')};termWs.onerror=()=>msg('Connection error','err')}
 function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent='Disconnected'}
-setInterval(()=>{st();updBr()},3000);kStat();devs();
+setInterval(()=>{st();updBr()},3000);kStat();
 """
 
 QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
@@ -849,8 +994,8 @@ def page():
 <button class="tab" data-t="apps" onclick="sw('apps')">🚀 Apps</button>
 <button class="tab" data-t="cec" onclick="sw('cec')">📺 CEC</button>
 <button class="tab" data-t="kodi" onclick="sw('kodi')">📦 Kodi</button>
-<button class="tab" data-t="audio" onclick="sw('audio')">🔊 Audio</button>
-<button class="tab" data-t="testaudio" onclick="sw('testaudio');taRefresh()">🧪 Test Audio</button>
+<button class="tab" data-t="audio" onclick="sw('audio');taRefresh();ytCookieStatus()">🔊 Audio</button>
+<button class="tab" data-t="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
 <button class="tab" data-t="terminal" onclick="sw('terminal')">💻 Terminal</button></div>
 <div id="p-player" class="pnl active"><div class="sec">
 <div class="row"><input id="url" placeholder="YouTube or direct URL..." style="flex:1"><select id="qual">{QO}</select></div>
@@ -895,23 +1040,12 @@ def page():
 <div class="sec"><h3>Input</h3><div class="row">
 <button onclick="cecIn(1)">HDMI1</button><button onclick="cecIn(2)">HDMI2</button><button onclick="cecIn(3)">HDMI3</button></div></div>
 <div class="sec"><h3>Devices</h3><div id="cdev" style="font-size:.8em;color:#8b949e">Click Scan</div></div></div>
-<div id="p-kodi" class="pnl"><div class="sec">
-<div class="row"><input id="kurl" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button></div>
+<div id="p-kodi" class="pnl"><div class="sec"><h3>Kodi JSON-RPC launcher</h3>
+<div class="media-meta">Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.</div>
+<div class="row" style="margin-top:.35rem"><input id="kurl" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button></div>
 <div id="kst" style="font-size:.8em;color:#8b949e;margin-top:.2rem">—</div></div></div>
-<div id="p-audio" class="pnl"><div class="sec"><div class="row">
-<button onclick="audio('bt')">🔊 BT</button><button onclick="audio('hdmi')">🔊 HDMI</button><button onclick="audio('dlna')">🔊 DLNA (WiiMu)</button>
-<button onclick="if(confirm('Reboot RPi?'))fetch('/system/reboot').then(r=>r.json()).then(j=>msg(j.out,'info'))" class="danger">🔄 Reboot</button></div></div>
-<div class="sec"><h3>Zařízení</h3><div id="dev" style="font-size:.8em;color:#8b949e">—</div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
-<div class="sec"><h3>Bluetooth</h3>
-<div class="row" style="margin-bottom:.4rem"><button onclick="btScan()">🔍 Scan</button><span id="bt-status" style="font-size:.75em;color:#8b949e">—</span></div>
-<div id="bt-list" style="font-size:.8em;color:#8b949e">Klikni Scan</div></div>
-<div class="sec"><h3>DLNA</h3>
-<div class="row" style="margin-bottom:.4rem"><button onclick="dlnaScan()">🔍 Scan</button><span id="dlna-status" style="font-size:.75em;color:#8b949e">—</span></div>
-<div id="dlna-list" style="font-size:.8em;color:#8b949e">Klikni Scan</div></div>
-</div></div>
-<div id="p-testaudio" class="pnl">
-<div class="sec"><div class="media-head"><div><h3>Audio & Media Prototype</h3><div class="media-meta">Safe prototype. Original Audio tab is untouched.</div></div><div class="row"><button onclick="taRefresh()">🔄 Refresh</button><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
+<div id="p-audio" class="pnl">
+<div class="sec"><div class="media-head"><div><h3>Audio & Media</h3><div class="media-meta">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div></div><div class="row"><button onclick="taRefresh()">🔄 Refresh</button><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
 <div class="media-grid"><div><div class="sec"><h3>Output Sinks</h3><div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div><div><div class="sec"><h3>Input Sources</h3><div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div></div>
 <div class="sec"><h3>Mixer — Active Streams</h3><div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
 <div class="sec"><h3>Audio Routing</h3><div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
@@ -920,7 +1054,14 @@ def page():
 <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px">
 <button onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save + Apply</button>
 <span class="media-meta">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio; negative advances audio/video sync.</span></div></div>
+<div class="sec"><h3>YouTube Age / Cookies</h3><div class="media-meta">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div><div class="row" style="margin-top:.35rem"><input id="yt-age-url" placeholder="YouTube URL for age-check..." style="flex:1"><button onclick="ytCookieStatus()">🍪 Cookie status</button><button onclick="ytAgeCheck()">🔞 Age check</button></div><pre id="yt-cookie-status">Click Cookie status</pre></div>
 <div class="sec"><h3>Diagnostics</h3><div id="ta-summary" class="media-meta">Click Refresh</div><details style="margin-top:.5rem"><summary class="media-meta" style="cursor:pointer">Raw technical JSON</summary><pre id="ta-raw">Click Refresh</pre></details></div>
+</div>
+<div id="p-devices" class="pnl">
+<div class="sec"><div class="media-head"><div><h3>Devices</h3><div class="media-meta">Pair and connect hardware here. Speaker output routing and volume remain in Audio.</div></div><div class="row"><button onclick="devicesRefresh()">🔄 Refresh</button></div></div></div>
+<div class="media-grid"><div class="sec"><h3>Bluetooth Pairing</h3><div class="row"><button onclick="deviceBtScan()">🔍 Scan</button><span id="dev-bt-status" class="media-meta">—</span></div><div id="dev-bt-list" class="media-meta" style="margin-top:.4rem">Click Scan or Refresh</div></div>
+<div class="sec"><h3>Wi-Fi Configuration</h3><div class="row"><button onclick="wifiStatus()">📶 Status</button><button onclick="wifiScan()">🔍 Scan Wi-Fi</button></div><div class="row" style="margin-top:.35rem"><input id="wifi-ssid" placeholder="SSID" style="flex:1"><input id="wifi-pass" type="password" placeholder="Password (kept in browser only)" style="flex:1"><button onclick="wifiConnect()">Connect</button></div><div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div></div></div>
+<div class="sec"><h3>Suggested Device Roles</h3><div class="media-meta">• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.</div></div>
 </div>
 <div id="p-terminal" class="pnl"><div class="sec">
 <div class="row" style="margin-bottom:.4rem"><button onclick="termConnect()">🔌 Connect</button><button onclick="termDisconnect()" class="danger">⏹ Disconnect</button><span id="term-status" style="font-size:.75em;color:#8b949e">Disconnected</span></div>
@@ -1048,6 +1189,20 @@ class H(BaseHTTPRequestHandler):
                     self.sj(200,{"result":f"DLNA → {dlna}"})
                 else:
                     self.sj(200,{"result":"No DLNA sink. Available: "+', '.join(sinks)})
+            elif path=="/devices/state": self.sj(200,devices_state())
+            elif path=="/devices/bt/scan":
+                seconds=(q.get("seconds")or["5"])[0]
+                self.sj(200,bluetooth_scan_devices(seconds))
+            elif path=="/wifi/status": self.sj(200,wifi_status())
+            elif path=="/wifi/scan": self.sj(200,wifi_scan())
+            elif path=="/wifi/connect":
+                ssid=(q.get("ssid")or[""])[0]
+                password=(q.get("password")or[""])[0]
+                self.sj(200,wifi_connect(ssid,password))
+            elif path=="/youtube/cookies/status": self.sj(200,youtube_cookie_status())
+            elif path=="/youtube/age-check":
+                u=(q.get("url")or[""])[0].strip()
+                self.sj(200,youtube_age_check(u))
             elif path=="/devices":
                 o=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True)
                 sinks=[l.split()[1] for l in o.stdout.strip().split('\n') if len(l.split())>1]

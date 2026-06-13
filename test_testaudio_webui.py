@@ -37,16 +37,19 @@ def main() -> int:
 
     status, html = get("/")
     failures += check("GET /", status == 200, status)
-    failures += check("stable Audio tab exists", 'data-t="audio"' in html)
-    failures += check("Test Audio tab exists", 'data-t="testaudio"' in html)
-    failures += check("Test Audio panel exists", 'id="p-testaudio"' in html)
-    failures += check("Test Audio refresh hook exists", "sw('testaudio');taRefresh()" in html)
+    failures += check("primary Audio tab exists", 'data-t="audio"' in html)
+    failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
+    failures += check("primary Audio panel exists", 'id="p-audio"' in html)
+    failures += check("Audio refresh hook exists", "sw('audio');taRefresh();ytCookieStatus()" in html)
+    failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
     failures += check("DLNA latency range is aligned", 'min="-5000" max="5000"' in html)
     failures += check("latency label matches audio-delay", "Audio delay (ms)" in html)
     failures += check("input devices use source volume API", "includes('input')?'source':'sink'" in html)
     failures += check("connected badges use existing ok style", 'class="badge ok"' in html)
     failures += check("DLNA keepalive badge is sink-specific", "hasDlnaKeepalive" in html)
+    failures += check("volume slider is debounced", "taSetVolDebounced" in html)
+    failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
@@ -74,6 +77,15 @@ def main() -> int:
 
     status, keepalive = get("/keepalive?action=status")
     failures += check("keepalive status returns JSON", status == 200 and keepalive.get("ok") is True, keepalive)
+
+    status, devices = get("/devices/state")
+    failures += check("devices state returns JSON", status == 200 and devices.get("ok") is True and "bluetooth" in devices, devices)
+
+    status, wifi = get("/wifi/status")
+    failures += check("wifi status returns JSON", status == 200 and wifi.get("ok") is True, wifi)
+
+    status, cookies = get("/youtube/cookies/status")
+    failures += check("youtube cookie status returns JSON", status == 200 and "exists" in cookies and "cookie_count" in cookies, cookies)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0
