@@ -1,51 +1,27 @@
 # Raspberry Pi Dumb TV Dashboard
 
-Lightweight, TUI-based dashboard and controller for a low-RAM (1GB) Raspberry Pi connected to a living room TV.
+Low-RAM Raspberry Pi TV dashboard for media playback, device control, and quick system management.
 
-## Project Structure
-* `main.py` - Minimal CLI entry point.
-* `tui.py` - Interactive dashboard prototype (Textual).
-* `qemu-start.sh` - Script to boot the emulated Raspberry Pi OS in QEMU.
-* `qemu-stop.sh` - Script to cleanly shut down QEMU.
-* `chroot-mount.sh` - Script to mount the rootfs for local chroot environments.
-* `chroot-umount.sh` - Script to unmount the rootfs.
-* `conductor/` - Framework planning, architecture notes, style guides, and tracks registry.
+## Documentation
+- [Documentation index](./docs/README.md)
+- [Project overview](./docs/overview.md)
+- [WebUI / API reference](./docs/webserver-8099.md)
+- [Textual dashboard reference](./docs/tui.md)
+- [Mode switcher reference](./docs/mode-switcher.md)
+- [Multimedia keyboard daemon](./docs/keys2mpv.md)
+- [Tests and verification](./docs/testing.md)
+- [Operational playbooks](./docs/operations.md)
 
-## Local QEMU & Chroot Development
-
-The project environment is emulated on x86_64 host using `qemu-system-aarch64` and `qemu-aarch64-static` for chroot.
-
-### 1. Booting QEMU VM
-To boot the full RPi OS Lite image in QEMU:
+## Quick start
 ```bash
-./qemu-start.sh
-```
-This boots the system in headless mode, mapping the serial console to your terminal. To stop it, run the shutdown script from another terminal:
-```bash
-./qemu-stop.sh
-```
-Or exit manually inside the console by pressing `Ctrl-A` then `x`.
-
-### 2. Mounting Chroot for Validation
-Alternatively, you can work inside the image's filesystem directly via `chroot` with QEMU static binary interpreter:
-```bash
-# Mount rootfs and map system virtual directories:
-./chroot-mount.sh
-
-# Enter the chroot:
-sudo chroot rootfs /bin/bash
-
-# Work inside the image...
-# Once done, exit the chroot and unmount the virtual directories:
-./chroot-umount.sh
-```
-
-## Running the Dashboard
-All dependencies are managed via `uv`.
-```bash
-# Sync dependencies
 uv sync
-
-# Run the TUI
 uv run python tui.py
 ```
+
+## Project layout
+- `main.py` — minimal entry point
+- `tui.py` — Textual dashboard
+- `webserver_8099.py` — WebUI, API, and terminal WebSocket server
+- `mode_switcher.py` — foreground app supervision
+- `keys2mpv.py` — multimedia keyboard daemon
+- `conductor/` — product context, workflow, and tracks

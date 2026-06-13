@@ -24,3 +24,4 @@
 - [x] **Track: test-audio-hardening** — Harden Test Audio WebUI validation, keepalive cleanup, escaping, and self-tests | [Plan](./tracks/test-audio-hardening_20260613/plan.md)
 - [x] **Track: test-audio-review-fixes** — Layout-preserving Test Audio fixes discovered during review | [Plan](./tracks/test-audio-review-fixes_20260613/plan.md)
 - [x] **Track: audio-devices-age-routes** — Promote Audio, add Devices, and add YouTube age diagnostics | [Plan](./tracks/audio-devices-age-routes_20260613/plan.md)
+- [x] **Track: project-docs-reference** — Complete project documentation reference | [Plan](./tracks/project-docs-reference_20260613/plan.md)
