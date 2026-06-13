@@ -650,12 +650,11 @@ def page():
 <div id="dlna-list" style="font-size:.8em;color:#8b949e">Klikni Scan</div></div>
 </div></div>
 <div id="p-testaudio" class="pnl">
-<div class="sec"><div class="media-head"><div><h3>Audio & Media Prototype</h3><div class="media-meta">Safe prototype. Original Audio tab is untouched.</div></div><div class="row"><button onclick="taRefresh()">🔄 Refresh</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
-<div class="sec"><h3>🎛️ Mixer — Active Streams</h3><div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
-<div class="sec"><h3>🔊 Output Sinks</h3><div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
-<div class="sec"><h3>🎙️ Input Sources</h3><div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
-<div class="sec"><h3>🔁 Audio Routing</h3><div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
-<div class="sec"><h3>⏱️ DLNA Latency Compensation</h3><div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+<div class="sec"><div class="media-head"><div><h3>Audio & Media Prototype</h3><div class="media-meta">Safe prototype. Original Audio tab is untouched.</div></div><div class="row"><button onclick="taRefresh()">🔄 Refresh</button><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button></div></div><div class="media-meta">Default sink: <span id="ta-default">—</span></div></div>
+<div class="media-grid"><div><div class="sec"><h3>Output Sinks</h3><div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div><div><div class="sec"><h3>Input Sources</h3><div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div></div>
+<div class="sec"><h3>Mixer — Active Streams</h3><div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
+<div class="sec"><h3>Audio Routing</h3><div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
+<div class="sec"><h3>DLNA Latency Compensation</h3><div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
 <label style="font-size:.72rem;color:#8b949e">DLNA Output offset (ms):</label>
 <input type="number" id="ta-lat-dlna-offset" value="0" min="-2000" max="5000" step="50" style="width:80px">
 <button onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save</button>
