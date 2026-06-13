@@ -341,13 +341,22 @@ def _save_audio_latency(data):
         json.dump(data, open(AUDIO_LATENCY_FILE, "w"))
     except Exception: pass
 
-def _sink_input_streams():
+def _sink_name_by_id(sink_id, sinks):
+    for s in sinks:
+        if str(s["id"])==str(sink_id): return s["name"].split(".")[-1]
+    return f"sink #{sink_id}"
+
+def _sink_input_streams(sinks=None):
     try:
         r=_run(["pactl","list","short","sink-inputs"])
         out=[]
         for l in r.stdout.strip().split("\n"):
             p=l.split()
-            if len(p)>=3: out.append({"id":p[0],"sink":p[1],"client":p[2],"state":p[-1] if len(p)>5 else ""})
+            if len(p)>=3:
+                sink_id=p[1]
+                client_pid=p[2]
+                sink_label=_sink_name_by_id(sink_id, sinks) if sinks else f"sink #{sink_id}"
+                out.append({"id":p[0],"sink_id":sink_id,"sink":sink_label,"client":client_pid,"format":p[4] if len(p)>4 else ""})
         return out
     except Exception: return []
 
@@ -359,7 +368,7 @@ def audio_state():
     soundbar=_paired_bt_device(paired)
     loop_id=_loopback_module_id()
     latency=_load_audio_latency()
-    sink_inputs=_sink_input_streams()
+    sink_inputs=_sink_input_streams(sinks)
     bt=next((s for s in sinks if s["name"]==BT_SOUNDBAR_SINK),None)
     hdmi=next((s for s in sinks if s["name"]==HDMI_SINK),None)
     usb_in=next((s for s in sources if s["name"]==USB_ALEXA_SRC),None)
@@ -368,9 +377,10 @@ def audio_state():
     classified_sinks=[]
     for s in sinks:
         t=_classify_sink(s["name"])
+        if t=="other": continue
         vol=_sink_volume(s["name"])
         classified_sinks.append({"id":s["id"],"name":s["name"],"type":t,"present":True,"volume":vol,"state":s.get("state","")})
-    order=["hdmi","bt","dlna_output","usb_output","other"]
+    order=["hdmi","bt","dlna_output","usb_output"]
     classified_sinks.sort(key=lambda x: order.index(x["type"]) if x["type"] in order else 99)
     classified_sources=[]
     for s in sources:
@@ -557,14 +567,14 @@ function badge(on,label){return '<span class="badge '+(on?'ok':'err')+'">'+label
 function meter(v){let n=(v==null?0:v);return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>'}
 function deviceCard(icon,title,d){let ok=d&&d.present;return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">'+esc((d&&d.name)||'not detected')+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
 function btSoundbarCard(d){let ok=d&&d.present,paired=d&&d.paired;let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+'</h4>'+meter(d&&d.volume);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Sink: '+esc(ok?d.name:'not connected')+'<br>State: '+esc((d&&d.state)||'—')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+esc(d.mac)+'\')">🔌 Connect Soundbar</button></div><div class="media-meta">Paired, but no PipeWire BT sink is currently available.</div>';return h+'</div>'}
-async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sinks=r.sinks||[];let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';sinks.forEach(s=>{let icon=s.type==='hdmi'?'📺':(s.type==='bt'?'🎧':(s.type==='dlna_output'?'📡':(s.type==='usb_output'?'🔌':'🔊')));let title=s.type==='hdmi'?'HDMI':(s.type==='bt'?'BT Soundbar':(s.type==='dlna_output'?'DLNA Output':(s.type==='usb_output'?'USB Output':'Other')));outHtml+=deviceCard(icon,title,s)});$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});srcHtml+='<div class="media-card"><h4>📡 DLNA '+badge(d.dlna_output&&d.dlna_output.present,'ACTIVE')+'</h4><div class="media-meta">DLNA render scan works. Rendering needs pa-dlna/rygel/Kodi.</div><div class="row" style="margin-top:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button><button onclick="taSwitch(\'dlna\')"'+(d.dlna_output&&d.dlna_output.present?' disabled title="Already active"':'')+'>📡 Switch to DLNA</button></div><div id="ta-dlna" class="media-meta" style="margin-top:.35rem">—</div></div>';$('#ta-sources').innerHTML=srcHtml;let mixerHtml='';if(inputs.length){inputs.forEach(i=>{mixerHtml+='<div class="media-card route-card"><h4>🎵 Stream → '+esc(i.sink)+' '+badge(i.state==='RUNNING','RUNNING')+'</h4><div class="media-meta">Client: '+esc(i.client)+'<br>State: '+esc(i.state)+'</div></div>'});}else{mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">No active audio streams.</div></div>'}$('#ta-mixer').innerHTML=mixerHtml;let route=r.routes&&r.routes.alexa_to_bt;let ready=route&&route.ready;let warn=ready?'Ready.':'Needs online BT Soundbar and USB Alexa input before Start.';let startDisabled=ready?'':' disabled title="BT Soundbar or USB input missing"';$('#ta-routes').innerHTML='<div class="media-card route-card '+(route&&route.on?'on':'off')+'"><h4>🔁 Alexa AUX → BT Soundbar '+badge(route&&route.on,route&&route.on?'ON':(ready?'READY':'NOT READY'))+'</h4><div class="media-meta">USB C-Media mono input → PipeWire loopback → Samsung Soundbar A2DP<br>'+warn+'</div><div class="row" style="margin-top:.45rem"><button onclick="taRoute(\'start\')"'+startDisabled+'>▶ Start</button><button onclick="taRoute(\'stop\')" class="danger">⏹ Stop</button></div><div class="media-meta">Module: '+esc((route&&route.module_id)||'—')+'</div></div>';$('#ta-default').textContent=r.default_sink||'—';$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-raw').textContent=JSON.stringify(r,null,2)}
+async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sinks=r.sinks||[];let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';sinks.forEach(s=>{let icon=s.type==='hdmi'?'📺':(s.type==='bt'?'🎧':(s.type==='dlna_output'?'📡':(s.type==='usb_output'?'🔌':'🔊')));let title=s.type==='hdmi'?'HDMI':(s.type==='bt'?'BT Soundbar':(s.type==='dlna_output'?'DLNA Output':(s.type==='usb_output'?'USB Output':'Other')));outHtml+=deviceCard(icon,title,s)});let dlnaOut=d.dlna_output||{};if(!dlnaOut.present){outHtml+='<div class="media-card"><h4>📡 DLNA Output '+badge(false,'NOT CONNECTED')+'</h4><div class="media-meta">No DLNA sink active. Scan network renderers and select a target.</div><div class="row" style="margin-top:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button></div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>'}$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});srcHtml+='<div class="media-card"><h4>📡 DLNA Input '+badge(false,'SCAN ONLY')+'</h4><div class="media-meta">Receive audio from network devices. Needs rygel renderer on RPi.</div></div>';$('#ta-sources').innerHTML=srcHtml;let mixerHtml='';if(inputs.length){inputs.forEach(i=>{mixerHtml+='<div class="media-card route-card"><h4>🎵 Playing → '+esc(i.sink)+'</h4><div class="media-meta">Sink: '+esc(i.sink)+'<br>Client PID: '+esc(i.client)+'<br>Format: '+esc(i.format)+'</div></div>'});}else{mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">No active audio streams.</div></div>'}$('#ta-mixer').innerHTML=mixerHtml;let route=r.routes&&r.routes.alexa_to_bt;let ready=route&&route.ready;let warn=ready?'Ready.':'Needs online BT Soundbar and USB Alexa input before Start.';let startDisabled=ready?'':' disabled title="BT Soundbar or USB input missing"';$('#ta-routes').innerHTML='<div class="media-card route-card '+(route&&route.on?'on':'off')+'"><h4>🔁 Alexa AUX → BT Soundbar '+badge(route&&route.on,route&&route.on?'ON':(ready?'READY':'NOT READY'))+'</h4><div class="media-meta">USB C-Media mono input → PipeWire loopback → Samsung Soundbar A2DP<br>'+warn+'</div><div class="row" style="margin-top:.45rem"><button onclick="taRoute(\'start\')"'+startDisabled+'>▶ Start</button><button onclick="taRoute(\'stop\')" class="danger">⏹ Stop</button></div><div class="media-meta">Module: '+esc((route&&route.module_id)||'—')+'</div></div>';$('#ta-default').textContent=r.default_sink||'—';$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-raw').textContent=JSON.stringify(r,null,2)}
 async function taRoute(a){let r=await api('/audio/route/alexa-bt?action='+a);msg(r.ok?'Route '+a+' OK':(r.error||r.out||'Route failed'),r.ok?'ok':'err');setTimeout(taRefresh,800)}
 async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
 async function taSwitch(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err');setTimeout(taRefresh,800)}
 async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
 async function taSetDefault(name){let r=await api('/audio/default-sink?name='+encodeURIComponent(name));msg(r.ok?'Default → '+name.split('.').pop():r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
 async function taSetLatency(key,v){let r=await api('/audio/latency?key='+key+'&value='+v);msg(r.ok?'Latency saved':r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
-async function taDlnaScan(){let r=await api('/dlna/scan');if(r.devices){$('#ta-dlna').innerHTML=r.devices.map(d=>'<div>'+esc(d.location||'')+'</div>').join('');msg('Found '+r.count+' renderers','ok')}else msg(r.error||'DLNA failed','err')}
+async function taDlnaScan(){msg('Scanning DLNA renderers...','info');let r=await api('/dlna/scan');if(r.devices&&r.devices.length){let h='<div style="margin-top:.3rem">';r.devices.forEach(d=>{h+='<div style="margin:3px 0;display:flex;gap:6px;align-items:center;border:1px solid #30363d;border-radius:.3rem;padding:.3rem .5rem">📡 <b>'+esc(d.name)+'</b> <span style="color:#8b949e;font-size:.7em">'+esc(d.location||'')+'</span></div>'});h+='</div>';let el=$('#ta-dlna-out-list');if(el)el.innerHTML=h;msg('Found '+r.count+' DLNA renderers','ok')}else{let el=$('#ta-dlna-out-list');if(el)el.innerHTML='<div style="color:#8b949e">No renderers found</div>';msg(r.error||'No DLNA renderers found','err')}}
 async function launchApp(mode){msg('Launching '+mode+'...','info');let r=await fetch('http://192.168.0.205:8090/mode/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})}).then(r=>r.json());msg(r.status?'OK: '+mode:(r.error||'fail'),r.status?'ok':'err')}
 async function stopApp(){msg('Stopping...','info');let r=await fetch('http://192.168.0.205:8090/mode/stop',{method:'POST'}).then(r=>r.json());msg(r.message||'Stopped','ok')}
 // Terminal
@@ -808,6 +818,11 @@ class H(BaseHTTPRequestHandler):
                     if current: devices.append(current)
                     # Filter MediaRenderer
                     renderers=[d for d in devices if "MediaRenderer" in d.get("usn","")]
+                    for rd in renderers:
+                        usn=rd.get("usn","")
+                        rd["name"]=usn.split("::")[0].replace("uuid:","")[:24]
+                        loc=rd.get("location","")
+                        rd["host"]=(loc.split(":")[1] if":" in loc else "").replace("//","")
                     self.sj(200,{"devices":renderers,"count":len(renderers)})
                 except Exception as e:
                     self.sj(200,{"error":str(e)})
