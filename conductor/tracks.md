@@ -21,3 +21,4 @@
 - [x] **Track: audio-tab-refactor** — Refine Test Audio prototype before replacing stable Audio tab | [Plan](./tracks/audio-tab-refactor_20260613/plan.md)
 - [x] **Track: audio-routing-mixer-v2** — HDMI-first audio mixer with DLNA input/output and latency controls | [Plan](./tracks/audio-routing-mixer-v2_20260613/plan.md)
 - [ ] **Track: webui-report-conductor-intake** — WebUI bug/feature modal that creates draft Conductor tracks | [Plan](./tracks/webui-report-conductor-intake_20260613/plan.md)
+- [x] **Track: test-audio-hardening** — Harden Test Audio WebUI validation, keepalive cleanup, escaping, and self-tests | [Plan](./tracks/test-audio-hardening_20260613/plan.md)
