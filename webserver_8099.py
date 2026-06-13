@@ -431,10 +431,24 @@ def audio_set_default(name):
     r=_run(["pactl","set-default-sink",name], t=5)
     return {"ok":r.returncode==0,"name":name,"out":(r.stdout+r.stderr).strip()[:200]}
 
+def _apply_dlna_delay():
+    """Apply saved DLNA latency offset as mpv audio-delay (in seconds)."""
+    lat=_load_audio_latency()
+    offset_ms=lat.get("dlna_output_offset_ms",0)
+    offset_s=offset_ms/1000.0
+    r=mcmd("set_property","audio-delay",offset_s)
+    return {"ok":r.get("error")=="success","offset_ms":offset_ms,"mpv":r}
+
+def _reset_dlna_delay():
+    """Reset mpv audio-delay to 0 (call when DLNA disconnects)."""
+    return mcmd("set_property","audio-delay",0.0)
+
 def audio_set_latency(key, value_ms):
     lat=_load_audio_latency()
     lat[key]=int(value_ms)
     _save_audio_latency(lat)
+    if key=="dlna_output_offset_ms" and _pa_dlna_running():
+        _apply_dlna_delay()
     return {"ok":True,"latency":lat}
 
 def _ensure_silent_wav():
@@ -528,18 +542,20 @@ def audio_connect_dlna():
         return {"ok":False,"error":"pa-dlna started but no DLNA sink appeared yet", "running": _pa_dlna_running()}
     r=_run(["pactl","set-default-sink",sink], t=5)
     _keepalive_start(sink)
-    return {"ok":r.returncode==0,"sink":sink,"running":_pa_dlna_running(),"keepalive":_keepalive_status(),"out":(r.stdout+r.stderr).strip()[:200]}
+    delay=_apply_dlna_delay()
+    return {"ok":r.returncode==0,"sink":sink,"running":_pa_dlna_running(),"keepalive":_keepalive_status(),"delay":delay,"out":(r.stdout+r.stderr).strip()[:200]}
 
 def audio_disconnect_dlna():
     global _pa_dlna_proc
     _keepalive_stop()
+    _reset_dlna_delay()
     if _pa_dlna_proc and _pa_dlna_proc.poll() is None:
         _pa_dlna_proc.terminate()
         try: _pa_dlna_proc.wait(timeout=5)
         except Exception: _pa_dlna_proc.kill()
     else:
         subprocess.run(["pkill","-f",f"pa-dlna.*--port {_PA_DLNA_PORT}"],capture_output=True,text=True,timeout=5)
-    return {"ok":True,"running":_pa_dlna_running()}
+    return {"ok":True,"running":_pa_dlna_running(),"delay_reset":True}
 
 def audio_keepalive(action, sink=None):
     if action=="start" and sink:
@@ -696,7 +712,7 @@ function shortName(n){return (n||'').replace('alsa_output.platform-3f902000.hdmi
 function deviceCard(icon,title,d){let ok=d&&d.present;return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">'+esc(shortName((d&&d.name)||'not detected'))+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
 function btSoundbarCard(d){let ok=d&&d.present,paired=d&&d.paired;let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+'</h4>'+meter(d&&d.volume);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+esc(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
 function dlnaOutputCard(d,selected,connected,keepalive){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let connectBtns='';if(selected){if(connected){connectBtns='<button onclick="taDlnaDisconnect()" class="danger" style="font-size:.8em">⏹ Disconnect</button>'}else{connectBtns='<button onclick="taDlnaConnect()" style="font-size:.8em">🔌 Connect</button>'}}let kaBadge='';if(keepalive&&keepalive.length){kaBadge='<span class="badge green" style="font-size:.65em;margin-left:.3rem">KEEPALIVE</span>'}let status=connected?badge(true,'CONNECTED'):(ok?badge(ok,'NOT CONNECTED'):badge(false,'NOT CONNECTED'));let h='<div class="media-card"><h4>📡 DLNA Output '+status+kaBadge+'</h4>'+meter(d&&d.volume)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem;gap:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button>'+connectBtns+'</div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
-function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));lines.push('DLNA delay offset: '+(lat.dlna_output_offset_ms||0)+' ms');return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
+function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));let dl=r.dlna_connected;let dly=lat.dlna_output_offset_ms||0;lines.push('DLNA delay offset: '+dly+' ms'+(dl&&dly?' (active, mpv audio-delay set)':''))return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
 async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';if(d.hdmi&&d.hdmi.present)outHtml+=deviceCard('📺','HDMI',d.hdmi);outHtml+=btSoundbarCard(d.bt_soundbar||{});outHtml+=dlnaOutputCard(d.dlna_output||{},lat.selected_dlna_renderer);if(d.usb_output&&d.usb_output.present)outHtml+=deviceCard('🔌','USB Output',d.usb_output);$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});srcHtml+='<div class="media-card"><h4>📡 DLNA Input '+badge(false,'PLANNED')+'</h4><div class="media-meta">Receive audio from another PC/device on the network. Requires renderer configuration.</div></div>';$('#ta-sources').innerHTML=srcHtml;let mixerHtml='';if(inputs.length){inputs.forEach(i=>{mixerHtml+='<div class="media-card route-card"><h4>🎵 Playing through '+esc(i.sink)+'</h4><div class="media-meta">Audio is currently routed to '+esc(i.sink)+'. Format: '+esc(i.format||'—')+'</div></div>'});}else{mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">No active audio streams.</div></div>'}$('#ta-mixer').innerHTML=mixerHtml;let route=r.routes&&r.routes.alexa_to_bt;let ready=route&&route.ready;let warn=ready?'Ready.':'Needs online BT Soundbar and USB Alexa input before Start.';let startDisabled=ready?'':' disabled title="BT Soundbar or USB input missing"';$('#ta-routes').innerHTML='<div class="media-card route-card '+(route&&route.on?'on':'off')+'"><h4>🔁 Alexa AUX → BT Soundbar '+badge(route&&route.on,route&&route.on?'ON':(ready?'READY':'NOT READY'))+'</h4><div class="media-meta">USB C-Media mono input → PipeWire loopback → Samsung Soundbar A2DP<br>'+warn+'</div><div class="row" style="margin-top:.45rem"><button onclick="taRoute(\'start\')"'+startDisabled+'>▶ Start</button><button onclick="taRoute(\'stop\')" class="danger">⏹ Stop</button></div><div class="media-meta">Module: '+esc((route&&route.module_id)||'—')+'</div></div>';$('#ta-default').textContent=shortName(r.default_sink||'—');$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-summary').innerHTML=taHumanSummary(r);$('#ta-raw').textContent=JSON.stringify(r,null,2)}
 async function taRoute(a){let r=await api('/audio/route/alexa-bt?action='+a);msg(r.ok?'Route '+a+' OK':(r.error||r.out||'Route failed'),r.ok?'ok':'err');setTimeout(taRefresh,800)}
 async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
@@ -800,10 +816,10 @@ def page():
 <div class="sec"><h3>Mixer — Active Streams</h3><div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
 <div class="sec"><h3>Audio Routing</h3><div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div>
 <div class="sec"><h3>DLNA Latency Compensation</h3><div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
-<label style="font-size:.72rem;color:#8b949e">DLNA Output offset (ms):</label>
+<label style="font-size:.72rem;color:#8b949e">Video delay (ms):</label>
 <input type="number" id="ta-lat-dlna-offset" value="0" min="-2000" max="5000" step="50" style="width:80px">
-<button onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save</button>
-<span class="media-meta">Positive = delay output. Applied by renderer when available.</span></div></div>
+<button onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save + Apply</button>
+<span class="media-meta">Delays mpv video to match DLNA audio latency. E.g. 3000 = video waits 3s for sound.</span></div></div>
 <div class="sec"><h3>Diagnostics</h3><div id="ta-summary" class="media-meta">Click Refresh</div><details style="margin-top:.5rem"><summary class="media-meta" style="cursor:pointer">Raw technical JSON</summary><pre id="ta-raw">Click Refresh</pre></details></div>
 </div>
 <div id="p-terminal" class="pnl"><div class="sec">
