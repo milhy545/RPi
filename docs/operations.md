@@ -1,5 +1,28 @@
 # Operational Playbooks
 
+## CI Gateway and Handoff
+
+### RPi handoff trigger
+The RPi should not push directly to GitHub. After finishing a track, the repository is synced to Milhy-PC and the Milhy-PC CI agent pushes only on success.
+
+### Install the CI gateway units
+```bash
+bash tools/install-ci-gateway.sh rpi
+bash tools/install-ci-gateway.sh milhy
+
+If linger is available, the installer will try to enable it so the user units survive reboot.
+```
+
+### Unit files
+- `systemd/user/rpi-git-handoff.service` — syncs the current clean RPi HEAD to Milhy-PC
+- `systemd/user/rpi-git-handoff.timer` — runs the sync periodically
+- `systemd/user/rpi-ci-agent.service` — validates the mirrored repo and pushes to GitHub only on success
+
+### Manual trigger
+```bash
+bash tools/trigger-ci-handoff.sh
+```
+
 ## QEMU and chroot
 
 ### `qemu-start.sh`

@@ -35,4 +35,4 @@
 - [ ] **Track: terminal-hw-stats** — Terminal tab fixes and hardware stats | [Plan](./tracks/terminal-hw-stats_20260613/plan.md)
 - [ ] **Track: kodi-tab-decision** — Evaluate Kodi tab usefulness | [Plan](./tracks/kodi-tab-decision_20260613/plan.md)
 - [ ] **Track: dashboard-modes-settings-terminal** — Restore dashboard modes and settings parity | [Plan](./tracks/dashboard-modes-settings-terminal_20260613/plan.md)
-- [ ] **Track: ci-gateway-milhy-pc** — Milhy-PC CI gateway for safe RPi commits and GitHub push | [Plan](./tracks/ci-gateway-milhy-pc_20260614/plan.md)
+- [x] **Track: ci-gateway-milhy-pc** — Milhy-PC CI gateway for safe RPi commits and GitHub push | [Plan](./tracks/ci-gateway-milhy-pc_20260614/plan.md)

@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic RPi Git handoff sync timer
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=rpi-git-handoff.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

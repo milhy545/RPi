@@ -1,0 +1,7 @@
+[Unit]
+Description=RPi Git handoff sync to Milhy-PC CI gateway
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/milhy777/rpi-dashboard
+ExecStart=/home/milhy777/rpi-dashboard/tools/trigger-ci-handoff.sh

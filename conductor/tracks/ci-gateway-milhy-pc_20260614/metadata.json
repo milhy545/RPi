@@ -2,10 +2,11 @@
   "track_id": "ci-gateway-milhy-pc_20260614",
   "title": "Milhy-PC CI Gateway",
   "type": "chore",
-  "status": "in_progress",
+  "status": "done",
   "created": "2026-06-14T00:00:00Z",
-  "updated": "2026-06-14T00:00:00Z",
+  "updated": "2026-06-14T08:32:00Z",
   "priority": "high",
   "tags": ["ci", "git", "milhy-pc", "github-actions", "safety"],
+  "completed": "2026-06-14T08:32:00Z",
   "dependencies": ["git-live-dev-workflow_20260613"]
 }

@@ -29,8 +29,8 @@
 - [x] Task: Run local CI on RPi.
 - [x] Task: Sync current RPi state to Milhy-PC.
 - [x] Task: Start persistent Milhy-PC tmux CI agent.
-- [ ] Task: Perform first full RPi → Milhy-PC → GitHub handoff.
+- [x] Task: Perform first full RPi → Milhy-PC → GitHub handoff.
 
 ## Completion Notes
 
-The tooling is implemented. The final two operational tasks require an explicit commit/push cycle and optionally a persistent tmux session on Milhy-PC.
+The tooling is implemented and the first full RPi → Milhy-PC → GitHub handoff has completed successfully.
