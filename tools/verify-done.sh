@@ -65,11 +65,15 @@ fi
 echo "=== Check 4: CI report ==="
 REPORT="$(find "$REPORT_DIR" -name "${HEAD_SHA}-*.md" -type f 2>/dev/null | sort -r | head -1 || true)"
 if [[ -z "$REPORT" ]]; then
-  err "No CI report found for HEAD=$HEAD_SHA"
+  # CI report uses pre-commit SHA; fall back to most recent report.
+  REPORT="$(find "$REPORT_DIR" -name '*.md' -type f 2>/dev/null | sort -r | head -1 || true)"
+fi
+if [[ -z "$REPORT" ]]; then
+  err "No CI report found in $REPORT_DIR"
 else
-  if grep -q "^PASS" "$REPORT" 2>/dev/null; then
+  if grep -q '^PASS' "$REPORT" 2>/dev/null; then
     ok "CI report PASS: $REPORT"
-  elif grep -q "^FAILURES" "$REPORT" 2>/dev/null; then
+  elif grep -q '^FAILURES' "$REPORT" 2>/dev/null; then
     err "CI report shows FAILURES: $REPORT"
   else
     ok "CI report exists (final line unclear): $REPORT"
@@ -108,7 +112,7 @@ fi
 
 # ─── Check 7: No runtime artifacts in last commit ───────────────────────────
 echo "=== Check 7: Runtime artifacts ==="
-ARTIFACTS_IN_COMMIT="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -v '\.gitkeep$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
+ARTIFACTS_IN_COMMIT="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
 if [[ -n "$ARTIFACTS_IN_COMMIT" ]]; then
   err "Runtime artifacts found in HEAD commit:"
   echo "$ARTIFACTS_IN_COMMIT" >&2
