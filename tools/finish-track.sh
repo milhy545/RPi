@@ -165,6 +165,7 @@ fi
 # The receipt is the ONLY proof of a successful pipeline run.
 # If any step above failed, we never reach this point.
 RECEIPT_FILE="$RECEIPT_DIR/${POST_COMMIT_SHA}-$(date +%Y%m%d-%H%M%S).json"
+mkdir -p "$RECEIPT_DIR"
 cat > "$RECEIPT_FILE" <<RECEIPT
 {
   "status": "done",
