@@ -108,7 +108,7 @@ fi
 
 # ─── Check 7: No runtime artifacts in last commit ───────────────────────────
 echo "=== Check 7: Runtime artifacts ==="
-ARTIFACTS_IN_COMMIT="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
+ARTIFACTS_IN_COMMIT="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -v '\.gitkeep$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
 if [[ -n "$ARTIFACTS_IN_COMMIT" ]]; then
   err "Runtime artifacts found in HEAD commit:"
   echo "$ARTIFACTS_IN_COMMIT" >&2
