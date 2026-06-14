@@ -145,6 +145,7 @@ if ! rsync -a --delete \
 fi
 
 # Verify remote mirror SHA matches
+# shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path.
 REMOTE_SHA="$(ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && git rev-parse HEAD 2>/dev/null" || echo unknown)"
 if [[ "$REMOTE_SHA" != "$POST_COMMIT_SHA" ]]; then
   echo "FATAL: Milhy-PC mirror SHA mismatch (expected $POST_COMMIT_SHA, got $REMOTE_SHA)" >&2
@@ -154,7 +155,6 @@ echo "Milhy-PC mirror verified: $REMOTE_SHA"
 
 # ─── Step 9: Trigger Milhy-PC CI gateway ────────────────────────────────────
 echo "Triggering Milhy-PC CI gateway on $MILHY_PC_HOST:$MILHY_PC_REPO"
-# shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path/branch.
 # shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path/branch.
 if ! ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && BRANCH='$TARGET_BRANCH' SOURCE_REMOTE=local tools/ci-agent.sh"; then
   echo "FATAL: Milhy-PC CI agent failed — commit exists locally but GitHub push may not have happened" >&2
