@@ -97,18 +97,27 @@ def mcmd(*a):
 
 def mget(p): return mcmd("get_property",p)
 
-def mpv_start(url, q=None):
+def mpv_start(url, q=None, resume=False):
     global _mpv,_mq,_mtitle
     mpv_stop(); _mq=q or _mq
     surl,meta=resolve(url,_mq)
     _mtitle=meta.get("title","Playing")
-    cmd=["mpv",
+    
+    # DeepMind Strategy: mpv pinned to cores 1-2 (media.compute)
+    # Escalation for HEVC/heavy: detect via format probe, use cores 1-3
+    use_three_cores = False
+    if meta.get("h", 0) >= 1080 or meta.get("dur", 0) > 3600:
+        # 1080p+ or long content (likely high bitrate) -> use 3 cores
+        use_three_cores = True
+    
+    core_mask = "1-3" if use_three_cores else "1-2"
+    cmd=["taskset", "-c", core_mask, "mpv",
          "--vo=drm","--drm-mode=640x480","--hwdec=v4l2m2m",
          "--fullscreen","--no-terminal","--ytdl=no","--ao=alsa",
          f"--title={_mtitle}",
          f"--input-ipc-server={MSOCK}","--keep-open=always",surl]
     _mpv=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq}
+    return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask}
 
 def mpv_stop():
     global _mpv
