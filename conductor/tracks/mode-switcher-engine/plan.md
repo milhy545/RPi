@@ -35,3 +35,7 @@
 - [x] Task: Verify concurrency guard rejection.
 - [x] Task: Verify signal handlers (SIGTERM and SIGINT).
 - [x] Task: Confirm low memory footprint (< 1 MB RAM overhead).
+
+## Completion Notes
+- Core mode switcher engine is complete in `mode_switcher.py` / `tui.py`.
+- UI parity/app-mode leftovers live in `dashboard-modes-settings-terminal_20260613`.

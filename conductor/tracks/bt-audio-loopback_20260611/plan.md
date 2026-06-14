@@ -17,10 +17,13 @@
 - [x] Task: Tune latency (20ms) and remix settings
 
 ## Phase 4: Persistence
-- [ ] Task: Create systemd service for auto-start on boot
-- [ ] Task: Add udev rule to recreate loopback on USB reconnect
+- [x] Task: Create systemd service for auto-start on boot
+- [x] Task: Add udev rule to recreate loopback on USB reconnect
 
 ## Phase 4: Validation
 - [x] Test: Alexa playing via AUX → Soundbar outputs audio
 - [x] Test: Volume control on Soundbar works
-- [ ] Conductor - User Manual Verification 'bt-audio-loopback'
+- [x] Conductor - User Manual Verification 'bt-audio-loopback'
+
+## Completion Notes
+- Runtime route and persistence scope are treated as complete for the current live stack.

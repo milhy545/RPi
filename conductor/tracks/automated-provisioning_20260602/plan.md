@@ -17,4 +17,5 @@
 - Idempotent provisioning scripts (01-05) implemented and verified.
 - `dashboard.service` template created using `%i` instance identifier for multi-user/dynamic deployment.
 - Systemd service installation verified (template targets `/dev/tty1` with TTY takeover).
+- Current live stack has outgrown this bootstrap scope; treat this as the historical baseline for provisioning.
 

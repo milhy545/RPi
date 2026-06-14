@@ -61,8 +61,13 @@ qemu/
 
 # Keep source/docs/tests/conductor tracked explicitly.
 
-# Backups
+# Backups / forensic recovery snapshots
 *.bak
+.forensics/
 
-# Local runtime audio state
+# Local runtime audio/playback state
 .audio-latency.json
+playback-memory.json
+
+# Local CI generated reports
+conductor/ci/reports/

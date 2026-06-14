@@ -1,7 +1,7 @@
 # Implementation Plan: Playback Resume Memory
 
 ## Phase 1: Backend State Model
-- [ ] Task: Add playback memory JSON helper functions
+- [~] Task: Add playback memory JSON helper functions
   - [ ] `load_playback_memory()`
   - [ ] `save_playback_memory()`
   - [ ] `media_key(url, meta)` using YouTube ID or URL hash

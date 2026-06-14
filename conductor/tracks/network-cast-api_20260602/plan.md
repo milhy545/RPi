@@ -17,3 +17,4 @@
 - aiohttp background server runs inside Textual's asyncio event loop via `on_mount`.
 - `--headless` mode added for automated testing without a terminal.
 - Verified in ARM chroot (QEMU user-mode): `test_cast_api.py` passes with 200 OK.
+- Superseded by `webserver_8099.py` and `mode_switcher.py` in the current live stack.
