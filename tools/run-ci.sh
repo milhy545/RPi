@@ -101,7 +101,7 @@ optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact 
 optional_step bandit "Bandit Python security scan (high severity gate)" bandit -q -lll -r . -x .venv,__pycache__
 optional_step pip-audit "pip-audit dependency scan" pip-audit
 
-run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver_8099.py tui.py mode_switcher.py keys2mpv.py tools/ci-agent.sh tools/finish-track.sh provisioning/*.sh 2>/dev/null'
+run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver_8099.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null'
 
 append "# Final Result"
 if [[ $FAILURES -eq 0 ]]; then

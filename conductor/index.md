@@ -11,3 +11,12 @@
 ## Code Style Guides
 - [Python](./code_styleguides/python.md)
 - [General](./code_styleguides/general.md)
+
+## CI Safety Rules
+- [CI Safety Rules](./ci/SAFETY-RULES.md)
+
+**MANDATORY**: Before claiming any task is "done", run:
+```bash
+tools/verify-done.sh
+```
+If it exits with code 1, the task is NOT done. Period.
