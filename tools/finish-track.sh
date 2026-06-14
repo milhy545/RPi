@@ -13,7 +13,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 RECEIPT_DIR="${RECEIPT_DIR:-conductor/ci/receipts}"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 mkdir -p "$RECEIPT_DIR"
 
 usage() {
@@ -156,6 +155,7 @@ echo "Milhy-PC mirror verified: $REMOTE_SHA"
 # ─── Step 9: Trigger Milhy-PC CI gateway ────────────────────────────────────
 echo "Triggering Milhy-PC CI gateway on $MILHY_PC_HOST:$MILHY_PC_REPO"
 # shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path/branch.
+# shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path/branch.
 if ! ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && BRANCH='$TARGET_BRANCH' SOURCE_REMOTE=local tools/ci-agent.sh"; then
   echo "FATAL: Milhy-PC CI agent failed — commit exists locally but GitHub push may not have happened" >&2
   exit 1
@@ -177,7 +177,7 @@ cat > "$RECEIPT_FILE" <<RECEIPT
   "host": "$(hostname)",
   "branch": "$TARGET_BRANCH",
   "timestamp": "$(date -Is)",
-  "ci_report": "$(ls -1t conductor/ci/reports/${POST_COMMIT_SHA}-*.md 2>/dev/null | head -1 || echo unknown)",
+  "ci_report": "$(find conductor/ci/reports -name "${POST_COMMIT_SHA}-*.md" -type f 2>/dev/null | sort -r | head -1 || echo unknown)",
   "safety_snapshot": "$SNAP"
 }
 RECEIPT

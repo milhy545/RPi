@@ -84,6 +84,7 @@ MILHY_PC_REPO="${MILHY_PC_REPO:-/home/milhy777/Develop/RPi}"
 if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$MILHY_PC_HOST" true 2>/dev/null; then
   skip "Milhy-PC unreachable (cannot verify mirror sync)"
 else
+  # shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path.
   REMOTE_SHA="$(ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && git rev-parse HEAD 2>/dev/null" 2>/dev/null || echo unknown)"
   if [[ "$REMOTE_SHA" == "$HEAD_SHA" ]]; then
     ok "Milhy-PC mirror matches HEAD: $REMOTE_SHA"
@@ -97,7 +98,7 @@ echo "=== Check 6: GitHub remote ==="
 if ! git remote get-url origin >/dev/null 2>&1; then
   skip "No origin remote configured"
 else
-  REMOTE_PUSHED="$(git log origin/$BRANCH..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
+  REMOTE_PUSHED="$(git log "origin/$BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
   if [[ "$REMOTE_PUSHED" -eq 0 ]]; then
     ok "HEAD is pushed to origin/$BRANCH"
   else
