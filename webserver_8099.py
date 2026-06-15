@@ -79,7 +79,7 @@ def kodi_rpc(m, p=None, t=3):
 
 # ── MPV ────────────────────────────────────────────────────────────────
 
-_mpv=None; _mq=DQ; _mtitle=""
+_mpv=None; _mq=DQ; _mtitle=""; _murl=""
 
 def mcmd(*a):
     if not os.path.exists(MSOCK): return {"error":"not running"}
@@ -98,9 +98,12 @@ def mcmd(*a):
 def mget(p): return mcmd("get_property",p)
 
 def mpv_start(url, q=None, resume=False):
-    global _mpv,_mq,_mtitle
+    global _mpv,_mq,_mtitle,_murl
+    if not resume and mpv_ipc_socket_live():
+        save_mpv_resume_memory()
     mpv_stop(); _mq=q or _mq
     surl,meta=resolve(url,_mq)
+    _murl=url
     _mtitle=meta.get("title","Playing")
 
     # DeepMind Strategy: mpv pinned to cores 1-2 (media.compute)
@@ -117,6 +120,15 @@ def mpv_start(url, q=None, resume=False):
          f"--title={_mtitle}",
          f"--input-ipc-server={MSOCK}","--keep-open=always",surl]
     _mpv=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    if resume:
+        mem = get_mpv_memory_for_url(url)
+        if mem and mem.get("position") is not None:
+            # wait for socket to be ready, then seek
+            for _ in range(20):  # try for ~2 seconds
+                if mpv_ipc_socket_live():
+                    mcmd("set_property", "time-pos", mem["position"])
+                    break
+                time.sleep(0.1)
     return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask}
 
 def mpv_stop():
@@ -890,7 +902,7 @@ function $(s){return document.querySelector(s)}function $$(s){return document.qu
 function msg(t,c){let d=document.createElement('div');d.className='t '+c;d.textContent=t;$('#toast').appendChild(d);setTimeout(()=>d.remove(),4000)}
 async function api(u){try{return await(await fetch(u)).json()}catch(e){return{error:e.message}}}
 function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
-async function play(){let u=$('#url').value.trim(),q=$('#qual').value;if(!u){msg('Enter URL','err');return}let r=await api('/mpv/play?url='+encodeURIComponent(u)+'&q='+q);if(r.error)msg(r.error,'err');else msg('Playing: '+(r.meta&&r.meta.title||r.q),'ok');setTimeout(st,1500)}
+async function play(){let u=$('#url').value.trim(),q=$('#qual').value;if(!u){msg('Enter URL','err');return}let mr=await api('/mpv/memory?url='+encodeURIComponent(u));let mem=mr&&mr.memory;let resume=false;if(mem&&mem.position!==null&&mem.position>0&&mem.duration&&(mem.duration-mem.position)>30&&mem.position<mem.duration*.95){let pos=mem.position;let hrs=Math.floor(pos/3600);let mins=Math.floor((pos%3600)/60);let secs=Math.floor(pos%60);let tstr;if(hrs>0){tstr=hrs+':'+(mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs}else{tstr=mins+':'+(secs<10?'0':'')+secs}if(confirm('Resume from '+tstr+'?')){resume=true}else{await api('/mpv/memory/clear?url='+encodeURIComponent(u));}}let r=await api('/mpv/play?url='+encodeURIComponent(u)+'&q='+q+'&resume='+(resume?'1':'0'));if(r.error)msg(r.error,'err');else msg('Playing: '+(r.meta&&r.meta.title||r.q),'ok');setTimeout(st,1500)}
 function pause(){api('/mpv/toggle').then(r=>msg(r.paused!==undefined?(r.paused?'Paused':'Playing'):'?','info'))}
 function stop(){api('/mpv/stop').then(()=>{msg('Stopped','ok');$('#st').textContent='—'})}
 function seek(d){api('/mpv/seek?d='+d)}
@@ -1226,9 +1238,12 @@ class H(BaseHTTPRequestHandler):
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
             elif path=="/mpv/play":
                 u=(q.get("url")or[""])[0].strip();ql=(q.get("q")or[None])[0]
+                resume=(q.get("resume")or["0"])[0] not in ("0", "", "false", "False")
                 if not u: return self.sj(400,{"error":"no url"})
-                self.sj(200,mpv_start(u,ql))
-            elif path=="/mpv/stop": mpv_stop();self.sj(200,{"ok":True})
+                self.sj(200,mpv_start(u,ql,resume))
+            elif path=="/mpv/stop":
+                memory = save_mpv_resume_memory() if mpv_ipc_socket_live() else None
+                mpv_stop();self.sj(200,{"ok":True,"memory":memory})
             elif path=="/mpv/toggle":
                 mcmd("cycle","pause");s=mget("pause")
                 self.sj(200,{"ok":True,"paused":s.get("data",False)})
@@ -1239,6 +1254,22 @@ class H(BaseHTTPRequestHandler):
                 pos=(q.get("pos")or["0"])[0];mcmd("seek",float(pos),"absolute");self.sj(200,{"ok":True})
             elif path=="/mpv/vol":
                 d=(q.get("d")or["10"])[0];mcmd("add","volume",int(d));self.sj(200,{"ok":True})
+            elif path=="/mpv/memory":
+                u=(q.get("url")or[""])[0].strip()
+                if not u: return self.sj(400,{"error":"no url"})
+                memory = get_mpv_memory_for_url(u)
+                self.sj(200,{"ok":True,"memory":memory})
+            elif path=="/mpv/memory/clear":
+                u=(q.get("url")or[""])[0].strip()
+                if not u: return self.sj(400,{"error":"no url"})
+                cleared = clear_mpv_memory_for_url(u)
+                self.sj(200,{"ok":True,"cleared":cleared})
+            elif path=="/mpv/memory-save":
+                if mpv_ipc_socket_live():
+                    memory = save_mpv_resume_memory()
+                    self.sj(200,{"ok":True,"memory":memory})
+                else:
+                    self.sj(200,{"ok":True,"memory":"mpv not running"})
             elif path=="/cec/send":
                 c=(q.get("c")or[""])[0].strip()
                 if not c: return self.sj(400,{"error":"no cmd"})
@@ -1651,25 +1682,111 @@ def start_ws_server():
     t.start()
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
-def mpv_ipc_socket_live(path=MSOCK):
-    """Return True when an existing mpv IPC socket accepts commands.
-
-    This protects active playback during webserver restarts. Never unlink a
-    live mpv socket, otherwise the video may keep playing but WebUI loses
-    control of it.
+def mpv_ipc_query(command, path=MSOCK):
+    """Send a JSON command to mpv IPC socket and return the parsed JSON response.
+    Returns None on failure.
     """
     if not os.path.exists(path) or not stat.S_ISSOCK(os.stat(path).st_mode):
-        return False
+        return None
     try:
-        s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
-        s.settimeout(0.8)
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(1.0)
         s.connect(path)
-        s.sendall(b'{"command":["get_property","pause"]}\n')
-        data=s.recv(4096)
+        s.sendall((json.dumps(command) + "\n").encode('utf-8'))
+        data = s.recv(4096)
         s.close()
-        return b'"error":"success"' in data or b'"data"' in data
+        return json.loads(data.decode('utf-8'))
+    except Exception as e:
+        print(f"[mpv_ipc_query] {type(e).__name__}: {e}", file=sys.stderr)
+        return None
+
+def mpv_ipc_socket_live(path=MSOCK):
+    """Return True when an existing mpv IPC socket accepts commands.
+    This protects active playback during webserver restarts. Never unlink a live mpv socket,
+    otherwise the video may keep playing but WebUI loses control of it.
+    """
+    resp = mpv_ipc_query({"command": ["get_property", "pause"]}, path)
+    return resp is not None and resp.get('error') in ('success', None)
+
+def _playback_memory_file():
+    return os.path.join(os.path.expanduser("~"), "rpi-dashboard", "playback-memory.json")
+
+def _playback_media_key(url):
+    m = YT_RE.search(url or "")
+    if m:
+        return m.group(1)
+    import hashlib
+    return hashlib.sha256((url or "").encode()).hexdigest()[:16]
+
+def _load_playback_memory():
+    mem_file = _playback_memory_file()
+    try:
+        if os.path.exists(mem_file):
+            with open(mem_file, "r") as f:
+                return json.load(f)
     except Exception:
-        return False
+        pass
+    return {}
+
+def _save_playback_memory(data):
+    mem_file = _playback_memory_file()
+    os.makedirs(os.path.dirname(mem_file), exist_ok=True)
+    with open(mem_file, "w") as f:
+        json.dump(data, f, indent=2)
+
+def save_mpv_resume_memory():
+    """Query mpv for playback position and metadata, return dict for persistence."""
+    props = {}
+    for prop in ("time-pos", "duration", "path", "media-title"):
+        resp = mpv_ipc_query({"command": ["get_property", prop]})
+        if resp and resp.get("error") in ("success", None):
+            props[prop] = resp.get("data")
+        else:
+            props[prop] = None
+    if props.get("time-pos") is None or props.get("duration") is None:
+        return None
+    position = float(props["time-pos"])
+    duration = float(props["duration"])
+    source_url = _murl or props.get("path") or ""
+    video_id = _playback_media_key(source_url)
+    if duration > 0 and (position >= duration * 0.95 or duration - position < 30):
+        clear_mpv_memory_for_url(source_url)
+        return None
+    if position < 5:
+        return None
+    memory = {
+        "id": video_id,
+        "url": source_url,
+        "title": props.get("media-title") or "",
+        "position": position,
+        "duration": duration,
+        "updated_at": time.time(),
+        "reason": "interrupted"
+    }
+    try:
+        data = _load_playback_memory()
+        data[video_id] = memory
+        _save_playback_memory(data)
+    except Exception as e:
+        print(f"[save_mpv_resume_memory] failed to write memory: {e}", file=sys.stderr)
+    return memory
+
+def get_mpv_memory_for_url(url):
+    """Return memory dict for given URL, or None."""
+    return _load_playback_memory().get(_playback_media_key(url))
+
+def clear_mpv_memory_for_url(url):
+    """Remove memory entry for given URL. Returns True if cleared."""
+    try:
+        data = _load_playback_memory()
+        video_id = _playback_media_key(url)
+        if video_id in data:
+            del data[video_id]
+            _save_playback_memory(data)
+            return True
+    except Exception:
+        pass
+    return False
 
 def cleanup_stale_mpv_socket():
     if not os.path.exists(MSOCK):
@@ -1683,9 +1800,23 @@ def cleanup_stale_mpv_socket():
     except Exception as e:
         print(f"[WARN] Could not remove stale mpv IPC socket {MSOCK}: {e}", file=sys.stderr, flush=True)
 
+def start_resume_poller():
+    """Background thread to periodically save playback position while mpv is alive."""
+    def _poller():
+        while True:
+            time.sleep(5.0)  # poll every 5 seconds
+            try:
+                if mpv_ipc_socket_live():
+                    save_mpv_resume_memory()
+            except Exception:
+                pass  # keep thread alive
+    t = threading.Thread(target=_poller, daemon=True)
+    t.start()
+
 if __name__=="__main__":
     cleanup_stale_mpv_socket()
     start_ws_server()
+    start_resume_poller()
     httpd=ThreadingHTTPServer((HOST,PORT),H)
     print(f"RPi-TV on http://{HOST}:{PORT}",flush=True)
     httpd.serve_forever()
