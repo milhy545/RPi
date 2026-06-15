@@ -5,7 +5,7 @@ This is the main HTTP/WebSocket control plane for the dashboard.
 
 - HTTP: `8099`
 - Terminal WebSocket: `8098`
-- mpv IPC: `/tmp/gfn-mpv.sock`
+- mpv IPC: `/tmp/rpi-mpv.sock`
 
 ## High-level routes
 

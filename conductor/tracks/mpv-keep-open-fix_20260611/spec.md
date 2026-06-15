@@ -8,7 +8,7 @@ Fix mpv socket freeze on video end by changing `--keep-open=yes` to `--keep-open
 - `--keep-open=always`: Keeps mpv open AND pauses at end, socket remains responsive
 
 ## Root Cause
-When video ends with `--keep-open=yes`, mpv enters a state where the IPC socket (`/tmp/gfn-mpv.sock`) stops responding to commands, requiring mpv restart.
+When video ends with `--keep-open=yes`, mpv enters a state where the IPC socket (`/tmp/rpi-mpv.sock`) stops responding to commands, requiring mpv restart.
 
 ## Solution
 Change mpv launch command in `webserver_8099.py`:

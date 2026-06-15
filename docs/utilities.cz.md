@@ -17,7 +17,7 @@ WebUI server s kompletním API. Viz [webserver-8099.cz.md](./webserver-8099.cz.m
 ## Pomocné příkazy
 ```bash
 # Kontrola mpv socketu
-ls -la /tmp/gfn-mpv.sock
+ls -la /tmp/rpi-mpv.sock
 
 # Kontrola audio stavu
 pactl info | grep "Default Sink"

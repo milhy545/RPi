@@ -6,7 +6,7 @@ Background daemon that reads a hardware input device directly and sends multimed
 ## Hardware behavior
 - Input device: `/dev/input/event2`
 - mpv sockets tried in order:
-  1. `/tmp/gfn-mpv.sock`
+  1. `/tmp/rpi-mpv.sock`
   2. `/tmp/mpv-socket`
 
 ## Function reference

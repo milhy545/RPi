@@ -6,7 +6,7 @@
 ## Jak funguje
 1. Naslouchá na `/dev/input/event*` pro stisknuté klávesy
 2. Mapuje multimediální klávesy na mpv příkazy
-3. Odesílá příkazy přes Unix socket (`/tmp/gfn-mpv.sock`)
+3. Odesílá příkazy přes Unix socket (`/tmp/rpi-mpv.sock`)
 
 ## Mapování kláves
 | Klávesa | Příkaz mpv |

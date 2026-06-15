@@ -14,7 +14,7 @@ except ImportError:
 
 HOST, PORT = "0.0.0.0", 8099
 KODI_H, KODI_P = "127.0.0.1", 9090
-MSOCK = "/tmp/gfn-mpv.sock"
+MSOCK = "/tmp/rpi-mpv.sock"
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
 QUALITY = {
@@ -102,14 +102,14 @@ def mpv_start(url, q=None, resume=False):
     mpv_stop(); _mq=q or _mq
     surl,meta=resolve(url,_mq)
     _mtitle=meta.get("title","Playing")
-    
+
     # DeepMind Strategy: mpv pinned to cores 1-2 (media.compute)
     # Escalation for HEVC/heavy: detect via format probe, use cores 1-3
     use_three_cores = False
     if meta.get("h", 0) >= 1080 or meta.get("dur", 0) > 3600:
         # 1080p+ or long content (likely high bitrate) -> use 3 cores
         use_three_cores = True
-    
+
     core_mask = "1-3" if use_three_cores else "1-2"
     cmd=["taskset", "-c", core_mask, "mpv",
          "--vo=drm","--drm-mode=640x480","--hwdec=v4l2m2m",
@@ -231,7 +231,7 @@ def br_start():
     br_stop()
     sc=r'''
 import subprocess,json,os,socket,select,time,sys
-MP="/tmp/gfn-mpv.sock"
+MP="/tmp/rpi-mpv.sock"
 def mc(c):
     if not os.path.exists(MP): return
     try:
@@ -278,7 +278,7 @@ USB_ALEXA_SRC="alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.m
 BT_SOUNDBAR_MAC="24:4B:03:92:0B:8C"
 BT_SOUNDBAR_NAME="[Samsung] Soundbar J-Series"
 BT_SOUNDBAR_SINK="bluez_output.24_4B_03_92_0B_8C.1"
-HDMI_SINK="alsa_output.platform-3f902000.hdmi.hdmi-stereo"
+HDMI_SINK="alsa_output.platform-3f00b840.mailbox.stereo-fallback"
 DLNA_SINK_KEYWORDS=["uuid_","WiiMu","LinkPlayer","Sphere","TIBO"]
 AUDIO_LATENCY_FILE=os.path.expanduser("~/rpi-dashboard/.audio-latency.json")
 SILENT_WAV="/tmp/rpi-silent-48k.wav"
@@ -833,7 +833,7 @@ def selftest_testaudio():
 
 # ── HTML ───────────────────────────────────────────────────────────────
 
-CSS="""*{box-sizing:border-box}body{font-family:system-ui,sans-serif;max-width:860px;margin:0 auto;padding:.6rem;background:#0d1117;color:#c9d1d9;font-size:14px;overflow-x:hidden}
+CSS="""*{box-sizing:border-box}body{font-family:system-ui,sans-serif;width:min(1440px,98vw);max-width:none;margin:0 auto;padding:.6rem;background:#0d1117;color:#c9d1d9;font-size:14px;overflow-x:hidden}
 input,button,select{font-size:.9rem;padding:.5rem .65rem;margin:.1rem 0;border-radius:.3rem;border:1px solid #30363d;background:#161b22;color:#c9d1d9}
 input,select{width:100%}button{cursor:pointer;background:#21262d}button:hover{background:#30363d;border-color:#58a6ff}
 button:active{background:#1a5276}button.on{background:#1a5276;border-color:#58a6ff}button.danger{border-color:#f85149;color:#f85149}
@@ -860,10 +860,10 @@ select{max-width:120px;width:auto}
 .t.info{background:#0c2d6b;border:1px solid #1f6feb;color:#58a6ff}
 @keyframes fi{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 pre{background:#161b22;padding:.6rem;border-radius:.3rem;overflow:auto;font-size:.8em;margin:.3rem 0}
-#terminal{width:100%;max-width:100%;box-sizing:border-box;background:#000;padding:4px;border-radius:4px;height:420px;overflow:hidden}
-#terminal .xterm{height:100%}
+#terminal{width:100%;max-width:100%;box-sizing:border-box;background:#000;padding:0;border:1px solid #30363d;border-radius:4px;height:min(70vh,720px);min-height:420px;overflow:hidden}
+#terminal .xterm{height:100%;width:100%}
 #terminal .xterm-viewport{overflow-y:hidden!important}
-#terminal .xterm-screen{max-width:100%}
+#terminal .xterm-screen{max-width:100%;width:100%!important}
 .media-head{display:flex;justify-content:space-between;gap:.6rem;align-items:center;margin:.3rem 0 .7rem}
 .media-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
 .media-card{background:#0d1117;border:1px solid #30363d;border-radius:.55rem;padding:.65rem;min-height:96px}
@@ -889,7 +889,7 @@ JS=r"""
 function $(s){return document.querySelector(s)}function $$(s){return document.querySelectorAll(s)}
 function msg(t,c){let d=document.createElement('div');d.className='t '+c;d.textContent=t;$('#toast').appendChild(d);setTimeout(()=>d.remove(),4000)}
 async function api(u){try{return await(await fetch(u)).json()}catch(e){return{error:e.message}}}
-function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n))}
+function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
 async function play(){let u=$('#url').value.trim(),q=$('#qual').value;if(!u){msg('Enter URL','err');return}let r=await api('/mpv/play?url='+encodeURIComponent(u)+'&q='+q);if(r.error)msg(r.error,'err');else msg('Playing: '+(r.meta&&r.meta.title||r.q),'ok');setTimeout(st,1500)}
 function pause(){api('/mpv/toggle').then(r=>msg(r.paused!==undefined?(r.paused?'Paused':'Playing'):'?','info'))}
 function stop(){api('/mpv/stop').then(()=>{msg('Stopped','ok');$('#st').textContent='—'})}
@@ -975,6 +975,47 @@ async function cec(c){msg('CEC: '+c,'info');let r=await api('/cec/send?c='+encod
 async function cecKey(k){let r=await api('/cec/key?k='+encodeURIComponent(k));msg(r.ok?'OK: '+k:'fail',r.ok?'ok':'err')}
 async function cecIn(n){let r=await api('/cec/in?n='+n);msg('HDMI '+n+': '+(r.ok?'ok':r.err||'?'),r.ok?'ok':'err')}
 async function cecScan(){msg('Scanning CEC...','info');let r=await api('/cec/scan');$('#cdev').innerHTML='<pre>'+esc(r.out||r.err||'none')+'</pre>';msg(r.out?'Scan done':'No devices',r.out?'ok':'err')}
+
+async function loadHwStats(){
+    let r=await api('/system/hw-stats');
+    if(r.error){$('#hw-stats').textContent='Chyba: '+r.error;return}
+    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
+    let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
+    let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
+    let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
+    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)\nUptime: '+r.uptime;
+}
+
+async function loadSysStatus(){
+    let r=await api('/system/status');
+    if(r.error){$('#sys-status').textContent='Chyba: '+r.error;return}
+    let html='CPU Mask / Core Assignments:<br>';
+    html+='mpv: mask '+r.mpv.mask+' (cores: '+r.mpv.cores+')<br>';
+    html+='dashboard: mask '+r.dashboard.mask+' (cores: '+r.dashboard.cores+')<br>';
+    html+='keys2mpv: mask '+r.keys2mpv.mask+' (cores: '+r.keys2mpv.cores+')<br>';
+    html+='webserver: mask '+r.webserver.mask+' (cores: '+r.webserver.cores+')<br>';
+    html+='pipewire: mask '+r.pipewire.mask+' (cores: '+r.pipewire.cores+')<br>';
+    html+='wireplumber: mask '+r.wireplumber.mask+' (cores: '+r.wireplumber.cores+')<br>';
+    $('#sys-status').innerHTML=html;
+}
+
+async function restartMpv(){
+    if(!confirm('Opravdu restartovat mpv?')) return;
+    let r=await api('/system/restart-mpv');
+    msg(r.out||'mpv stopped','ok');
+}
+
+async function restartDashboard(){
+    if(!confirm('Opravdu restartovat Dashboard?')) return;
+    let r=await api('/system/restart-dashboard');
+    msg(r.out||'Dashboard restarting...','ok');
+}
+
+async function restartRpi(){
+    if(!confirm('Opravdu restartovat celé RPi?')) return;
+    let r=await api('/system/restart-rpi');
+    msg(r.out||'Rebooting...','ok');
+}
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg('Bridge off','info')}else{let r=await api('/cec/br/start');msg(r.ok?'Bridge ON':'fail',r.ok?'ok':'err')}updBr()}
 async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ Stop';b.className='on';$('#brs').textContent='ON — remote→mpv'}else{b.textContent='▶ Start';b.className='';$('#brs').textContent='OFF'}}
 async function kPlay(){let u=$('#kurl').value.trim();if(!u)return;let r=await api('/play?url='+encodeURIComponent(u));msg(r.ok?'Kodi ✅':'⚠️',r.ok?'ok':'err')}
@@ -1064,8 +1105,8 @@ async function stopApp(){msg('Stopping...','info');let r=await fetch('http://192
 let term=null,termWs=null,termFit=null;
 function termSendResize(){if(term&&termWs&&termWs.readyState===1){termWs.send(JSON.stringify({resize:{cols:term.cols,rows:term.rows}}))}}
 function termFitNow(){if(termFit){termFit.fit();termSendResize()}}
-function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff'},fontSize:13,fontFamily:'monospace',cursorBlink:true,scrollback:0,convertEol:true,disableStdin:false});termFit=new FitAddon.FitAddon();term.loadAddon(termFit);term.open(document.getElementById('terminal'));setTimeout(termFitNow,150);term.onData(d=>{if(termWs&&termWs.readyState===1)termWs.send(JSON.stringify({input:d}))});term.onResize(()=>termSendResize());window.addEventListener('resize',()=>setTimeout(termFitNow,100));msg('Terminal ready','info')}
-function termDrawSnapshot(output,cursor){let row=1,col=1;if(cursor){row=Math.max(1,Math.min(term.rows,(cursor.y||0)+1));col=Math.max(1,Math.min(term.cols,(cursor.x||0)+1))}else{let lines=(output||'').split(/\r?\n/);let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+output+'\x1b['+row+';'+col+'H')}
+function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff'},fontSize:13,fontFamily:'monospace',cursorBlink:true,scrollback:0,convertEol:false,disableStdin:false});termFit=new FitAddon.FitAddon();term.loadAddon(termFit);term.open(document.getElementById('terminal'));setTimeout(termFitNow,150);setTimeout(termFitNow,450);term.onData(d=>{if(termWs&&termWs.readyState===1)termWs.send(JSON.stringify({input:d}))});term.onResize(()=>termSendResize());window.addEventListener('resize',()=>setTimeout(termFitNow,120));msg('Terminal ready','info')}
+function termDrawSnapshot(output,cursor){let text=output||'';let lines=text.split(/\r?\n/);let row=1,col=1;if(cursor&&Number.isFinite(cursor.y)&&Number.isFinite(cursor.x)){row=Math.max(1,Math.min(term.rows,cursor.y+1));col=Math.max(1,Math.min(term.cols,cursor.x+1))}else{let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+text+'\x1b['+row+';'+col+'H')}
 function termConnect(){termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg('Connected','ok');$('#term-status').textContent='Connected';term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent='Disconnected';msg('Disconnected','info')};termWs.onerror=()=>msg('Connection error','err')}
 function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent='Disconnected'}
 setInterval(()=>{st();updBr()},3000);kStat();ytCookieStatus();addTips();applyLang();
@@ -1147,7 +1188,12 @@ def page():
 <div class="sec"><h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3><div class="row"><button onclick="wifiStatus()">📶 Status</button><button onclick="wifiScan()">🔍 Scan Wi-Fi</button></div><div class="row" style="margin-top:.35rem"><input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1"><input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1"><button data-i18n="connect" onclick="wifiConnect()">Connect</button></div><div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div></div></div>
 <div class="sec"><h3 data-i18n="roles" data-tip="sectionRoles">Suggested Device Roles</h3><div class="media-meta" data-i18n="rolesDesc">• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.</div></div>
 </div>
-<div id="p-terminal" class="pnl"><div class="sec"><h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
+<div id="p-terminal" class="pnl">
+<div class="sec"><h3>HW Stats & CPU Masks</h3>
+<div class="row" style="margin-bottom:.35rem"><button onclick="loadHwStats();loadSysStatus()" style="font-size:.75rem">🔄 Aktualizovat stav</button><button onclick="restartMpv()" class="danger" style="font-size:.75rem">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem">🔄 Restart RPi</button></div>
+<div id="hw-stats" style="font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap">Načítám HW stats...</div>
+<div id="sys-status" style="margin-top:.5rem;font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap">Načítám CPU masky...</div></div>
+<div class="sec"><h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
 <div class="row" style="margin-bottom:.4rem"><button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button><button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button><span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span></div>
 <div id="terminal"></div></div></div>
 <div id="p-kodi" class="pnl"><div class="sec"><h3 data-i18n="kodiTitle" data-tip="sectionKodi">Kodi JSON-RPC launcher</h3>
@@ -1310,7 +1356,7 @@ class H(BaseHTTPRequestHandler):
             elif path=="/bt/scan":
                 # Start scan in background, return immediately
                 subprocess.Popen(["bluetoothctl","scan","on"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                import time; time.sleep(5)
+                import time as _time; _time.sleep(5)
                 subprocess.run(["bluetoothctl","scan","off"],capture_output=True,text=True,timeout=3)
                 devs=subprocess.run(["bluetoothctl","devices"],capture_output=True,text=True,timeout=3)
                 self.sj(200,{"result":devs.stdout.strip()[:800] or "No devices"})
@@ -1374,6 +1420,120 @@ class H(BaseHTTPRequestHandler):
                 if not mac: return self.sj(400,{"error":"no mac"})
                 r=subprocess.run(["bluetoothctl","remove",mac],capture_output=True,text=True,timeout=5)
                 self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+            elif path=="/system/hw-stats":
+                def _cpu_sample():
+                    out=[]
+                    with open("/proc/stat") as f:
+                        for line in f:
+                            if re.match(r"^cpu[0-3] ", line):
+                                p=[int(x) for x in line.split()[1:]]
+                                idle=p[3]+p[4]
+                                total=sum(p)
+                                out.append((total,idle))
+                    return out
+                a=_cpu_sample(); __import__('time').sleep(0.35); b=_cpu_sample()
+                cpu=[]
+                for (t0,i0),(t1,i1) in zip(a,b):
+                    dt=t1-t0; di=i1-i0
+                    cpu.append(round(100*(dt-di)/dt,1) if dt>0 else 0.0)
+                mem={}
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        k,v=line.split(":",1); mem[k]=int(v.split()[0])
+                total_mb=mem.get("MemTotal",0)//1024
+                avail_mb=mem.get("MemAvailable",0)//1024
+                used_mb=max(0,total_mb-avail_mb)
+                st=os.statvfs("/")
+                total_gb=round(st.f_blocks*st.f_frsize/1024/1024/1024,1)
+                free_gb=round(st.f_bavail*st.f_frsize/1024/1024/1024,1)
+                used_gb=round(total_gb-free_gb,1)
+                temp_c=None
+                for tp in ("/sys/class/thermal/thermal_zone0/temp","/sys/class/thermal/thermal_zone1/temp"):
+                    try:
+                        temp_c=round(int(open(tp).read().strip())/1000,1); break
+                    except Exception: pass
+                freq=[]
+                for i in range(4):
+                    try: freq.append(int(open(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq").read().strip())//1000)
+                    except Exception: freq.append(None)
+                gpu={"core_mhz": None, "temp_c": temp_c}
+                try:
+                    raw=subprocess.check_output(["vcgencmd","measure_clock","core"], text=True, timeout=2).strip()
+                    gpu["core_mhz"]=int(raw.split("=")[-1])//1000000
+                except Exception: pass
+                try:
+                    raw=subprocess.check_output(["vcgencmd","measure_temp"], text=True, timeout=2).strip()
+                    gpu["temp_c"]=round(float(raw.split("=")[-1].replace("'C","")),1)
+                except Exception: pass
+                up=int(float(open("/proc/uptime").read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
+                self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
+            elif path=="/system/status":
+                # Get CPU mask info for all services
+                try:
+                    mpv_pid = subprocess.check_output(["pgrep", "-x", "mpv"], text=True).strip().splitlines()[0]
+                except Exception:
+                    mpv_pid = ""
+                mpv_mask = "N/A"
+                mpv_cores = "N/A"
+                if mpv_pid:
+                    mpv_mask = subprocess.check_output(["taskset", "-p", mpv_pid], text=True).strip().split(":")[-1].strip()
+                    # Parse mask to core list
+                    try:
+                        mask_val = int(mpv_mask, 16)
+                        cores = [str(i) for i in range(4) if mask_val & (1 << i)]
+                        mpv_cores = ",".join(cores) if cores else "none"
+                    except:
+                        mpv_cores = "?"
+
+                dash_pid = subprocess.check_output(["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"], text=True).strip()
+                dash_mask = "N/A"
+                if dash_pid and dash_pid != "0":
+                    dash_mask = subprocess.check_output(["taskset", "-p", dash_pid], text=True).strip().split(":")[-1].strip()
+
+                keys_pid = subprocess.check_output(["systemctl", "show", "keys2mpv", "-p", "MainPID", "--value"], text=True).strip()
+                keys_mask = "N/A"
+                if keys_pid and keys_pid != "0":
+                    keys_mask = subprocess.check_output(["taskset", "-p", keys_pid], text=True).strip().split(":")[-1].strip()
+
+                ws_pid = subprocess.check_output(["systemctl", "show", "webserver-8099", "-p", "MainPID", "--value"], text=True).strip()
+                ws_mask = "N/A"
+                if ws_pid and ws_pid != "0":
+                    ws_mask = subprocess.check_output(["taskset", "-p", ws_pid], text=True).strip().split(":")[-1].strip()
+
+                # Audio services (user systemd)
+                pw_pid = subprocess.check_output(["systemctl", "--user", "show", "pipewire", "-p", "MainPID", "--value"], text=True).strip()
+                pw_mask = "N/A"
+                if pw_pid and pw_pid != "0":
+                    pw_mask = subprocess.check_output(["taskset", "-p", pw_pid], text=True).strip().split(":")[-1].strip()
+
+                wp_pid = subprocess.check_output(["systemctl", "--user", "show", "wireplumber", "-p", "MainPID", "--value"], text=True).strip()
+                wp_mask = "N/A"
+                if wp_pid and wp_pid != "0":
+                    wp_mask = subprocess.check_output(["taskset", "-p", wp_pid], text=True).strip().split(":")[-1].strip()
+
+                self.sj(200,{
+                    "mpv": {"pid": mpv_pid, "mask": mpv_mask, "cores": mpv_cores},
+                    "dashboard": {"pid": dash_pid, "mask": dash_mask, "cores": "0" if dash_mask=="1" else dash_mask},
+                    "keys2mpv": {"pid": keys_pid, "mask": keys_mask, "cores": "0" if keys_mask=="1" else keys_mask},
+                    "webserver": {"pid": ws_pid, "mask": ws_mask, "cores": "0" if ws_mask=="1" else ws_mask},
+                    "pipewire": {"pid": pw_pid, "mask": pw_mask, "cores": "3" if pw_mask=="8" else pw_mask},
+                    "wireplumber": {"pid": wp_pid, "mask": wp_mask, "cores": "3" if wp_mask=="8" else wp_mask},
+                    "summary": {
+                        "core0_background": ["dashboard", "keys2mpv", "webserver"],
+                        "core1_2_media": ["mpv"],
+                        "core3_audio": ["pipewire", "wireplumber"]
+                    }
+                })
+            elif path=="/system/restart-mpv":
+                # Restart mpv via webserver internal function
+                mpv_stop()
+                self.sj(200,{"ok":True,"out":"mpv stopped (will restart on next play)"})
+            elif path=="/system/restart-dashboard":
+                subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True)
+                self.sj(200,{"ok":True,"out":"Dashboard restarting..."})
+            elif path=="/system/restart-rpi":
+                subprocess.run(["sudo","reboot"],capture_output=True)
+                self.sj(200,{"ok":True,"out":"Rebooting..."})
             elif path=="/system/reboot":
                 subprocess.run(["sudo","reboot"],capture_output=True)
                 self.sj(200,{"ok":True,"out":"Rebooting..."})
@@ -1415,9 +1575,14 @@ async def term_handler(websocket):
                     capture_output=True, text=True, timeout=1).stdout.strip().split()
                 cursor_x = int(cursor_raw[0]) if len(cursor_raw) >= 1 and cursor_raw[0].isdigit() else 0
                 cursor_y = int(cursor_raw[1]) if len(cursor_raw) >= 2 and cursor_raw[1].isdigit() else 0
-                lines = content.splitlines()[-rows:]
+                all_lines = content.splitlines()
+                start = max(0, len(all_lines) - rows)
+                lines = all_lines[start:]
                 normalized = "\r\n".join(line[:cols] for line in lines)
-                await websocket.send(json.dumps({"output": normalized, "full": True, "cursor": {"x": cursor_x, "y": cursor_y}}))
+                # tmux cursor_y is already relative to the visible pane, not scrollback.
+                rel_y = max(0, min(rows - 1, cursor_y)) if all_lines else 0
+                rel_x = max(0, min(cols - 1, cursor_x))
+                await websocket.send(json.dumps({"output": normalized, "full": True, "cursor": {"x": rel_x, "y": rel_y}}))
             except Exception:
                 break
 
@@ -1430,7 +1595,7 @@ async def term_handler(websocket):
             if data.get("action") == "attach":
                 session_name = data.get("session", "RPi")
                 rows = max(10, min(80, int(data.get("rows") or rows)))
-                cols = max(40, min(160, int(data.get("cols") or cols)))
+                cols = max(40, min(220, int(data.get("cols") or cols)))
                 resize_tmux()
                 if poll_task:
                     poll_task.cancel()
@@ -1438,7 +1603,7 @@ async def term_handler(websocket):
             elif data.get("resize"):
                 r = data.get("resize") or {}
                 rows = max(10, min(80, int(r.get("rows") or rows)))
-                cols = max(40, min(160, int(r.get("cols") or cols)))
+                cols = max(40, min(220, int(r.get("cols") or cols)))
                 resize_tmux()
             elif data.get("input"):
                 try:

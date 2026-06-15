@@ -14,8 +14,8 @@ The monitor has a race condition/bug where it pins mpv to the wrong cores on sta
 5. **Systemd Integration:** Run as systemd service with proper restart policy
 
 ## Detection Strategy
-- Use mpv IPC socket (`/tmp/gfn-mpv.sock`) to detect actual playing state
-- Or monitor process list for `mpv` with `--input-ipc-server=/tmp/gfn-mpv.sock`
+- Use mpv IPC socket (`/tmp/rpi-mpv.sock`) to detect actual playing state
+- Or monitor process list for `mpv` with `--input-ipc-server=/tmp/rpi-mpv.sock`
 - Debounce: 2-second delay before core switching to prevent flapping
 
 ## Core Assignment

@@ -7,7 +7,7 @@ Works independently of TUI/webserver — runs as background service.
 import json, os, socket, struct, sys, time, glob, signal
 
 INPUT_DEV = "/dev/input/event2"
-SOCKETS = ["/tmp/gfn-mpv.sock", "/tmp/mpv-socket"]
+SOCKETS = ["/tmp/rpi-mpv.sock", "/tmp/mpv-socket"]
 
 # Keycode → mpv IPC command + label
 KEYMAP = {

@@ -14,7 +14,7 @@ The RPi Dumb TV Dashboard is a highly optimized, Terminal User Interface (TUI) s
 - **Media & Music Streamers:** Launches `mpv` (with `yt-dlp`) for zero-ad YouTube playback, runs `WPE WebKit` for Spotify Free, monitors the background **Spotify Connect** daemon (`raspotify`), and supports **Amazon Music Kiosk** (via local audio-only Chromium kiosk mode) and DLNA casting.
 
 ### 3.2 WebUI (Port 8099) - "GFN-TV"
-- **YouTube Playback:** `yt-dlp` + `mpv` via IPC socket (`/tmp/gfn-mpv.sock`)
+- **YouTube Playback:** `yt-dlp` + `mpv` via IPC socket (`/tmp/rpi-mpv.sock`)
 - **Seek Bar:** Absolute seek via `/mpv/seekabs?pos=N` endpoint + HTML5 range input
 - **Keyboard Controls:** Arrow keys (seek ±10s), f/g/h (25/50/75%), multimedia keys
 - **YouTube Cookies:** CDP extraction from BrowserOS on Milhy-PC (61 cookies, age-restricted videos work)

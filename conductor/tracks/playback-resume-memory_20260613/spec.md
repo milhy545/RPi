@@ -7,7 +7,7 @@ Remember the last playback position when a video is interrupted before the natur
 If mpv playback is interrupted accidentally or intentionally before video end, the current position is lost. The user wants WebUI to offer "Continue from HH:MM:SS" on the next play of the same URL/video.
 
 ## Requirements
-1. **Track playback progress** while mpv is active via IPC (`/tmp/gfn-mpv.sock`).
+1. **Track playback progress** while mpv is active via IPC (`/tmp/rpi-mpv.sock`).
 2. **Persist position** to a small JSON state file, e.g. `~/rpi-dashboard/playback-memory.json`.
 3. **Only save interrupted playback**, not natural end:
    - Save if stopped/killed/replaced before completion.

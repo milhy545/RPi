@@ -114,5 +114,5 @@
 - `~/.pi/PERSONA.md` — agent persona
 - `~/.tmux.conf` — tmux with resurrect+continuum
 - `~/rpi-dashboard/yt-cookies.txt` — YouTube cookies
-- `/tmp/gfn-mpv.sock` — mpv IPC socket
+- `/tmp/rpi-mpv.sock` — mpv IPC socket
 - `/dev/input/event2` — multimedia keyboard (XING WEI 2.4G)
