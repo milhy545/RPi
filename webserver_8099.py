@@ -23,7 +23,7 @@ QUALITY = {
     "720p": "best[height<=720][ext=mp4]/best[height<=720]",
     "1080p":"best[height<=1080][ext=mp4]/best[height<=1080]",
 }
-DQ = "360p"
+DQ = "720p"
 
 def norm(u):
     u=u.strip()
@@ -984,8 +984,9 @@ let previewTimer=null,previewSeq=0;
 function playerActive(){let p=$('#p-player');return !!(p&&p.classList.contains('active'))}
 function playerEnter(){ytCookieStatus();autoClipboardUrl();schedulePreview()}
 function looksMediaUrl(t){return /^https?:\/\//i.test((t||'').trim())}
-async function tryClipboardUrl(manual){if(!navigator.clipboard||!navigator.clipboard.readText){if(manual)msg('Clipboard read is not available in this browser/context','err');return false}try{let t=(await navigator.clipboard.readText()).trim();if(looksMediaUrl(t)&&!$('#url').value.trim()){$('#url').value=t;msg('URL pasted from clipboard','ok');previewUrl();return true}else if(manual){msg(looksMediaUrl(t)?'Input already has a URL':'Clipboard does not contain a media URL','info')}}catch(e){if(manual)msg('Clipboard permission denied or unavailable','err')}return false}
-function autoClipboardUrl(){if(playerActive()&&!$('#url').value.trim())tryClipboardUrl(false)}
+async function tryClipboardUrl(manual,force){if(!navigator.clipboard||!navigator.clipboard.readText){if(manual)msg('Clipboard read is not available in this browser/context','err');return false}try{let t=(await navigator.clipboard.readText()).trim();if(looksMediaUrl(t)&&(force||!$('#url').value.trim())){$('#url').value=t;msg('URL pasted from clipboard','ok');previewUrl();return true}else if(manual){msg(looksMediaUrl(t)?'Input already has a URL':'Clipboard does not contain a media URL','info')}}catch(e){if(manual)msg('Clipboard permission denied or unavailable','err')}return false}
+function pasteClipboardUrl(){tryClipboardUrl(true,true)}
+function autoClipboardUrl(){if(playerActive()&&!$('#url').value.trim())tryClipboardUrl(false,false)}
 function schedulePreview(){clearTimeout(previewTimer);previewTimer=setTimeout(previewUrl,500)}
 function drawPreview(r){let box=$('#player-preview');if(!box)return;if(!r||!r.ok){box.classList.remove('on');box.innerHTML='';if(r&&r.error)msg(r.error,'err');return}let img=r.thumbnail?'<img src="'+esc(r.thumbnail)+'" alt="">':'';let dur=r.duration?fmt(r.duration):'';let meta=(r.type||'media')+(dur?' · '+dur:'')+(r.uploader?' · '+esc(r.uploader):'');box.innerHTML=img+'<div><div id="player-preview-title">'+esc(r.title||'Preview')+'</div><div class="media-meta">'+meta+'</div></div>';box.classList.add('on')}
 async function previewUrl(){let u=$('#url').value.trim();let seq=++previewSeq;if(!looksMediaUrl(u)){drawPreview(null);return}let r=await api('/media/preview?url='+encodeURIComponent(u));if(seq===previewSeq)drawPreview(r)}
@@ -1237,7 +1238,7 @@ def page():
 <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
 <button id="tab-kodi" class="tab" data-t="kodi" data-i18n="kodi" data-icon="📦" onclick="sw('kodi')">📦 Kodi</button></div>
 <div id="p-player" class="pnl active"><div class="sec"><h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
-<div class="row"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." style="flex:1" oninput="schedulePreview()"><select id="qual">{QO}</select></div>
+<div class="row"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." style="flex:1" oninput="schedulePreview()"><select id="qual" style="width:auto;min-width:88px">{QO}</select><button data-i18n="pasteClipboard" data-icon="📋" onclick="pasteClipboardUrl()" title="Paste clipboard URL" style="white-space:nowrap">📋 Paste</button></div>
 <div id="player-preview"></div>
 <div class="row" style="margin-top:.3rem">
 <button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button><button onclick="pause()">⏸</button><button onclick="stop()" class="danger">⏹</button>
