@@ -990,6 +990,14 @@ async function cecKey(k){let r=await api('/cec/key?k='+encodeURIComponent(k));ms
 async function cecIn(n){let r=await api('/cec/in?n='+n);msg('HDMI '+n+': '+(r.ok?'ok':r.err||'?'),r.ok?'ok':'err')}
 async function cecScan(){msg('Scanning CEC...','info');let r=await api('/cec/scan');$('#cdev').innerHTML='<pre>'+esc(r.out||r.err||'none')+'</pre>';msg(r.out?'Scan done':'No devices',r.out?'ok':'err')}
 
+let hwLiveTimer=null;
+function toggleHwLive(){
+    let b=$('#hw-live-btn');
+    if(hwLiveTimer){clearInterval(hwLiveTimer);hwLiveTimer=null;if(b)b.textContent='▶ Live monitoring';msg('Live monitoring off','info');return}
+    loadHwStats();loadSysStatus();
+    hwLiveTimer=setInterval(()=>{if($('#p-terminal')&&$('#p-terminal').classList.contains('active')){loadHwStats();loadSysStatus()}},3000);
+    if(b)b.textContent='⏸ Live monitoring';msg('Live monitoring on','ok');
+}
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
     if(r.error){$('#hw-stats').textContent='Chyba: '+r.error;return}
@@ -997,7 +1005,8 @@ async function loadHwStats(){
     let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
     let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
     let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
-    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)\nUptime: '+r.uptime;
+    let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
+    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
 }
 
 async function loadSysStatus(){
@@ -1204,12 +1213,13 @@ def page():
 </div>
 <div id="p-terminal" class="pnl">
 <div class="sec"><h3>HW Stats & CPU Masks</h3>
-<div class="row" style="margin-bottom:.35rem"><button onclick="loadHwStats();loadSysStatus()" style="font-size:.75rem">🔄 Aktualizovat stav</button><button onclick="restartMpv()" class="danger" style="font-size:.75rem">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem">🔄 Restart RPi</button></div>
+<div class="row" style="margin-bottom:.35rem"><button onclick="loadHwStats();loadSysStatus()" style="font-size:.75rem">🔄 Aktualizovat stav</button><button id="hw-live-btn" onclick="toggleHwLive()" style="font-size:.75rem">▶ Live monitoring</button></div>
 <div id="hw-stats" style="font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap">Načítám HW stats...</div>
 <div id="sys-status" style="margin-top:.5rem;font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap">Načítám CPU masky...</div></div>
 <div class="sec"><h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
 <div class="row" style="margin-bottom:.4rem"><button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button><button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button><span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span></div>
-<div id="terminal"></div></div></div>
+<div id="terminal"></div></div>
+<div class="sec"><h3>Restart akce</h3><div class="row"><button onclick="restartMpv()" class="danger" style="font-size:.75rem">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem">🔄 Restart RPi</button></div></div></div>
 <div id="p-kodi" class="pnl"><div class="sec"><h3 data-i18n="kodiTitle" data-tip="sectionKodi">Kodi JSON-RPC launcher</h3>
 <div class="media-meta" data-i18n="kodiDesc">Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.</div>
 <div class="row" style="margin-top:.35rem"><input id="kurl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button></div>
@@ -1478,7 +1488,8 @@ class H(BaseHTTPRequestHandler):
                 used_mb=max(0,total_mb-avail_mb)
                 st=os.statvfs("/")
                 total_gb=round(st.f_blocks*st.f_frsize/1024/1024/1024,1)
-                free_gb=round(st.f_bavail*st.f_frsize/1024/1024/1024,1)
+                free_gb=round(st.f_bfree*st.f_frsize/1024/1024/1024,1)
+                avail_gb=round(st.f_bavail*st.f_frsize/1024/1024/1024,1)
                 used_gb=round(total_gb-free_gb,1)
                 temp_c=None
                 for tp in ("/sys/class/thermal/thermal_zone0/temp","/sys/class/thermal/thermal_zone1/temp"):
@@ -1499,7 +1510,7 @@ class H(BaseHTTPRequestHandler):
                     gpu["temp_c"]=round(float(raw.split("=")[-1].replace("'C","")),1)
                 except Exception: pass
                 up=int(float(open("/proc/uptime").read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
-                self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
+                self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
             elif path=="/system/status":
                 # Get CPU mask info for all services
                 try:
