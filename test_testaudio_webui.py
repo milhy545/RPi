@@ -102,7 +102,7 @@ def main() -> int:
     failures += check("generic http URL preview returns JSON", status == 200 and generic_preview.get("ok") is True and generic_preview.get("type") == "direct", generic_preview)
 
     status, https_info = get("/system/https-info")
-    failures += check("https info endpoint returns configured port", status == 200 and https_info.get("ok") is True and https_info.get("https_port") == 8443, https_info)
+    failures += check("https info endpoint returns configured ports", status == 200 and https_info.get("ok") is True and https_info.get("https_port") == 8443 and https_info.get("friendly_https_port") == 443 and https_info.get("friendly_http_port") == 80, https_info)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0

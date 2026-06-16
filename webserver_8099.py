@@ -13,10 +13,13 @@ except ImportError:
 # yt-dlp is installed in venv, no need for Kodi addon path
 
 HOST, PORT = "0.0.0.0", 8099
+FRIENDLY_HTTP_PORT = int(os.environ.get("RPIDASHBOARD_FRIENDLY_HTTP_PORT", "80"))
 HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT", "8443"))
+FRIENDLY_HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_FRIENDLY_HTTPS_PORT", "443"))
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
+HTTPS_SAN_FILE = os.path.join(HTTPS_CERT_DIR, "webui.san")
 KODI_H, KODI_P = "127.0.0.1", 9090
 MSOCK = "/tmp/rpi-mpv.sock"
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
@@ -1609,7 +1612,9 @@ class H(BaseHTTPRequestHandler):
                 up=int(float(open("/proc/uptime").read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
                 self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
             elif path=="/system/https-info":
-                self.sj(200,{"ok":True,"https_port":HTTPS_PORT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{self.headers.get('Host','').split(':')[0] or '192.168.0.205'}:{HTTPS_PORT}/"})
+                host=(self.headers.get('Host','').split(':')[0] or '192.168.0.205')
+                names, ips = _dashboard_hostnames_and_ips()
+                self.sj(200,{"ok":True,"http_port":PORT,"https_port":HTTPS_PORT,"friendly_http_port":FRIENDLY_HTTP_PORT,"friendly_https_port":FRIENDLY_HTTPS_PORT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{host}:{HTTPS_PORT}/","friendly_https_url":f"https://{host}/","friendly_http_url":f"http://{host}/","names":names,"ips":ips})
             elif path=="/system/status":
                 # Get CPU mask info for all services
                 try:
@@ -1793,12 +1798,53 @@ def start_ws_server():
     t.start()
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
+def _dashboard_hostnames_and_ips():
+    names={"rpi","rpi.local","localhost"}
+    ips={"127.0.0.1"}
+    try:
+        hn=socket.gethostname().strip()
+        if hn:
+            names.add(hn); names.add(f"{hn}.local")
+    except Exception:
+        pass
+    try:
+        for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
+            if ip: ips.add(ip)
+    except Exception:
+        pass
+    try:
+        for flag in ("-4","-6"):
+            r=subprocess.run(["tailscale","ip",flag],capture_output=True,text=True,timeout=3)
+            if r.returncode==0:
+                for ip in r.stdout.split(): ips.add(ip)
+    except Exception:
+        pass
+    try:
+        r=subprocess.run(["tailscale","status","--json"],capture_output=True,text=True,timeout=3)
+        if r.returncode==0:
+            d=json.loads(r.stdout or "{}")
+            dns=(d.get("Self") or {}).get("DNSName") or ""
+            if dns:
+                names.add(dns.rstrip("."))
+                names.add(dns.split(".")[0])
+    except Exception:
+        pass
+    return sorted(names), sorted(ips)
+
+def _https_san():
+    names, ips = _dashboard_hostnames_and_ips()
+    return "subjectAltName=" + ",".join([*(f"DNS:{n}" for n in names), *(f"IP:{ip}" for ip in ips)])
+
 def ensure_https_cert():
     os.makedirs(HTTPS_CERT_DIR, mode=0o700, exist_ok=True)
-    if os.path.exists(HTTPS_CERT_FILE) and os.path.exists(HTTPS_KEY_FILE):
+    san = _https_san()
+    try:
+        old_san = open(HTTPS_SAN_FILE, "r", encoding="utf-8").read().strip()
+    except Exception:
+        old_san = ""
+    if os.path.exists(HTTPS_CERT_FILE) and os.path.exists(HTTPS_KEY_FILE) and old_san == san:
         return True, "existing"
     subj = "/CN=rpi-dashboard"
-    san = "subjectAltName=DNS:rpi,DNS:localhost,IP:127.0.0.1,IP:192.168.0.205"
     cmd = [
         "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "825", "-nodes",
         "-keyout", HTTPS_KEY_FILE, "-out", HTTPS_CERT_FILE, "-subj", subj, "-addext", san,
@@ -1807,28 +1853,43 @@ def ensure_https_cert():
     if r.returncode != 0:
         return False, (r.stderr or r.stdout or "openssl failed")[:500]
     try:
+        with open(HTTPS_SAN_FILE, "w", encoding="utf-8") as f: f.write(san + "\n")
         os.chmod(HTTPS_KEY_FILE, 0o600)
         os.chmod(HTTPS_CERT_FILE, 0o644)
+        os.chmod(HTTPS_SAN_FILE, 0o644)
     except Exception:
         pass
     return True, "generated"
 
-def start_https_server():
-    ok, detail = ensure_https_cert()
-    if not ok:
-        print(f"[WARN] HTTPS disabled: {detail}", file=sys.stderr, flush=True)
+def start_http_server(port, label="HTTP"):
+    if port == PORT:
         return None
     try:
-        httpsd = ThreadingHTTPServer((HOST, HTTPS_PORT), H)
+        httpd=ThreadingHTTPServer((HOST, port), H)
+    except Exception as e:
+        print(f"[WARN] {label} disabled on port {port}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        return None
+    t=threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    print(f"RPi-TV {label} on http://{HOST}:{port}", flush=True)
+    return httpd
+
+def start_https_server(port=HTTPS_PORT, label="HTTPS"):
+    ok, detail = ensure_https_cert()
+    if not ok:
+        print(f"[WARN] {label} disabled: {detail}", file=sys.stderr, flush=True)
+        return None
+    try:
+        httpsd = ThreadingHTTPServer((HOST, port), H)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=HTTPS_CERT_FILE, keyfile=HTTPS_KEY_FILE)
         httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
     except Exception as e:
-        print(f"[WARN] HTTPS disabled: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        print(f"[WARN] {label} disabled on port {port}: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
         return None
     t = threading.Thread(target=httpsd.serve_forever, daemon=True)
     t.start()
-    print(f"RPi-TV HTTPS on https://{HOST}:{HTTPS_PORT} ({detail} cert)", flush=True)
+    print(f"RPi-TV {label} on https://{HOST}:{port} ({detail} cert)", flush=True)
     return httpsd
 
 def mpv_ipc_query(command, path=MSOCK, quiet=True):
@@ -1967,7 +2028,10 @@ if __name__=="__main__":
     cleanup_stale_mpv_socket()
     start_ws_server()
     start_resume_poller()
-    start_https_server()
+    start_http_server(FRIENDLY_HTTP_PORT, "friendly HTTP")
+    start_https_server(HTTPS_PORT, "HTTPS")
+    if FRIENDLY_HTTPS_PORT != HTTPS_PORT:
+        start_https_server(FRIENDLY_HTTPS_PORT, "friendly HTTPS")
     httpd=ThreadingHTTPServer((HOST,PORT),H)
     print(f"RPi-TV HTTP on http://{HOST}:{PORT}",flush=True)
     httpd.serve_forever()
