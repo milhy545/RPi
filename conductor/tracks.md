@@ -38,3 +38,4 @@
 - [x] **Track: restart-stale-mpv-preview-autoload** — Restart stale mpv and automatic player preview | [Plan](./tracks/restart-stale-mpv-preview-autoload_20260616/plan.md)
 - [x] **Track: player-clipboard-autoload** — Player clipboard autoload reliability | [Plan](./tracks/player-clipboard-autoload_20260616/plan.md)
 - [x] **Track: player-paste-button-default-720** — Player paste button and 720p default | [Plan](./tracks/player-paste-button-default-720_20260616/plan.md)
+- [x] **Track: player-paste-inside-input** — Player paste button inside URL input | [Plan](./tracks/player-paste-inside-input_20260616/plan.md)
