@@ -39,3 +39,4 @@
 - [x] **Track: player-clipboard-autoload** — Player clipboard autoload reliability | [Plan](./tracks/player-clipboard-autoload_20260616/plan.md)
 - [x] **Track: player-paste-button-default-720** — Player paste button and 720p default | [Plan](./tracks/player-paste-button-default-720_20260616/plan.md)
 - [x] **Track: player-paste-inside-input** — Player paste button inside URL input | [Plan](./tracks/player-paste-inside-input_20260616/plan.md)
+- [x] **Track: webui-https-clipboard** — HTTPS WebUI for clipboard support | [Plan](./tracks/webui-https-clipboard_20260616/plan.md)

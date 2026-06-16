@@ -2,7 +2,7 @@
 """RPi-TV v4.2 — fixed title, no black screen, fast CEC."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
-import html, json, os, re, socket, sys, subprocess, time, stat
+import html, json, os, re, socket, sys, subprocess, time, stat, ssl
 import asyncio, threading
 try:
     import websockets
@@ -13,6 +13,10 @@ except ImportError:
 # yt-dlp is installed in venv, no need for Kodi addon path
 
 HOST, PORT = "0.0.0.0", 8099
+HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT", "8443"))
+HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
+HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
+HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
 KODI_H, KODI_P = "127.0.0.1", 9090
 MSOCK = "/tmp/rpi-mpv.sock"
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
@@ -1604,6 +1608,8 @@ class H(BaseHTTPRequestHandler):
                 except Exception: pass
                 up=int(float(open("/proc/uptime").read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
                 self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
+            elif path=="/system/https-info":
+                self.sj(200,{"ok":True,"https_port":HTTPS_PORT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{self.headers.get('Host','').split(':')[0] or '192.168.0.205'}:{HTTPS_PORT}/"})
             elif path=="/system/status":
                 # Get CPU mask info for all services
                 try:
@@ -1787,6 +1793,44 @@ def start_ws_server():
     t.start()
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
+def ensure_https_cert():
+    os.makedirs(HTTPS_CERT_DIR, mode=0o700, exist_ok=True)
+    if os.path.exists(HTTPS_CERT_FILE) and os.path.exists(HTTPS_KEY_FILE):
+        return True, "existing"
+    subj = "/CN=rpi-dashboard"
+    san = "subjectAltName=DNS:rpi,DNS:localhost,IP:127.0.0.1,IP:192.168.0.205"
+    cmd = [
+        "openssl", "req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "825", "-nodes",
+        "-keyout", HTTPS_KEY_FILE, "-out", HTTPS_CERT_FILE, "-subj", subj, "-addext", san,
+    ]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+    if r.returncode != 0:
+        return False, (r.stderr or r.stdout or "openssl failed")[:500]
+    try:
+        os.chmod(HTTPS_KEY_FILE, 0o600)
+        os.chmod(HTTPS_CERT_FILE, 0o644)
+    except Exception:
+        pass
+    return True, "generated"
+
+def start_https_server():
+    ok, detail = ensure_https_cert()
+    if not ok:
+        print(f"[WARN] HTTPS disabled: {detail}", file=sys.stderr, flush=True)
+        return None
+    try:
+        httpsd = ThreadingHTTPServer((HOST, HTTPS_PORT), H)
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=HTTPS_CERT_FILE, keyfile=HTTPS_KEY_FILE)
+        httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
+    except Exception as e:
+        print(f"[WARN] HTTPS disabled: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        return None
+    t = threading.Thread(target=httpsd.serve_forever, daemon=True)
+    t.start()
+    print(f"RPi-TV HTTPS on https://{HOST}:{HTTPS_PORT} ({detail} cert)", flush=True)
+    return httpsd
+
 def mpv_ipc_query(command, path=MSOCK, quiet=True):
     """Send a JSON command to mpv IPC socket and return the parsed JSON response.
     Returns None on failure. Expected stale-socket errors stay quiet by default.
@@ -1923,6 +1967,7 @@ if __name__=="__main__":
     cleanup_stale_mpv_socket()
     start_ws_server()
     start_resume_poller()
+    start_https_server()
     httpd=ThreadingHTTPServer((HOST,PORT),H)
-    print(f"RPi-TV on http://{HOST}:{PORT}",flush=True)
+    print(f"RPi-TV HTTP on http://{HOST}:{PORT}",flush=True)
     httpd.serve_forever()
