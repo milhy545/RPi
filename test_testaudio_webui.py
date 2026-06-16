@@ -43,6 +43,7 @@ def main() -> int:
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
     failures += check("Audio refresh hook exists", "sw('audio');taRefresh()" in html)
     failures += check("Player tab initializes automatic clipboard/preview flow", "onclick=\"sw('player')\"" in html and "function playerEnter" in html and "function tryClipboardUrl" in html)
+    failures += check("Player clipboard autoload retries on browser/user events", "function autoClipboardUrl" in html and "visibilitychange" in html and "window.addEventListener('focus'" in html)
     failures += check("Player has no manual clipboard/preview buttons", "tryClipboardUrl(true)" not in html and "🖼 Preview" not in html)
     failures += check("language apply helper exists", 'function applyLang()' in html and 'const I18N=' in html)
     failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
