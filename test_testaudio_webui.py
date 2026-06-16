@@ -42,7 +42,8 @@ def main() -> int:
     failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
     failures += check("Audio refresh hook exists", "sw('audio');taRefresh()" in html)
-    failures += check("Player tab initializes clipboard/preview flow", "sw('player');playerEnter()" in html and "function tryClipboardUrl" in html)
+    failures += check("Player tab initializes automatic clipboard/preview flow", "onclick=\"sw('player')\"" in html and "function playerEnter" in html and "function tryClipboardUrl" in html)
+    failures += check("Player has no manual clipboard/preview buttons", "tryClipboardUrl(true)" not in html and "🖼 Preview" not in html)
     failures += check("language apply helper exists", 'function applyLang()' in html and 'const I18N=' in html)
     failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
@@ -53,7 +54,7 @@ def main() -> int:
     failures += check("DLNA keepalive badge is sink-specific", "hasDlnaKeepalive" in html)
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
-    failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "sw('player');playerEnter()" in html)
+    failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "function playerEnter" in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
@@ -93,6 +94,9 @@ def main() -> int:
 
     status, preview = get("/media/preview?url=https%3A%2F%2Fexample.com%2Fvideo.mp4")
     failures += check("direct media preview returns JSON", status == 200 and preview.get("ok") is True and preview.get("type") == "direct", preview)
+
+    status, generic_preview = get("/media/preview?url=https%3A%2F%2Fexample.com%2Fwatch%3Fid%3D1")
+    failures += check("generic http URL preview returns JSON", status == 200 and generic_preview.get("ok") is True and generic_preview.get("type") == "direct", generic_preview)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0

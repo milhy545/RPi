@@ -97,6 +97,47 @@ def mcmd(*a):
 
 def mget(p): return mcmd("get_property",p)
 
+def _mpv_pids_for_socket(path=MSOCK):
+    try:
+        r=subprocess.run(["pgrep","-af","mpv"],capture_output=True,text=True,timeout=3)
+    except Exception:
+        return []
+    pids=[]
+    needle=f"--input-ipc-server={path}"
+    for line in r.stdout.splitlines():
+        parts=line.split(maxsplit=1)
+        if len(parts)<2: continue
+        if needle in parts[1]:
+            try: pids.append(int(parts[0]))
+            except Exception: pass
+    return pids
+
+def _terminate_pids(pids, timeout=3.0):
+    stopped=[]
+    for pid in sorted(set(pids)):
+        try:
+            os.kill(pid, 15)
+            stopped.append({"pid":pid,"signal":"TERM"})
+        except ProcessLookupError:
+            stopped.append({"pid":pid,"signal":"missing"})
+        except Exception as e:
+            stopped.append({"pid":pid,"error":str(e)})
+    deadline=time.time()+timeout
+    while time.time()<deadline:
+        alive=[pid for pid in set(pids) if os.path.exists(f"/proc/{pid}")]
+        if not alive: break
+        time.sleep(0.1)
+    for pid in sorted(set(pids)):
+        if os.path.exists(f"/proc/{pid}"):
+            try:
+                os.kill(pid, 9)
+                stopped.append({"pid":pid,"signal":"KILL"})
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                stopped.append({"pid":pid,"kill_error":str(e)})
+    return stopped
+
 def mpv_start(url, q=None, resume=False):
     global _mpv,_mq,_mtitle,_murl
     if not resume and mpv_ipc_socket_live():
@@ -135,24 +176,33 @@ def mpv_start(url, q=None, resume=False):
 
 def mpv_stop():
     global _mpv
+    pids=[]
     if _mpv and _mpv.poll() is None:
-        _mpv.terminate()
-        try: _mpv.wait(timeout=3)
-        except: _mpv.kill()
+        pids.append(_mpv.pid)
+    pids.extend(_mpv_pids_for_socket(MSOCK))
+    if mpv_ipc_socket_live():
+        try: save_mpv_resume_memory()
+        except Exception: pass
+        try: mcmd("quit")
+        except Exception: pass
+        time.sleep(0.3)
+    stopped=_terminate_pids(pids)
     _mpv=None
-    try: os.unlink(MSOCK)
-    except: pass
+    cleanup_stale_mpv_socket()
+    return {"ok":True,"stopped":stopped,"pids":sorted(set(pids)),"socket_live":mpv_ipc_socket_live()}
 
 def mpv_st():
-    if not _mpv or _mpv.poll() is not None: return {"on":False}
+    tracked=_mpv and _mpv.poll() is None
+    pids=_mpv_pids_for_socket(MSOCK)
+    if not tracked and not mpv_ipc_socket_live() and not pids: return {"on":False}
     try:
-        return {"on":True,"pid":_mpv.pid,
+        return {"on":True,"pid":(_mpv.pid if tracked else (pids[0] if pids else None)),"pids":pids,"tracked":bool(tracked),"orphan":not bool(tracked),
             "paused":mget("pause").get("data",False),
             "pos":mget("time-pos").get("data",0),
             "dur":mget("duration").get("data",0),
             "title":_mtitle or mget("media-title").get("data",""),
             "vol":mget("volume").get("data",100),"q":_mq}
-    except: return {"on":True,"err":True,"title":_mtitle}
+    except: return {"on":True,"err":True,"pid":(_mpv.pid if tracked else (pids[0] if pids else None)),"pids":pids,"tracked":bool(tracked),"orphan":not bool(tracked),"title":_mtitle}
 
 # ── CEC ────────────────────────────────────────────────────────────────
 
@@ -846,7 +896,7 @@ def selftest_testaudio():
         'id="ta-sinks"', 'id="ta-sources"', 'id="ta-mixer"',
         'id="ta-routes"', 'id="ta-summary"', 'id="ta-raw"', 'id="yt-cookie-status"',
         'id="player-preview"', 'function previewUrl()', 'function tryClipboardUrl(',
-        "sw('player');playerEnter()", "sw('audio');taRefresh()",
+        "onclick=\"sw('player')\"", "sw('audio');taRefresh()",
     ]
     missing=[x for x in required if x not in html_doc]
     state=audio_state()
@@ -930,9 +980,9 @@ function $(s){return document.querySelector(s)}function $$(s){return document.qu
 function msg(t,c){let d=document.createElement('div');d.className='t '+c;d.textContent=t;$('#toast').appendChild(d);setTimeout(()=>d.remove(),4000)}
 async function api(u){try{return await(await fetch(u)).json()}catch(e){return{error:e.message}}}
 function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
-let playerSeen=false,previewTimer=null,previewSeq=0;
-function playerEnter(){ytCookieStatus();if(!playerSeen){playerSeen=true;tryClipboardUrl(false)}}
-function looksMediaUrl(t){return /^https?:\/\//i.test((t||'').trim())&&(/youtu\.?be|youtube\.com|\.m3u8|\.mp4|\.mkv|\.webm|\.mp3|\.m4a|\.aac|\.ogg/i.test(t))}
+let previewTimer=null,previewSeq=0;
+function playerEnter(){ytCookieStatus();tryClipboardUrl(false);schedulePreview()}
+function looksMediaUrl(t){return /^https?:\/\//i.test((t||'').trim())}
 async function tryClipboardUrl(manual){if(!navigator.clipboard||!navigator.clipboard.readText){if(manual)msg('Clipboard read is not available in this browser/context','err');return}try{let t=(await navigator.clipboard.readText()).trim();if(looksMediaUrl(t)&&!$('#url').value.trim()){$('#url').value=t;msg('URL pasted from clipboard','ok');previewUrl()}else if(manual){msg(looksMediaUrl(t)?'Input already has a URL':'Clipboard does not contain a media URL','info')}}catch(e){if(manual)msg('Clipboard permission denied or unavailable','err')}}
 function schedulePreview(){clearTimeout(previewTimer);previewTimer=setTimeout(previewUrl,500)}
 function drawPreview(r){let box=$('#player-preview');if(!box)return;if(!r||!r.ok){box.classList.remove('on');box.innerHTML='';if(r&&r.error)msg(r.error,'err');return}let img=r.thumbnail?'<img src="'+esc(r.thumbnail)+'" alt="">':'';let dur=r.duration?fmt(r.duration):'';let meta=(r.type||'media')+(dur?' · '+dur:'')+(r.uploader?' · '+esc(r.uploader):'');box.innerHTML=img+'<div><div id="player-preview-title">'+esc(r.title||'Preview')+'</div><div class="media-meta">'+meta+'</div></div>';box.classList.add('on')}
@@ -1175,7 +1225,7 @@ def page():
 <title>RPi-TV</title><style>{CSS}</style></head><body>
 <div id="topbar"><h1 id="app-title">RPi-TV</h1><div id="lang-switch"><button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button><button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button></div></div><div id="toast"></div>
 <div class="tabs">
-<button id="tab-player" class="tab active" data-t="player" data-i18n="player" data-icon="🎬" onclick="sw('player');playerEnter()">🎬 Player</button>
+<button id="tab-player" class="tab active" data-t="player" data-i18n="player" data-icon="🎬" onclick="sw('player')">🎬 Player</button>
 <button id="tab-apps" class="tab" data-t="apps" data-i18n="apps" data-icon="🚀" onclick="sw('apps')">🚀 Apps</button>
 <button id="tab-cec" class="tab" data-t="cec" data-i18n="cec" data-icon="📺" onclick="sw('cec')">📺 CEC</button>
 <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
@@ -1186,7 +1236,7 @@ def page():
 <div class="row"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." style="flex:1" oninput="schedulePreview()"><select id="qual">{QO}</select></div>
 <div id="player-preview"></div>
 <div class="row" style="margin-top:.3rem">
-<button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button><button data-i18n="pasteClipboard" data-icon="📋" onclick="tryClipboardUrl(true)">📋 Paste clipboard</button><button onclick="previewUrl()">🖼 Preview</button><button onclick="pause()">⏸</button><button onclick="stop()" class="danger">⏹</button>
+<button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button><button onclick="pause()">⏸</button><button onclick="stop()" class="danger">⏹</button>
 <button onclick="seek(-10)">⏪10</button><button onclick="seek(10)">10⏩</button>
 <button onclick="vol(-10)">🔉</button><button onclick="vol(10)">🔊</button><button onclick="mute()" style="font-size:.85rem">🔇</button></div>
 <div style="margin-top:.4rem"><div style="display:flex;align-items:center;gap:.4rem"><span id="stime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span><input type="range" id="sbar" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false"><span id="dtime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span></div></div></div>
@@ -1289,7 +1339,7 @@ class H(BaseHTTPRequestHandler):
                 self.sj(200,mpv_start(u,ql,resume))
             elif path=="/mpv/stop":
                 memory = save_mpv_resume_memory() if mpv_ipc_socket_live() else None
-                mpv_stop();self.sj(200,{"ok":True,"memory":memory})
+                stopped=mpv_stop();self.sj(200,{"ok":True,"memory":memory,"stop":stopped})
             elif path=="/mpv/toggle":
                 mcmd("cycle","pause");s=mget("pause")
                 self.sj(200,{"ok":True,"paused":s.get("data",False)})
@@ -1606,18 +1656,17 @@ class H(BaseHTTPRequestHandler):
                     }
                 })
             elif path=="/system/restart-mpv":
-                # Restart mpv via webserver internal function
-                mpv_stop()
-                self.sj(200,{"ok":True,"out":"mpv stopped (will restart on next play)"})
+                stopped=mpv_stop()
+                self.sj(200,{"ok":stopped.get("ok",False),"out":"mpv stopped (will restart on next play)","stop":stopped})
             elif path=="/system/restart-dashboard":
-                subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True)
-                self.sj(200,{"ok":True,"out":"Dashboard restarting..."})
+                r=subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True,text=True)
+                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Dashboard restarting..."})
             elif path=="/system/restart-rpi":
-                subprocess.run(["sudo","reboot"],capture_output=True)
-                self.sj(200,{"ok":True,"out":"Rebooting..."})
+                r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
+                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
             elif path=="/system/reboot":
-                subprocess.run(["sudo","reboot"],capture_output=True)
-                self.sj(200,{"ok":True,"out":"Rebooting..."})
+                r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
+                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
             else: self.st(404,"nf","text/plain")
         except Exception as e: self.sj(500,{"error":str(e)})
     def do_POST(self):
