@@ -16,7 +16,7 @@ Make the dashboard easier to open from LAN and Tailnet by serving standard web p
 - `http://192.168.0.205/` returns the WebUI.
 - `https://192.168.0.205/` returns the WebUI after accepting self-signed cert.
 - Compatibility URLs still work.
-- Remote Playwright verifies HTTPS default port secure context and Clipboard API.
+- Primary friendly hostname is `rpi-tv` / `rpi-tv.local`; remote Playwright verifies HTTPS default port secure context and Clipboard API.
 - Service still runs as `milhy777`.
 - CI and `tools/verify-done.sh` pass.
 

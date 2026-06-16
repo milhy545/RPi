@@ -38,6 +38,7 @@ def main() -> int:
     status, html = get("/")
     failures += check("GET /", status == 200, status)
     failures += check("header language switch exists", 'id="lang-switch"' in html and 'data-lang-btn="en"' in html and 'data-lang-btn="cz"' in html)
+    failures += check("security banner exists", 'id="security-banner"' in html and "function updateSecurityBanner" in html and "Open HTTPS" in html)
     failures += check("primary Audio tab exists", 'data-t="audio"' in html)
     failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
