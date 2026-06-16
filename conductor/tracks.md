@@ -26,7 +26,7 @@
 - [x] **Track: project-docs-reference** — Complete project documentation reference | [Plan](./tracks/project-docs-reference_20260613/plan.md)
 - [x] **Track: webui-bilingual-i18n** — Add Czech/English WebUI switch with flags | [Plan](./tracks/webui-bilingual-i18n_20260613/plan.md)
 - [ ] **Track: webui-czech-completion** — Complete remaining Czech translations | [Plan](./tracks/webui-czech-completion_20260613/plan.md)
-- [ ] **Track: player-preview-clipboard** — Player thumbnail and clipboard paste | [Plan](./tracks/player-preview-clipboard_20260613/plan.md)
+- [x] **Track: player-preview-clipboard** — Player thumbnail and clipboard paste | [Plan](./tracks/player-preview-clipboard_20260613/plan.md)
 - [ ] **Track: android-share-app** — Android share-target app | [Plan](./tracks/android-share-app_20260613/plan.md)
 - [ ] **Track: smart-home-integrations** — Alexa, Google Home, Home Assistant integrations | [Plan](./tracks/smart-home-integrations_20260613/plan.md)
 - [ ] **Track: alexa-dlna-audio-routing** — Alexa and DLNA audio routing | [Plan](./tracks/alexa-dlna-audio-routing_20260613/plan.md)

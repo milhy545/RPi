@@ -42,7 +42,7 @@ def main() -> int:
     failures += check("old Test Audio tab removed", 'data-t="testaudio"' not in html)
     failures += check("primary Audio panel exists", 'id="p-audio"' in html)
     failures += check("Audio refresh hook exists", "sw('audio');taRefresh()" in html)
-    failures += check("Player tab loads YouTube diagnostics", "sw('player');ytCookieStatus()" in html)
+    failures += check("Player tab initializes clipboard/preview flow", "sw('player');playerEnter()" in html and "function tryClipboardUrl" in html)
     failures += check("language apply helper exists", 'function applyLang()' in html and 'const I18N=' in html)
     failures += check("Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html)
     failures += check("outputs/inputs layout markers exist", "Output Sinks" in html and "Input Sources" in html)
@@ -53,7 +53,7 @@ def main() -> int:
     failures += check("DLNA keepalive badge is sink-specific", "hasDlnaKeepalive" in html)
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
-    failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "sw('player');ytCookieStatus()" in html)
+    failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "sw('player');playerEnter()" in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
@@ -90,6 +90,9 @@ def main() -> int:
 
     status, cookies = get("/youtube/cookies/status")
     failures += check("youtube cookie status returns JSON", status == 200 and "exists" in cookies and "cookie_count" in cookies, cookies)
+
+    status, preview = get("/media/preview?url=https%3A%2F%2Fexample.com%2Fvideo.mp4")
+    failures += check("direct media preview returns JSON", status == 200 and preview.get("ok") is True and preview.get("type") == "direct", preview)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0
