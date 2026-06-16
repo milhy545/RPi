@@ -59,6 +59,7 @@ def main() -> int:
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
     failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "function playerEnter" in html)
+    failures += check("Kodi tab is diagnostics-only", '/kodi/status' in html and 'function kDiag' in html and 'Decision: keep this tab as diagnostics only' in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
@@ -104,6 +105,9 @@ def main() -> int:
 
     status, https_info = get("/system/https-info")
     failures += check("https info endpoint returns configured ports", status == 200 and https_info.get("ok") is True and https_info.get("https_port") == 8443 and https_info.get("friendly_https_port") == 443 and https_info.get("friendly_http_port") == 80, https_info)
+
+    status, kodi = get("/kodi/status")
+    failures += check("kodi status returns diagnostics", status == 200 and kodi.get("ok") is True and "decision" in kodi and "recommendation" in kodi, kodi)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0

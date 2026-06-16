@@ -2,7 +2,7 @@
 """RPi-TV v4.2 — fixed title, no black screen, fast CEC."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
-import html, json, os, re, socket, sys, subprocess, time, stat, ssl
+import html, json, os, re, socket, sys, subprocess, time, stat, ssl, shutil
 import asyncio, threading
 try:
     import websockets
@@ -845,6 +845,17 @@ def wifi_connect(ssid, password):
     r=_run(cmd, t=30)
     return {"ok":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
 
+def kodi_status():
+    bins={name: (shutil.which(name) or "") for name in ("kodi","kodi-standalone")}
+    port=subprocess.run(["sh","-lc",f"ss -tln 2>/dev/null | grep -q ':{KODI_P} '"],capture_output=True,text=True,timeout=3).returncode==0
+    rpc=kodi_rpc("Player.GetActivePlayers", t=1)
+    installed=bool(bins.get("kodi") or bins.get("kodi-standalone"))
+    reachable=("error" not in rpc) and (port or rpc.get("result") is not None)
+    useful=installed and reachable
+    decision="keep-diagnostics-only" if not useful else "keep-launcher"
+    recommendation="Use Player/mpv for normal playback. Kodi is not installed or not listening on JSON-RPC 9090." if not useful else "Kodi JSON-RPC is available; legacy launcher can be used for renderer experiments."
+    return {"ok":True,"installed":installed,"binaries":bins,"jsonrpc_port":KODI_P,"port_listening":port,"rpc":rpc,"useful":useful,"decision":decision,"recommendation":recommendation}
+
 def youtube_cookie_status():
     path=os.path.join(os.path.dirname(os.path.abspath(__file__)),"yt-cookies.txt")
     info={"ok":False,"path":path,"exists":os.path.exists(path),"cookie_count":0,"age_seconds":None,"has_auth_cookies":False,"has_youtube_domain":False}
@@ -1141,8 +1152,9 @@ async function restartRpi(){
 }
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg('Bridge off','info')}else{let r=await api('/cec/br/start');msg(r.ok?'Bridge ON':'fail',r.ok?'ok':'err')}updBr()}
 async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ Stop';b.className='on';$('#brs').textContent='ON — remote→mpv'}else{b.textContent='▶ Start';b.className='';$('#brs').textContent='OFF'}}
-async function kPlay(){let u=$('#kurl').value.trim();if(!u)return;let r=await api('/play?url='+encodeURIComponent(u));msg(r.ok?'Kodi ✅':'⚠️',r.ok?'ok':'err')}
-async function kStat(){let r=await api('/kodi/st');let p=r.result||[];$('#kst').textContent=p.length?'Player #'+p[0].playerid:'—'}
+async function kPlay(){let u=$('#kurl').value.trim();if(!u)return;let r=await api('/play?url='+encodeURIComponent(u));msg(r.ok?'Kodi ✅':'⚠️',r.ok?'ok':'err');kDiag()}
+async function kStat(){return kDiag()}
+async function kDiag(){let r=await api('/kodi/status');let b=r.useful?badge(true,'READY'):badge(false,'NOT AVAILABLE');let bins=r.binaries||{};let h='<div class="media-card"><h4>📦 Kodi '+b+'</h4><div class="media-meta">Decision: '+esc(r.decision||'—')+'<br>Installed: '+(r.installed?'yes':'no')+'<br>JSON-RPC 9090: '+(r.port_listening?'listening':'not listening')+'<br>kodi: '+esc(bins.kodi||'not found')+'<br>kodi-standalone: '+esc(bins['kodi-standalone']||'not found')+'<br>'+esc(r.recommendation||'')+'</div></div>';$('#kst').innerHTML=h}
 async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
 async function devs(){
   let r=await api('/devices');let h='';
@@ -1248,7 +1260,7 @@ def page():
 <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
 <button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
 <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
-<button id="tab-kodi" class="tab" data-t="kodi" data-i18n="kodi" data-icon="📦" onclick="sw('kodi')">📦 Kodi</button></div>
+<button id="tab-kodi" class="tab" data-t="kodi" data-i18n="kodi" data-icon="📦" onclick="sw('kodi');kDiag()">📦 Kodi</button></div>
 <div id="p-player" class="pnl active"><div class="sec"><h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
 <div class="row"><div class="url-wrap"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()"><button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button></div><select id="qual" style="width:auto;min-width:88px">{QO}</select></div>
 <div id="player-preview"></div>
@@ -1323,8 +1335,9 @@ def page():
 <div class="sec"><h3>Restart akce</h3><div class="row"><button onclick="restartMpv()" class="danger" style="font-size:.75rem">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem">🔄 Restart RPi</button></div></div></div>
 <div id="p-kodi" class="pnl"><div class="sec"><h3 data-i18n="kodiTitle" data-tip="sectionKodi">Kodi JSON-RPC launcher</h3>
 <div class="media-meta" data-i18n="kodiDesc">Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.</div>
-<div class="row" style="margin-top:.35rem"><input id="kurl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button></div>
-<div id="kst" style="font-size:.8em;color:#8b949e;margin-top:.2rem">—</div></div></div>
+<div class="media-meta" style="margin-top:.35rem">Decision: keep this tab as diagnostics only unless Kodi is installed and JSON-RPC is listening. Use Player for normal playback.</div>
+<div class="row" style="margin-top:.35rem"><input id="kurl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button><button onclick="kDiag()">🔍 Diagnose</button></div>
+<div id="kst" style="font-size:.8em;color:#8b949e;margin-top:.4rem">—</div></div></div>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1405,6 +1418,7 @@ class H(BaseHTTPRequestHandler):
                 su,me=resolve(u);r=kodi_rpc("Player.Open",{"item":{"file":su}})
                 self.sj(200,{"ok":True,"url":su,"meta":me,"kodi":r})
             elif path=="/kodi/st": self.sj(200,kodi_rpc("Player.GetActivePlayers"))
+            elif path=="/kodi/status": self.sj(200,kodi_status())
             elif path=="/selftest/testaudio": self.sj(200,selftest_testaudio())
             elif path=="/audio/state": self.sj(200,audio_state())
             elif path=="/audio/volume":
