@@ -114,22 +114,24 @@ def mpv_start(url, q=None, resume=False):
         use_three_cores = True
 
     core_mask = "1-3" if use_three_cores else "1-2"
+    resume_pos = None
+    if resume:
+        mem = get_mpv_memory_for_url(url)
+        if mem and mem.get("position") is not None:
+            try:
+                resume_pos = max(0.0, float(mem["position"]))
+            except Exception:
+                resume_pos = None
     cmd=["taskset", "-c", core_mask, "mpv",
          "--vo=drm","--drm-mode=640x480","--hwdec=v4l2m2m",
          "--fullscreen","--no-terminal","--ytdl=no","--ao=alsa",
          f"--title={_mtitle}",
-         f"--input-ipc-server={MSOCK}","--keep-open=always",surl]
+         f"--input-ipc-server={MSOCK}","--keep-open=always"]
+    if resume_pos is not None:
+        cmd.append(f"--start={resume_pos:.3f}")
+    cmd.append(surl)
     _mpv=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    if resume:
-        mem = get_mpv_memory_for_url(url)
-        if mem and mem.get("position") is not None:
-            # wait for socket to be ready, then seek
-            for _ in range(20):  # try for ~2 seconds
-                if mpv_ipc_socket_live():
-                    mcmd("set_property", "time-pos", mem["position"])
-                    break
-                time.sleep(0.1)
-    return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask}
+    return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask,"resume_pos":resume_pos}
 
 def mpv_stop():
     global _mpv
@@ -1682,9 +1684,9 @@ def start_ws_server():
     t.start()
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
-def mpv_ipc_query(command, path=MSOCK):
+def mpv_ipc_query(command, path=MSOCK, quiet=True):
     """Send a JSON command to mpv IPC socket and return the parsed JSON response.
-    Returns None on failure.
+    Returns None on failure. Expected stale-socket errors stay quiet by default.
     """
     if not os.path.exists(path) or not stat.S_ISSOCK(os.stat(path).st_mode):
         return None
@@ -1697,7 +1699,8 @@ def mpv_ipc_query(command, path=MSOCK):
         s.close()
         return json.loads(data.decode('utf-8'))
     except Exception as e:
-        print(f"[mpv_ipc_query] {type(e).__name__}: {e}", file=sys.stderr)
+        if not quiet:
+            print(f"[mpv_ipc_query] {type(e).__name__}: {e}", file=sys.stderr)
         return None
 
 def mpv_ipc_socket_live(path=MSOCK):
