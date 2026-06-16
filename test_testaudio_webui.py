@@ -17,7 +17,11 @@ BASE_URL = os.getenv("RPIDASHBOARD_WEBUI_URL", "http://127.0.0.1:8099")
 
 
 def get(path: str):
-    with urllib.request.urlopen(BASE_URL + path, timeout=8) as response:
+    try:
+        response = urllib.request.urlopen(BASE_URL + path, timeout=8)
+    except urllib.error.HTTPError as exc:
+        response = exc
+    with response:
         body = response.read().decode("utf-8", "replace")
         content_type = response.headers.get("content-type", "")
         if "json" in content_type:
@@ -59,7 +63,7 @@ def main() -> int:
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check("YouTube cookie diagnostics exist", "/youtube/cookies/status" in html and "/youtube/age-check" in html)
     failures += check("YouTube diagnostics moved to Player tab", 'id="p-player"' in html and 'id="yt-cookie-status"' in html and "function playerEnter" in html)
-    failures += check("Kodi tab is diagnostics-only", '/kodi/status' in html and 'function kDiag' in html and 'Decision: keep this tab as diagnostics only' in html)
+    failures += check("Kodi tab removed from WebUI", 'data-t="kodi"' not in html and 'id="p-kodi"' not in html and 'function kDiag' not in html)
 
     status, state = get("/audio/state")
     failures += check("GET /audio/state", status == 200 and isinstance(state, dict), state)
@@ -107,7 +111,7 @@ def main() -> int:
     failures += check("https info endpoint returns configured ports", status == 200 and https_info.get("ok") is True and https_info.get("https_port") == 8443 and https_info.get("friendly_https_port") == 443 and https_info.get("friendly_http_port") == 80, https_info)
 
     status, kodi = get("/kodi/status")
-    failures += check("kodi status returns diagnostics", status == 200 and kodi.get("ok") is True and "decision" in kodi and "recommendation" in kodi, kodi)
+    failures += check("kodi status route is deprecated", status == 410 and kodi.get("deprecated") is True, kodi)
 
     print(f"FAILED={failures}")
     return 1 if failures else 0

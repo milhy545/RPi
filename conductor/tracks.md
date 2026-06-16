@@ -42,3 +42,4 @@
 - [x] **Track: webui-https-clipboard** — HTTPS WebUI for clipboard support | [Plan](./tracks/webui-https-clipboard_20260616/plan.md)
 - [x] **Track: friendly-webui-ports-hostnames** — Friendly WebUI ports and hostnames | [Plan](./tracks/friendly-webui-ports-hostnames_20260616/plan.md)
 - [x] **Track: http-https-fallback-banner** — HTTP fallback with HTTPS clipboard banner | [Plan](./tracks/http-https-fallback-banner_20260616/plan.md)
+- [x] **Track: remove-kodi-tab** — Remove Kodi tab from WebUI | [Plan](./tracks/remove-kodi-tab_20260616/plan.md)

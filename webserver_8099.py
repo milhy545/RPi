@@ -1152,9 +1152,6 @@ async function restartRpi(){
 }
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg('Bridge off','info')}else{let r=await api('/cec/br/start');msg(r.ok?'Bridge ON':'fail',r.ok?'ok':'err')}updBr()}
 async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ Stop';b.className='on';$('#brs').textContent='ON — remote→mpv'}else{b.textContent='▶ Start';b.className='';$('#brs').textContent='OFF'}}
-async function kPlay(){let u=$('#kurl').value.trim();if(!u)return;let r=await api('/play?url='+encodeURIComponent(u));msg(r.ok?'Kodi ✅':'⚠️',r.ok?'ok':'err');kDiag()}
-async function kStat(){return kDiag()}
-async function kDiag(){let r=await api('/kodi/status');let b=r.useful?badge(true,'READY'):badge(false,'NOT AVAILABLE');let bins=r.binaries||{};let h='<div class="media-card"><h4>📦 Kodi '+b+'</h4><div class="media-meta">Decision: '+esc(r.decision||'—')+'<br>Installed: '+(r.installed?'yes':'no')+'<br>JSON-RPC 9090: '+(r.port_listening?'listening':'not listening')+'<br>kodi: '+esc(bins.kodi||'not found')+'<br>kodi-standalone: '+esc(bins['kodi-standalone']||'not found')+'<br>'+esc(r.recommendation||'')+'</div></div>';$('#kst').innerHTML=h}
 async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
 async function devs(){
   let r=await api('/devices');let h='';
@@ -1244,7 +1241,7 @@ function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117
 function termDrawSnapshot(output,cursor){let text=output||'';let lines=text.split(/\r?\n/);let row=1,col=1;if(cursor&&Number.isFinite(cursor.y)&&Number.isFinite(cursor.x)){row=Math.max(1,Math.min(term.rows,cursor.y+1));col=Math.max(1,Math.min(term.cols,cursor.x+1))}else{let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+text+'\x1b['+row+';'+col+'H')}
 function termConnect(){termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg('Connected','ok');$('#term-status').textContent='Connected';term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent='Disconnected';msg('Disconnected','info')};termWs.onerror=()=>msg('Connection error','err')}
 function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent='Disconnected'}
-setInterval(()=>{st();updBr()},3000);kStat();playerEnter();addTips();applyLang();
+setInterval(()=>{st();updBr()},3000);playerEnter();addTips();applyLang();
 """
 
 QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
@@ -1260,7 +1257,7 @@ def page():
 <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
 <button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
 <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
-<button id="tab-kodi" class="tab" data-t="kodi" data-i18n="kodi" data-icon="📦" onclick="sw('kodi');kDiag()">📦 Kodi</button></div>
+</div>
 <div id="p-player" class="pnl active"><div class="sec"><h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
 <div class="row"><div class="url-wrap"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()"><button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button></div><select id="qual" style="width:auto;min-width:88px">{QO}</select></div>
 <div id="player-preview"></div>
@@ -1333,11 +1330,6 @@ def page():
 <div class="row" style="margin-bottom:.4rem"><button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button><button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button><span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span></div>
 <div id="terminal"></div></div>
 <div class="sec"><h3>Restart akce</h3><div class="row"><button onclick="restartMpv()" class="danger" style="font-size:.75rem">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem">🔄 Restart RPi</button></div></div></div>
-<div id="p-kodi" class="pnl"><div class="sec"><h3 data-i18n="kodiTitle" data-tip="sectionKodi">Kodi JSON-RPC launcher</h3>
-<div class="media-meta" data-i18n="kodiDesc">Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.</div>
-<div class="media-meta" style="margin-top:.35rem">Decision: keep this tab as diagnostics only unless Kodi is installed and JSON-RPC is listening. Use Player for normal playback.</div>
-<div class="row" style="margin-top:.35rem"><input id="kurl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="URL for Kodi..." style="flex:1"><button onclick="kPlay()">▶ Kodi</button><button onclick="kDiag()">🔍 Diagnose</button></div>
-<div id="kst" style="font-size:.8em;color:#8b949e;margin-top:.4rem">—</div></div></div>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
 <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
@@ -1413,12 +1405,9 @@ class H(BaseHTTPRequestHandler):
             elif path=="/cec/br/stop": br_stop();self.sj(200,{"ok":True})
             elif path=="/cec/br/st": self.sj(200,br_st())
             elif path=="/play":
-                u=(q.get("url")or[""])[0].strip()
-                if not u: return self.sj(400,{"error":"no url"})
-                su,me=resolve(u);r=kodi_rpc("Player.Open",{"item":{"file":su}})
-                self.sj(200,{"ok":True,"url":su,"meta":me,"kodi":r})
-            elif path=="/kodi/st": self.sj(200,kodi_rpc("Player.GetActivePlayers"))
-            elif path=="/kodi/status": self.sj(200,kodi_status())
+                self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi launcher was removed; use /mpv/play or the Player tab."})
+            elif path=="/kodi/st": self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
+            elif path=="/kodi/status": self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
             elif path=="/selftest/testaudio": self.sj(200,selftest_testaudio())
             elif path=="/audio/state": self.sj(200,audio_state())
             elif path=="/audio/volume":
@@ -1709,10 +1698,7 @@ class H(BaseHTTPRequestHandler):
         body=self.rfile.read(ln).decode()
         u=(parse_qs(body).get("url")or[""])[0].strip()
         if not u: return self.st(400,page())
-        try:
-            su,me=resolve(u);r=kodi_rpc("Player.Open",{"item":{"file":su}})
-            self.sj(200,{"ok":True,"url":su,"meta":me,"kodi":r})
-        except Exception as e: self.sj(500,{"error":str(e)})
+        self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi POST playback was removed; use /mpv/play or the Player tab."})
 
 # ── Terminal WebSocket Server ─────────────────────────────────────────
 WS_PORT = 8098
