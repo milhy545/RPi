@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "commit_sha": "baceec13d5a33ceda3c6a22e06ceb275a082b683",
+  "tree_hash": "ed9e1ec82b87123bdfb1c0ab5db8d084fe839f8f",
+  "pre_commit_sha": "4cf7b331d63553ce2dd9f18978e928999ccf2166",
+  "pre_tree_hash": "7de5be64775cdb9c55130cd008dd6a4da25d64cc",
+  "diff_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "message": "docs(ci): link safety rules to core-rules and conductor skills",
+  "host": "rpi",
+  "branch": "master",
+  "timestamp": "2026-06-14T09:01:36+01:00",
+  "ci_report": "",
+  "safety_snapshot": "pre-finish-track-20260614-090114"
+}

@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "commit_sha": "644a6ce8dc8c19b112895eb65dbf9e212bed2f07",
+  "tree_hash": "80170996668a077e38e545745c602128accb140e",
+  "pre_commit_sha": "a00652a0ede311d9142434f75fc309691805727e",
+  "pre_tree_hash": "31881057e2a3894372ca50d3418328c2fca76686",
+  "diff_hash": "b336fb749979ffaf39ee6c387de1a9d4b62d9f0993f66ae3e0c2ac8819afb0d8",
+  "message": "fix(ci): exclude .gitkeep from artifact check in verify-done.sh",
+  "host": "rpi",
+  "branch": "master",
+  "timestamp": "2026-06-14T08:53:47+01:00",
+  "ci_report": "",
+  "safety_snapshot": "pre-finish-track-20260614-085326"
+}

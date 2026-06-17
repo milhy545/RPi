@@ -1,0 +1,11 @@
+{
+  "track_id": "audio-tab-refactor_20260613",
+  "title": "Audio Tab Refactoring Prototype",
+  "type": "feature",
+  "status": "done",
+  "created": "2026-06-13T00:00:00Z",
+  "updated": "2026-06-13T00:00:00Z",
+  "priority": "medium",
+  "tags": ["webui", "audio", "pipewire", "bluetooth", "prototype"],
+  "dependencies": ["bt-audio-loopback_20260611", "dlna-scan_20260611"]
+}

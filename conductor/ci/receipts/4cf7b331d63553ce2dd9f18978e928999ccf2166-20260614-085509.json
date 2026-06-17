@@ -1,0 +1,14 @@
+{
+  "status": "done",
+  "commit_sha": "4cf7b331d63553ce2dd9f18978e928999ccf2166",
+  "tree_hash": "7de5be64775cdb9c55130cd008dd6a4da25d64cc",
+  "pre_commit_sha": "644a6ce8dc8c19b112895eb65dbf9e212bed2f07",
+  "pre_tree_hash": "80170996668a077e38e545745c602128accb140e",
+  "diff_hash": "ecf4f2397b506a0b7ca645838d58674f2b1ab9c88b07d2a1786bae4b03bd385b",
+  "message": "fix(ci): handle pre-commit SHA in CI report lookup and allow receipt files",
+  "host": "rpi",
+  "branch": "master",
+  "timestamp": "2026-06-14T08:55:09+01:00",
+  "ci_report": "",
+  "safety_snapshot": "pre-finish-track-20260614-085447"
+}

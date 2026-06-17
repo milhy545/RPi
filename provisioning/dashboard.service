@@ -1,0 +1,32 @@
+[Unit]
+Description=Dumb TV Dashboard
+After=network.target
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/rpi-dashboard
+ExecStart=/home/%i/rpi-dashboard/.venv/bin/python tui.py
+Restart=on-failure
+RestartSec=5
+
+# TTY Configuration
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVTDisallocate=yes
+
+# Environment
+Environment=PATH=/usr/local/bin:/usr/bin:/bin TERM=linux
+EnvironmentFile=-/home/%i/rpi-dashboard/.env
+
+# OOM Protection
+MemoryHigh=150M
+MemoryMax=200M
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target
