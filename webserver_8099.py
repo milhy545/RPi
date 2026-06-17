@@ -406,6 +406,130 @@ def _loopback_module_id():
     except Exception: pass
     return None
 
+def _find_loopback_by_source(source_name):
+    """Find loopback module ID for a given source."""
+    try:
+        r=_run(["pactl","list","short","modules"])
+        for l in r.stdout.splitlines():
+            if "module-loopback" in l and source_name in l:
+                return l.split()[0]
+    except Exception: pass
+    return None
+
+def _find_loopbacks():
+    """Find all active loopback modules."""
+    loops=[]
+    try:
+        r=_run(["pactl","list","short","modules"])
+        for l in r.stdout.splitlines():
+            if "module-loopback" in l:
+                parts=l.split()
+                mod_id=parts[0]
+                # Parse source and sink from module args
+                m=re.search(r'source=(\S+)', l)
+                src=m.group(1) if m else None
+                m=re.search(r'sink=(\S+)', l)
+                snk=m.group(1) if m else None
+                loops.append({"id":mod_id,"source":src,"sink":snk})
+    except Exception: pass
+    return loops
+
+def _start_loopback(source, sink, rate=48000, channels=2):
+    """Start a PipeWire loopback from source to sink. Returns module ID."""
+    r=_run(["pactl","load-module","module-loopback",
+            f"source={source}",f"sink={sink}",
+            f"rate={rate}",f"channels={channels}",
+            "channel_map=front-left,front-right",
+            "source_dont_move=true","sink_dont_move=true",
+            "latency_msec=20","remix=true"], t=10)
+    if r.returncode==0:
+        try: return int(r.stdout.strip())
+        except: pass
+    return None
+
+def _stop_loopback(module_id):
+    """Stop a specific loopback module."""
+    if not module_id: return False
+    r=_run(["pactl","unload-module",str(module_id)], t=5)
+    return r.returncode==0
+
+def _stop_loopback_by_source(source_name):
+    """Stop loopback(s) for a given source."""
+    stopped=False
+    for lb in _find_loopbacks():
+        if lb["source"]==source_name:
+            if _stop_loopback(lb["id"]): stopped=True
+    return stopped
+
+def _get_default_sink():
+    """Get current default sink."""
+    try: return _run(["pactl","get-default-sink"]).stdout.strip()
+    except: return None
+
+def _resolve_alexa_target():
+    """Determine where Alexa AUX should route based on default sink.
+    Follows primary source. Fallback: BT > DLNA > HDMI > AUX Out.
+    """
+    ds=_get_default_sink()
+    if ds and ds not in ("", "none"):
+        return ds
+    # Fallback order
+    sinks=_pactl_lines("sinks")
+    names=[s["name"] for s in sinks]
+    for candidate in [BT_SOUNDBAR_SINK] + [n for n in names if any(k in n for k in DLNA_SINK_KEYWORDS)] + [HDMI_SINK]:
+        if candidate in names:
+            return candidate
+    return names[0] if names else None
+
+# ── DLNA Input routing state ─────────────────────────────────────────
+_DLNAIN_MODE_FILE=os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
+
+def _load_dlnain_mode():
+    try:
+        with open(_DLNAIN_MODE_FILE) as f: return json.load(f)
+    except: return {"mode":"follow","manual_sink":None}
+
+def _save_dlnain_mode(data):
+    try:
+        with open(_DLNAIN_MODE_FILE,"w") as f: json.dump(data,f)
+    except: pass
+
+def _resolve_dlnain_target():
+    """Determine DLNA Input target based on mode."""
+    cfg=_load_dlnain_mode()
+    if cfg.get("mode")=="manual" and cfg.get("manual_sink"):
+        return cfg["manual_sink"]
+    # Follow primary
+    return _resolve_alexa_target()
+
+def _dlnain_loopback_running():
+    """Check if DLNA Input loopback (gmrender source) is active."""
+    gmrender_src=None
+    try:
+        r=_run(["pactl","list","short","sources"])
+        for l in r.stdout.splitlines():
+            if "gmediarender" in l.lower() or "gmrender" in l.lower():
+                parts=l.split()
+                if len(parts)>=2: gmrender_src=parts[1]
+    except: pass
+    if not gmrender_src: return False, None
+    lb=_find_loopback_by_source(gmrender_src)
+    return lb is not None, gmrender_src
+
+def _alexa_loopback_running():
+    """Check if Alexa AUX loopback is active. Returns (running, current_target)."""
+    try:
+        r=_run(["pactl","list","short","modules"])
+        for l in r.stdout.splitlines():
+            if "module-loopback" in l and USB_ALEXA_SRC in l:
+                m=re.search(r'sink=(\S+)', l)
+                target=m.group(1) if m else None
+                m2=re.search(r'^(\d+)', l)
+                mod_id=m2.group(1) if m2 else None
+                return True, target, mod_id
+    except: pass
+    return False, None, None
+
 def _paired_bt_device(paired_text, mac=BT_SOUNDBAR_MAC):
     for line in (paired_text or "").splitlines():
         parts=line.split()
@@ -458,7 +582,14 @@ def _sink_input_streams(sinks=None):
                 if sink_id=="4294967295": continue  # skip unrouted
                 sink_label=_sink_name_by_id(sink_id, sinks) if sinks else None
                 if not sink_label: continue
-                out.append({"id":p[0],"sink_id":sink_id,"sink":sink_label,"client":client_pid,"format":p[4] if len(p)>4 else ""})
+                # Check if this is a keepalive process (pw-cat with silent WAV)
+                is_keepalive=False
+                try:
+                    pr=_run(["ps","-o","args=","-p",client_pid],t=2)
+                    if pr.returncode==0 and "pw-cat" in pr.stdout and SILENT_WAV in pr.stdout:
+                        is_keepalive=True
+                except Exception: pass
+                out.append({"id":p[0],"sink_id":sink_id,"sink":sink_label,"client":client_pid,"format":p[4] if len(p)>4 else "","keepalive":is_keepalive})
         return out
     except Exception: return []
 
@@ -684,6 +815,88 @@ def _start_pa_dlna():
     except Exception:
         return False
 
+# ── DLNA Renderer (gmediarender) ──────────────────────────────────────
+
+def _gmrender_running():
+    """Check if gmediarender is running."""
+    try:
+        r=subprocess.run(["pgrep","-f","gmediarender"],capture_output=True,text=True,timeout=2)
+        return r.returncode==0 and bool(r.stdout.strip())
+    except Exception: return False
+
+def _gmrender_pid():
+    """Get gmediarender PID."""
+    try:
+        r=subprocess.run(["pgrep","-f","gmediarender"],capture_output=True,text=True,timeout=2)
+        if r.returncode==0 and r.stdout.strip():
+            return int(r.stdout.strip().splitlines()[0])
+    except Exception: pass
+    return None
+
+def _gmrender_uptime(pid):
+    """Get process uptime in seconds."""
+    if not pid: return None
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            parts=f.read().split()
+        start_ticks=int(parts[21])
+        import os as _os
+        clk=_os.sysconf(_os.sysconf_names['SC_CLK_TCK'])
+        with open('/proc/uptime') as f:
+            uptime=float(f.read().split()[0])
+        start_sec=uptime-(start_ticks/clk)
+        return int(uptime-start_sec)
+    except Exception: pass
+    return None
+
+def dlna_renderer_status():
+    """Get DLNA renderer status."""
+    running=_gmrender_running()
+    pid=_gmrender_pid()
+    uptime=_gmrender_uptime(pid) if pid else None
+    installed=bool(shutil.which("gmediarender"))
+    pw_ok=False
+    try:
+        r=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True,timeout=3)
+        pw_ok=r.returncode==0
+    except Exception: pass
+    return {
+        "ok":True,
+        "running":running,
+        "pid":pid,
+        "uptime":uptime,
+        "installed":installed,
+        "pipewire":pw_ok,
+        "name":"RPi Renderer",
+        "ready":installed and pw_ok
+    }
+
+def dlna_renderer_start():
+    """Start gmediarender service."""
+    if _gmrender_running():
+        return {"ok":True,"already":True,"status":dlna_renderer_status()}
+    r=subprocess.run(["systemctl","start","gmrender-resurrect"],capture_output=True,text=True,timeout=10)
+    if r.returncode==0:
+        time.sleep(2)
+        return {"ok":True,"method":"systemd","status":dlna_renderer_status()}
+    return {"ok":False,"error":(r.stdout+r.stderr).strip()[:300],"status":dlna_renderer_status()}
+
+def dlna_renderer_stop():
+    """Stop gmediarender service."""
+    if not _gmrender_running():
+        return {"ok":True,"was_running":False,"status":dlna_renderer_status()}
+    r=subprocess.run(["systemctl","stop","gmrender-resurrect"],capture_output=True,text=True,timeout=10)
+    if r.returncode==0:
+        time.sleep(1)
+        return {"ok":True,"method":"systemd","status":dlna_renderer_status()}
+    pid=_gmrender_pid()
+    if pid:
+        try:
+            os.kill(pid,15)
+            time.sleep(1)
+        except Exception: pass
+    return {"ok":not _gmrender_running(),"method":"signal","status":dlna_renderer_status()}
+
 def _selected_dlna_sink_name():
     lat=_load_audio_latency(); sel=lat.get("selected_dlna_renderer") or {}
     usn=(sel.get("usn") or "").replace("uuid:","").split("::")[0]
@@ -737,6 +950,70 @@ def audio_keepalive(action, sink=None):
         killed=_stop_keepalive_orphans()
         return {"ok":True,"active":_keepalive_status(),"orphans":_keepalive_orphans(),"killed":killed}
     return {"ok":True,"active":_keepalive_status(),"orphans":_keepalive_orphans()}
+
+# ── Routing: retarget and DLNA Input ─────────────────────────────────
+
+def _retarget_alexa():
+    """Retarget Alexa loopback to follow current default_sink."""
+    running,target,mid=_alexa_loopback_running()
+    if not running:
+        return {"ok":False,"error":"Alexa loopback not running"}
+    new_target=_resolve_alexa_target()
+    if not new_target:
+        return {"ok":False,"error":"No suitable output found"}
+    if target==new_target:
+        return {"ok":True,"unchanged":True,"target":target}
+    # Stop old, start new
+    _stop_loopback(mid)
+    time.sleep(0.3)
+    new_mid=_start_loopback(USB_ALEXA_SRC, new_target)
+    if new_mid:
+        return {"ok":True,"old_target":target,"new_target":new_target,"module_id":new_mid}
+    return {"ok":False,"error":"Failed to start loopback to new target","old_target":target}
+
+def _dlnain_start():
+    """Start DLNA Input loopback from gmrender source."""
+    running,src=_dlnain_loopback_running()
+    if running:
+        return {"ok":True,"already":True,"source":src}
+    # Find gmrender source
+    gmrender_src=None
+    try:
+        r=_run(["pactl","list","short","sources"])
+        for l in r.stdout.splitlines():
+            if "gmediarender" in l.lower() or "gmrender" in l.lower():
+                parts=l.split()
+                if len(parts)>=2: gmrender_src=parts[1]
+    except: pass
+    if not gmrender_src:
+        return {"ok":False,"error":"gmrender source not found in PipeWire"}
+    target=_resolve_dlnain_target()
+    if not target:
+        return {"ok":False,"error":"No suitable output found"}
+    mid=_start_loopback(gmrender_src, target)
+    if mid:
+        return {"ok":True,"source":gmrender_src,"target":target,"module_id":mid}
+    return {"ok":False,"error":"Failed to start loopback"}
+
+def _dlnain_stop():
+    """Stop DLNA Input loopback."""
+    running,src=_dlnain_loopback_running()
+    if not running:
+        return {"ok":True,"was_running":False}
+    stopped=_stop_loopback_by_source(src)
+    return {"ok":stopped,"source":src}
+
+def _dlnain_retarget(new_target):
+    """Retarget DLNA Input loopback to new sink."""
+    running,src=_dlnain_loopback_running()
+    if not running: return False
+    # Find and stop current
+    lb=_find_loopback_by_source(src)
+    if lb: _stop_loopback(lb["id"])
+    time.sleep(0.3)
+    # Start new
+    mid=_start_loopback(src, new_target)
+    return mid is not None
 
 def audio_route_alexa_bt(action):
     if action=="stop":
@@ -1209,8 +1486,115 @@ function deviceCard(icon,title,d,isDefault){let ok=d&&d.present;let defBadge=isD
 function btSoundbarCard(d,isDefault){let ok=d&&d.present,paired=d&&d.paired;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+defBadge+'</h4>'+meter(d&&d.volume,'sink',d.name);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+jsarg(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
 function dlnaOutputCard(d,selected,connected,keepalive){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let connectBtns='';if(selected){if(connected){connectBtns='<button onclick="taDlnaDisconnect()" class="danger" style="font-size:.8em">⏹ Disconnect</button>'}else{connectBtns='<button onclick="taDlnaConnect()" style="font-size:.8em">🔌 Connect</button>'}}let kaBadge='';let hasDlnaKeepalive=keepalive&&d&&d.name&&keepalive.some(k=>k===d.name);if(hasDlnaKeepalive){kaBadge='<span class="badge ok" style="font-size:.65em;margin-left:.3rem">KEEPALIVE</span>'}let status=connected?badge(true,'CONNECTED'):(ok?badge(ok,'NOT CONNECTED'):badge(false,'NOT CONNECTED'));let h='<div class="media-card"><h4>📡 DLNA Output '+status+kaBadge+'</h4>'+meter(d&&d.volume,'sink',d.name)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem;gap:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button>'+connectBtns+'</div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
 function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));let dl=r.dlna_connected;let dly=lat.dlna_output_offset_ms||0;lines.push('DLNA delay offset: '+dly+' ms'+(dl&&dly?' (active, mpv audio-delay set)':''));return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
-async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';let ds=r.default_sink||'';if(d.hdmi&&d.hdmi.present)outHtml+=deviceCard('📺','HDMI',d.hdmi,ds.includes('hdmi'));outHtml+=btSoundbarCard(d.bt_soundbar||{},ds.includes('bluez'));outHtml+=dlnaOutputCard(d.dlna_output||{},lat.selected_dlna_renderer,r.dlna_connected,r.keepalive);if(d.usb_output&&d.usb_output.present)outHtml+=deviceCard('🔌','USB Output',d.usb_output,ds.includes('usb'));$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});srcHtml+='<div class="media-card"><h4>📡 DLNA Input '+badge(false,'PLANNED')+'</h4><div class="media-meta">Receive audio from another PC/device on the network. Requires renderer configuration.</div></div>';$('#ta-sources').innerHTML=srcHtml;let mixerHtml='';let ka=r.keepalive||[];let realInputs=inputs.filter(i=>{if(!ka.length)return true;return!ka.some(k=>i.sink===k)});if(realInputs.length){realInputs.forEach(i=>{let sn=shortName(i.sink);mixerHtml+='<div class="media-card route-card"><h4>🎵 Playing through '+esc(sn)+'</h4><div class="media-meta">Audio is currently routed to '+esc(sn)+'. Format: '+esc(i.format||'—')+'</div></div>'});}else if(inputs.length){mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">Audio playing (keepalive streams hidden).</div></div>'}else{mixerHtml='<div class="media-card"><h4>🎵 Active Streams</h4><div class="media-meta">No active audio streams.</div></div>'}$('#ta-mixer').innerHTML=mixerHtml;let route=r.routes&&r.routes.alexa_to_bt;let ready=route&&route.ready;let warn=ready?'Ready.':'Needs online BT Soundbar and USB Alexa input before Start.';let startDisabled=ready?'':' disabled title="BT Soundbar or USB input missing"';$('#ta-routes').innerHTML='<div class="media-card route-card '+(route&&route.on?'on':'off')+'"><h4>🔁 Alexa AUX → BT Soundbar '+badge(route&&route.on,route&&route.on?'ON':(ready?'READY':'NOT READY'))+'</h4><div class="media-meta">USB C-Media mono input → PipeWire loopback → Samsung Soundbar A2DP<br>'+warn+'</div><div class="row" style="margin-top:.45rem"><button onclick="taRoute(\'start\')"'+startDisabled+'>▶ Start</button><button onclick="taRoute(\'stop\')" class="danger">⏹ Stop</button></div><div class="media-meta">Module: '+esc((route&&route.module_id)||'—')+'</div></div>';$('#ta-default').textContent=shortName(r.default_sink||'—');$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-summary').innerHTML=taHumanSummary(r);$('#ta-raw').textContent=JSON.stringify(r,null,2)}
+async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';let ds=r.default_sink||'';if(d.hdmi&&d.hdmi.present)outHtml+=deviceCard('📺','HDMI',d.hdmi,ds.includes('hdmi'));outHtml+=btSoundbarCard(d.bt_soundbar||{},ds.includes('bluez'));outHtml+=dlnaOutputCard(d.dlna_output||{},lat.selected_dlna_renderer,r.dlna_connected,r.keepalive);if(d.usb_output&&d.usb_output.present)outHtml+=deviceCard('🔌','USB Output',d.usb_output,ds.includes('usb'));$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});$('#ta-sources').innerHTML=srcHtml;dlnaRendererRefresh();let mixerHtml='';let realInputs=inputs.filter(i=>!i.keepalive);
+// Build pipe-map: source_name -> [{sink, format}]
+let pipeMap={};
+let activeSinks=new Set();
+realInputs.forEach(i=>{
+  let src=i.client&&parseInt(i.client)?('stream-'+i.id):'system';
+  // Try to identify source by sink name
+  let sn=i.sink||'';
+  let sinkLabel=shortName(sn);
+  if(!pipeMap[sinkLabel])pipeMap[sinkLabel]=[];
+  pipeMap[sinkLabel].push({id:i.id,format:i.format||'unknown'});
+  activeSinks.add(sinkLabel);
+});
+// Build output nodes from devices
+let outNodes=[];
+ds=r.default_sink||'';
+if(d.hdmi&&d.hdmi.present)outNodes.push({icon:'📺',label:'HDMI',name:'HDMI',active:ds.includes('hdmi'),streams:pipeMap['HDMI']||[]});
+outNodes.push({icon:'🔊',label:'BT Soundbar',name:'BT Soundbar',active:ds.includes('bluez'),streams:pipeMap['BT Soundbar']||[]});
+outNodes.push({icon:'📡',label:'DLNA Output',name:'DLNA Output',active:ds.includes('WiiMu')||ds.includes('LinkPlayer'),streams:pipeMap['DLNA Output']||[]});
+if(d.usb_output&&d.usb_output.present)outNodes.push({icon:'🔌',label:'USB Output',name:'USB Output',active:ds.includes('usb'),streams:pipeMap['USB Output']||[]});
+// Build input nodes from sources
+let inNodes=[];
+sources.forEach(s=>{
+  let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));
+  let title=s.type==='usb_input'?'Alexa USB':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));
+  inNodes.push({icon:icon,label:title,active:s.state==='RUNNING'});
+});
+// Render as patchbay
+mixerHtml+='<div style="display:flex;gap:1rem;align-items:stretch;min-height:200px">';
+// Left column: inputs
+mixerHtml+='<div style="flex:0 0 140px;display:flex;flex-direction:column;gap:.4rem;justify-content:center">';
+mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">INPUTS</div>';
+inNodes.forEach(n=>{
+  let border=n.active?'border-color:#238636':'border-color:#30363d';
+  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.3rem .5rem;font-size:.75rem;display:flex;align-items:center;gap:.3rem;background:#161b22">'+n.icon+' '+esc(n.label)+(n.active?' <span style="color:#3fb950">●</span>':'')+'</div>';
+});
+mixerHtml+='</div>';
+// Middle: connections visual
+mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative">';
+mixerHtml+='<svg style="width:100%;height:100%;position:absolute;top:0;left:0" viewBox="0 0 200 200" preserveAspectRatio="none">';
+// Draw connection lines from active inputs to active outputs
+let activeOutputs=outNodes.filter(o=>o.streams.length>0);
+let totalOut=outNodes.length;
+let totalIn=inNodes.length;
+activeOutputs.forEach((o,oi)=>{
+  let yOut=30+((oi+0.5)/totalOut)*140;
+  // Connect to the source that's playing
+  o.streams.forEach(s=>{
+    let srcIdx=inNodes.findIndex(n=>n.label.includes('Alexa')||n.label.includes('DLNA')||n.label.includes('Remote')||n.label.includes('mpv'));
+    if(srcIdx<0)srcIdx=0;
+    let yIn=30+((srcIdx+0.5)/totalIn)*140;
+    mixerHtml+='<line x1="10" y1="'+yIn+'" x2="190" y2="'+yOut+'" stroke="#238636" stroke-width="2" stroke-dasharray="4,2" opacity="0.6"/>';
+  });
+});
+mixerHtml+='</svg>';
+mixerHtml+='<div style="position:relative;z-index:1;font-size:.7rem;color:#8b949e;text-align:center">'+activeOutputs.length+' active connection'+(activeOutputs.length!==1?'s':'')+'</div>';
+mixerHtml+='</div>';
+// Right column: outputs
+mixerHtml+='<div style="flex:0 0 160px;display:flex;flex-direction:column;gap:.4rem;justify-content:center">';
+mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">OUTPUTS</div>';
+outNodes.forEach(n=>{
+  let streams=n.streams;
+  let hasStreams=streams.length>0;
+  let border=hasStreams?'border-color:#238636':(n.active?'border-color:#1f6feb':'border-color:#30363d');
+  let bg=hasStreams?'background:#0d1117':'';
+  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.3rem .5rem;font-size:.75rem;'+bg+'">';
+  mixerHtml+=n.icon+' '+esc(n.label)+(hasStreams?' <span style="color:#3fb950;font-size:.65rem">▶ '+streams.length+'</span>':'');
+  if(hasStreams){mixerHtml+='<div style="font-size:.65rem;color:#8b949e;margin-top:.15rem">'+streams.map(s=>esc(s.format)).join(', ')+'</div>'}
+  mixerHtml+='</div>';
+});
+mixerHtml+='</div>';
+mixerHtml+='</div>';
+// Summary line
+let totalStreams=realInputs.length;
+mixerHtml+='<div style="font-size:.7rem;color:#8b949e;margin-top:.4rem;text-align:center">'+totalStreams+' active stream'+(totalStreams!==1?'s':'')+' · Default: '+esc(shortName(ds||'—'))+'</div>';
+$('#ta-mixer').innerHTML=mixerHtml;routesRefresh();$('#ta-default').textContent=shortName(r.default_sink||'—');$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-summary').innerHTML=taHumanSummary(r);$('#ta-raw').textContent=JSON.stringify(r,null,2)}
 async function taRoute(a){let r=await api('/audio/route/alexa-bt?action='+a);msg(r.ok?'Route '+a+' OK':(r.error||r.out||'Route failed'),r.ok?'ok':'err');setTimeout(taRefresh,800)}
+async function dlnaRendererRefresh(){let r=await api('/dlna/renderer/status');let el=$('#ta-sources');if(!el)return;if(r.error)return;let h='<div class="media-card"><h4>📡 DLNA Renderer (RPi as target)</h4>';let statusBadge=r.running?badge(true,'RUNNING'):(r.installed?badge(false,'STOPPED'):badge(false,'NOT INSTALLED'));let readyBadge=r.ready?badge(true,'READY'):badge(false,'NOT READY');h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+statusBadge+' '+readyBadge+'</div>';h+='<div class="media-meta">'+esc(r.name||'RPi Renderer');if(r.pid)h+=' · PID: '+r.pid;if(r.uptime){let m=Math.floor(r.uptime/60);h+=' · Uptime: '+m+'m '+((r.uptime%60))+'s'}h+=' · PipeWire: '+(r.pipewire?'✅':'❌')+'</div>';h+='<div class="row" style="margin-top:.4rem">';if(r.running){h+='<button onclick="dlnaRendererStop()" class="danger">⏹ Stop</button>'}else{let disabled=r.installed?'':' disabled title="Install gmediarender first"';h+='<button onclick="dlnaRendererStart()"'+disabled+'>▶ Start</button>'}h+='</div></div>';el.innerHTML+=h}
+async function dlnaRendererStart(){msg('Starting DLNA renderer...','info');let r=await api('/dlna/renderer/start');msg(r.ok?'Renderer started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(()=>{taRefresh()},2000)}
+async function dlnaRendererStop(){msg('Stopping DLNA renderer...','info');let r=await api('/dlna/renderer/stop');msg(r.ok?'Renderer stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(()=>{taRefresh()},1500)}
+async function routesRefresh(){let[alexa,_,dlnain]=await Promise.all([api('/audio/route/alexa-bt?action=status'),api('/dlna/renderer/status').catch(()=>({})),api('/audio/route/dlna-input/status').catch(()=>({}))]);dlnain=dlnain||{};let el=$('#ta-routes');if(!el)return;let h='';let alexaOn=alexa.on;let alexaTarget=alexa.target||'?';let alexaDefault=alexa.default_sink||'?';
+h+='<div class="media-card route-card '+(alexaOn?'on':'off')+'"><h4>🎙️ AUX In (Alexa) → follows primary</h4>';
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(alexaOn,alexaOn?'ON':'OFF')+'</div>';
+h+='<div class="media-meta">Source: USB C-Media mono · Target: '+esc(shortName(alexaTarget))+' · Default sink: '+esc(shortName(alexaDefault))+'</div>';
+h+='<div class="row" style="margin-top:.45rem">';
+if(alexaOn){h+='<button data-act="alexa-stop" class="danger">⏹ Stop</button> <button data-act="alexa-retarget">🔄 Retarget</button>'}else{h+='<button data-act="alexa-start">▶ Start</button>'}
+h+='</div></div>';
+h+='<div class="media-card route-card '+(dlnain.running?'on':'off')+'"><h4>📡 DLNA Input (RPi Renderer)</h4>';
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(dlnain.running,dlnain.running?'ON':'OFF')+'</div>';
+let mode=dlnain.mode||'follow';let modeLabel=mode==='follow'?'Follow primary':'Manual';let nextMode=mode==='follow'?'manual':'follow';
+h+='<div class="media-meta">Mode: <button data-act="dlnain-mode" data-mode="'+nextMode+'" style="font-size:.75em;padding:.15rem .4rem">'+modeLabel+'</button>';
+if(mode==='manual'&&dlnain.manual_sink)h+=' · Manual target: '+esc(shortName(dlnain.manual_sink));
+if(dlnain.running&&dlnain.active_target)h+=' · Active: '+esc(shortName(dlnain.active_target));
+h+='</div>';
+if(mode==='manual'){h+='<div class="row" style="margin-top:.3rem;font-size:.78rem">';
+let targets=[{n:'HDMI',s:'alsa_output.platform'},{n:'BT Soundbar',s:'bluez_output'},{n:'DLNA Output',s:'WiiMu'},{n:'USB Output',s:'alsa_output.usb'}];
+targets.forEach(t=>{let sel=dlnain.manual_sink&&shortName(dlnain.manual_sink)===t.n;h+='<button data-act="dlnain-target" data-sink="'+t.s+'" style="'+(sel?'border-color:#58a6ff;color:#58a6ff':'')+'">'+t.n+'</button>'});h+='</div>'}
+h+='<div class="row" style="margin-top:.45rem">';
+if(dlnain.running){h+='<button data-act="dlnain-stop" class="danger">⏹ Stop</button>'}else{h+='<button data-act="dlnain-start">▶ Start</button>'}
+h+='</div></div>';
+h+='<div class="media-card route-card off"><h4>🔀 Multi-Output</h4><div class="media-meta">'+badge(false,'PLANNED')+' Route same source to multiple outputs simultaneously.</div></div>';
+el.innerHTML=h;el.onclick=function(e){let b=e.target.closest('[data-act]');if(!b)return;let a=b.dataset.act;if(a==='alexa-start')alexaRouteStart();else if(a==='alexa-stop')alexaRouteStop();else if(a==='alexa-retarget')alexaRouteRetarget();else if(a==='dlnain-start')dlnainStart();else if(a==='dlnain-stop')dlnainStop();else if(a==='dlnain-mode')dlnainMode(b.dataset.mode);else if(a==='dlnain-target')dlnainTarget(b.dataset.sink)}}
+async function alexaRouteStart(){msg('Starting Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=start');msg(r.ok?'Alexa route started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function alexaRouteStop(){msg('Stopping Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=stop');msg(r.ok?'Alexa route stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function alexaRouteRetarget(){msg('Retargeting Alexa...','info');let r=await api('/audio/route/alexa-retarget');msg(r.ok?(r.unchanged?'No change needed':'Retargeted to '+shortName(r.new_target)):(r.error||'retarget failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainStart(){msg('Starting DLNA Input routing...','info');let r=await api('/audio/route/dlna-input/start');msg(r.ok?'DLNA Input started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainStop(){msg('Stopping DLNA Input routing...','info');let r=await api('/audio/route/dlna-input/stop');msg(r.ok?'DLNA Input stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainMode(mode){msg('Switching DLNA Input to '+mode+'...','info');let r=await api('/audio/route/dlna-input/mode?mode='+mode);msg(r.ok?'Mode: '+mode:(r.error||'mode failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainTarget(sink){msg('Setting DLNA Input target...','info');let r=await api('/audio/route/dlna-input/target?sink='+encodeURIComponent(sink));msg(r.ok?'Target set':(r.error||'target failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
 async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
 async function taSwitch(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err');setTimeout(taRefresh,800)}
 async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
@@ -1443,8 +1827,34 @@ class H(BaseHTTPRequestHandler):
                 self.sj(200,audio_keepalive(action,sink))
             elif path=="/audio/route/alexa-bt":
                 a=(q.get("action")or["status"])[0].strip()
-                if a=="status": return self.sj(200,{"ok":True,"route":"alexa_to_bt","on":bool(_loopback_module_id()),"module_id":_loopback_module_id()})
+                if a=="status":
+                    running,target,mid=_alexa_loopback_running()
+                    return self.sj(200,{"ok":True,"route":"alexa_to_bt","on":running,"target":target,"module_id":mid,"default_sink":_get_default_sink()})
                 self.sj(200,audio_route_alexa_bt(a))
+            elif path=="/audio/route/alexa-retarget":
+                self.sj(200,_retarget_alexa())
+            elif path=="/audio/route/dlna-input/status":
+                running,src=_dlnain_loopback_running()
+                cfg=_load_dlnain_mode()
+                target=_resolve_dlnain_target() if running else None
+                self.sj(200,{"ok":True,"running":running,"source":src,"mode":cfg.get("mode","follow"),"manual_sink":cfg.get("manual_sink"),"active_target":target,"default_sink":_get_default_sink()})
+            elif path=="/audio/route/dlna-input/start":
+                self.sj(200,_dlnain_start())
+            elif path=="/audio/route/dlna-input/stop":
+                self.sj(200,_dlnain_stop())
+            elif path=="/audio/route/dlna-input/mode":
+                mode=(q.get("mode")or["follow"])[0].strip()
+                if mode not in ("follow","manual"): return self.sj(400,{"error":"mode must be follow or manual"})
+                cfg=_load_dlnain_mode(); cfg["mode"]=mode; _save_dlnain_mode(cfg)
+                self.sj(200,{"ok":True,"mode":mode})
+            elif path=="/audio/route/dlna-input/target":
+                sink=(q.get("sink")or[""])[0].strip()
+                if not sink: return self.sj(400,{"error":"no sink"})
+                cfg=_load_dlnain_mode(); cfg["manual_sink"]=sink; _save_dlnain_mode(cfg)
+                # If running in manual mode, retarget now
+                if cfg.get("mode")=="manual":
+                    _dlnain_retarget(sink)
+                self.sj(200,{"ok":True,"manual_sink":sink})
             elif path=="/audio/bt":
                 if _pa_dlna_running(): audio_disconnect_dlna()
                 o=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True)
@@ -1537,6 +1947,12 @@ class H(BaseHTTPRequestHandler):
                     self.sj(200,{"devices":renderers,"count":len(renderers)})
                 except Exception as e:
                     self.sj(200,{"error":str(e)})
+            elif path=="/dlna/renderer/status":
+                self.sj(200,dlna_renderer_status())
+            elif path=="/dlna/renderer/start":
+                self.sj(200,dlna_renderer_start())
+            elif path=="/dlna/renderer/stop":
+                self.sj(200,dlna_renderer_stop())
             elif path=="/bt/trust":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
