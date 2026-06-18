@@ -1586,7 +1586,13 @@ targets.forEach(t=>{let sel=dlnain.manual_sink&&shortName(dlnain.manual_sink)===
 h+='<div class="row" style="margin-top:.45rem">';
 if(dlnain.running){h+='<button data-act="dlnain-stop" class="danger">⏹ Stop</button>'}else{h+='<button data-act="dlnain-start">▶ Start</button>'}
 h+='</div></div>';
-h+='<div class="media-card route-card off"><h4>🔀 Multi-Output</h4><div class="media-meta">'+badge(false,'PLANNED')+' Route same source to multiple outputs simultaneously.</div></div>';
+h+='<div class="media-card route-card '+(getCookie('multi-output')==='true'?'on':'off')+'"><h4>🔀 Multi-Output</h4>';
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(getCookie('multi-output')==='true','ACTIVE')+' Route same source to multiple outputs simultaneously.</div>';
+h+='<button data-act="multi-toggle" class="'+(getCookie('multi-output')==='true' ? 'danger':'')+'">'+(getCookie('multi-output')==='true'?'Turn OFF Multi-Output':'Turn ON Multi-Output')+'</button>';
+h+='</div>';
+
+// Update SVG connections when multi-output changes
+function updateAudioPaths(){ routesRefresh(); redraw(); }
 el.innerHTML=h;el.onclick=function(e){let b=e.target.closest('[data-act]');if(!b)return;let a=b.dataset.act;if(a==='alexa-start')alexaRouteStart();else if(a==='alexa-stop')alexaRouteStop();else if(a==='alexa-retarget')alexaRouteRetarget();else if(a==='dlnain-start')dlnainStart();else if(a==='dlnain-stop')dlnainStop();else if(a==='dlnain-mode')dlnainMode(b.dataset.mode);else if(a==='dlnain-target')dlnainTarget(b.dataset.sink)}}
 async function alexaRouteStart(){msg('Starting Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=start');msg(r.ok?'Alexa route started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
 async function alexaRouteStop(){msg('Stopping Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=stop');msg(r.ok?'Alexa route stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
@@ -2430,6 +2436,166 @@ def cleanup_stale_mpv_socket():
         print(f"Removed stale mpv IPC socket: {MSOCK}", flush=True)
     except Exception as e:
         print(f"[WARN] Could not remove stale mpv IPC socket {MSOCK}: {e}", file=sys.stderr, flush=True)
+
+# ── DLNA Input routing configuration and multi-output (Track 6 completion) ────────
+def _dlnain_config_path():
+    return os.path.expanduser("~/rpi-dashboard/.dlnain-config.json")
+
+def _load_dlnain_config():
+    path=_dlnain_config_path()
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except:
+        return {"mode":"follow","manual_sinks":[],"multi_output":False}
+
+def _save_dlnain_config(data):
+    path=_dlnain_config_path()
+    try:
+        with open(path,"w") as f:
+            json.dump(data,f,indent=2)
+        return True
+    except:
+        return False
+
+def dlna_input_get_config():
+    """Get DLNA Input routing configuration."""
+    cfg=_load_dlnain_config()
+    dst=_resolve_dlnain_target()
+    running,src=_dlnain_loopback_running()
+    active=sinks=[]
+    if running:
+        lb=_find_loopback_by_source(src)
+        if lb:
+            active=[lb["sink"]]
+            sinks=[lb["sink"]]
+    else:
+        sinks=[dst] if dst else []
+    return {
+        "ok":True,
+        "config":cfg,
+        "running":running,
+        "active_sinks":active,
+        "default_target":dst,
+        "stats":audio_state().get("dlna_connected", False)
+    }
+
+def dlna_input_set_config():
+    """Set DLNA Input routing configuration."""
+    data=json.loads(request.data.decode())
+    mode=data.get("mode","follow")
+    manual_sinks=data.get("manual_sinks",[])
+    multi_output=data.get("multi_output",False)
+    
+    cfg={"mode":mode,"manual_sinks":manual_sinks,"multi_output":multi_output}
+    _save_dlnain_config(cfg)
+    
+    # Apply new config if loopback is running
+    running,src=_dlnain_loopback_running()
+    if running:
+        _dlnain_retarget(_resolve_dlnain_target())
+    
+    return dlna_input_get_config()
+
+def dlna_input_status():
+    """Get DLNA Input routing status."""
+    cfg=_load_dlnain_config()
+    dst=_resolve_dlnain_target()
+    gmrender_src=None
+    try:
+        r=_run(["pactl","list","short","sources"])
+        for l in r.stdout.splitlines():
+            if "gmediarender" in l.lower():
+                gmrender_src=l.split()[0]
+                break
+    except:
+        pass
+    running,sink=_dlnain_loopback_running()
+    active=[]
+    if running and sink:
+        active=[sink]
+    sinks=[s for s in _pactl_lines("sinks") if any(k in s["name"] for k in ["hdmi","bluez","alsa_output"])]
+    # Build label for DLNA Input card
+    mode_label="Auto (follow primary)" if cfg.get("mode")=="follow" else "Manual (select outputs)"
+    return {
+        "ok":True,
+        "configured":True,
+        "mode":cfg.get("mode"),
+        "manual_targets":cfg.get("manual_sinks",[]),
+        "multi_output":cfg.get("multi_output",False),
+        "active":running,
+        "source_stream":gmrender_src or "gmrender-not-found",
+        "target_stream":dst,
+        "connectable_sinks":[s["name"] for s in sinks],
+        "status_slot":{"mode":mode_label}
+    }
+
+def audio_route_dlna_input():
+    """Route DLNA Input based on current config.
+    Body JSON: {\"action\":\"start\"|\"stop\"|\"retarget\"}
+    """
+    body=json.loads(request.data.decode())
+    action=body.get("action","start")
+    cfg=_load_dlnain_config()
+    
+    if action=="stop":
+        stopped=_dlnain_stop()
+        return {"ok":True,"action":"stop","changed":stopped}
+    
+    if action=="start" or action=="retarget":
+        running,_= _dlnain_loopback_running()
+        dst=_resolve_dlnain_target()
+        if not dst:
+            return {"ok":False,"error":"No available output selected"}
+        
+        if running:
+            lb=_find_loopback_by_source(_dlnain_loopback_running()[1])
+            if lb and lb["sink"]==dst:
+                return {"ok":True,"unchanged":True,"target":dst}
+            _dlnain_stop()
+            time.sleep(0.5)
+        
+        ok= False
+        # Find gmrender source
+        gmrender_src=None
+        try:
+            r=_run(["pactl","list","short","sources"])
+            for l in r.stdout.splitlines():
+                if "gmediarender" in l.lower() or "gmrender" in l.lower():
+                    parts=l.split()
+                    if len(parts)>=2:
+                        gmrender_src=parts[1]
+                        break
+        except:
+            pass
+        
+        if not gmrender_src:
+            return {"ok":False,"error":"gmrender source not available"}
+        
+        configs=[dst]
+        if cfg.get("multi_output",False):
+            configs= cfg.get("manual_sinks",[dst])
+        
+        modules=[]
+        for cfg_sink in configs:
+            if cfg_sink:
+                mid=_start_loopback(gmrender_src, cfg_sink)
+                if mid:
+                    modules.append({"sink":cfg_sink,"module_id":mid})
+                else:
+                    # Cleanup partial set
+                    for m in modules:
+                        _stop_loopback(m.get("module_id"))
+                    return {"ok":False,"error":"Failed to start loopback for sink "+cfg_sink}
+        
+        return {
+            "ok":True,
+            "action":action,
+            "modules":modules,
+            "target":dst,
+            "multi":len(modules)>1
+        }
+    return {"ok":False,"error":"invalid action"}
 
 def start_resume_poller():
     """Background thread to periodically save playback position while mpv is alive."""
