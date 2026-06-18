@@ -27,6 +27,14 @@ class SystemStats(Static):
         }
         self._settings_cache_ttl = 10.0
 
+        self._settings_cache = {
+            "network": 0.0,
+            "audio": 0.0,
+            "bluetooth": 0.0,
+            "wifi": 0.0
+        }
+        self._settings_cache_ttl = 10.0
+
         # Inicializace stavových proměnných pro výpočet CPU delta
         self._prev_cpu_idle = 0
         self._prev_cpu_total = 0
@@ -285,6 +293,14 @@ class RPiDashboard(App):
             "wifi": 0.0
         }
         self._settings_cache_ttl = 10.0
+
+        self._settings_cache = {
+            "network": 0.0,
+            "audio": 0.0,
+            "bluetooth": 0.0,
+            "wifi": 0.0
+        }
+        self._settings_cache_ttl = 10.0
         self.mode_switcher = ModeSwitcher(self)
         
         self.write_log("[SYSTEM] J.A.R.V.I.S. Dumb TV Interface načteno.")
@@ -320,7 +336,14 @@ class RPiDashboard(App):
         return ""
 
     async def update_settings_data(self) -> None:
-        """Refresh all settings panel widgets with system configuration data."""
+        """Refresh all settings panel widgets with system configuration data (with TTL and tab check)."""
+        try:
+            active_tab = self.query_one(TabbedContent).active
+            if active_tab != "tab_settings":
+                return
+        except Exception:
+            return
+
         current_time = time.time()
         self._updating_settings = True
         try:
