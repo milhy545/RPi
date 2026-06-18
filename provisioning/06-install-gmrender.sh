@@ -6,7 +6,8 @@ set -euo pipefail
 RENDERER_NAME="${1:-RPi Renderer}"
 BUILD_DIR="/tmp/gmrender-build"
 INSTALL_PREFIX="/usr/local"
-SERVICE_USER="milhy777"
+# shellcheck disable=SC2034
+SERVICE_USER="milhy777"  # used by sourced provisioning scripts
 
 echo "=== gmrender-resurrect build script ==="
 echo "Renderer name: $RENDERER_NAME"
@@ -43,7 +44,7 @@ cd gmrender-resurrect
 echo "[3/5] Building..."
 ./autogen.sh
 ./configure --prefix="$INSTALL_PREFIX"
-make -j$(nproc)
+make -j"$(nproc)"
 
 echo "[4/5] Installing..."
 sudo make install
