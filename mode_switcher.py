@@ -73,8 +73,9 @@ class ModeSwitcher:
             self.log_buffer.write(f"[WARNING] Launch rejected: switcher is in state {self.state.name}")
             return False
 
+        self._transition(ModeSwitcherState.SUSPENDING)
+
         async with self.lock:
-            self._transition(ModeSwitcherState.SUSPENDING)
             self.log_buffer.write(f"[SYSTEM] Suspending TUI. Executing: {' '.join(command)}")
 
             # Pause aiohttp API server requests
