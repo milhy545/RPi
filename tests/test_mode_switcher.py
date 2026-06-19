@@ -135,18 +135,21 @@ async def test_teardown_active_process(mode_switcher):
     assert any("Terminating active subprocess..." in log for log in mode_switcher.log_buffer.get_lines())
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 async def test_teardown_active_process_force_kill(mode_switcher):
     mock_process = Mock()
     # Always return None for poll, meaning it never gracefully terminates
     mock_process.poll.return_value = None
     mode_switcher.active_process = mock_process
 
-    await mode_switcher._teardown_active_process()
+    with patch("asyncio.sleep", return_value=None) as mock_sleep:
+        await mode_switcher._teardown_active_process()
 
     mock_process.terminate.assert_called_once()
     mock_process.kill.assert_called_once()
     logs = mode_switcher.log_buffer.get_lines()
     assert any("Subprocess did not terminate. Killing..." in log for log in logs)
+    assert mock_sleep.call_count == 30
 
 @pytest.mark.asyncio
 async def test_sigterm_handling(mode_switcher):
