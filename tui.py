@@ -538,7 +538,7 @@ class RPiDashboard(App):
         api_app.router.add_get("/wifi/networks", self.handle_wifi_get_networks)
         api_app.router.add_post("/wifi/connect", self.handle_wifi_connect)
         api_app.router.add_post("/system/reboot", self.handle_system_reboot)
-        api_app.router.add_post("/system/screensaver", self.handle_system_screensaver)
+        # api_app.router.add_post("/system/screensaver", self.handle_system_screensaver)
         api_app.router.add_post("/mode/launch", self.handle_mode_launch)
         api_app.router.add_post("/mode/stop", self.handle_mode_stop)
 

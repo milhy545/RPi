@@ -68,13 +68,14 @@ class ModeSwitcher:
         self.state = new_state
 
     async def launch(self, command: list[str], timeout: float = 0):
-        async with self.lock:
-            # Concurrency guard: reject immediately if not in IDLE state
-            if self.state != ModeSwitcherState.IDLE:
-                self.log_buffer.write(f"[WARNING] Launch rejected: switcher is in state {self.state.name}")
-                return False
+        # Concurrency guard: reject immediately if not in IDLE state
+        if self.state != ModeSwitcherState.IDLE:
+            self.log_buffer.write(f"[WARNING] Launch rejected: switcher is in state {self.state.name}")
+            return False
 
-            self._transition(ModeSwitcherState.SUSPENDING)
+        self._transition(ModeSwitcherState.SUSPENDING)
+
+        async with self.lock:
             self.log_buffer.write(f"[SYSTEM] Suspending TUI. Executing: {' '.join(command)}")
 
             # Pause aiohttp API server requests
