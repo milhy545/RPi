@@ -1652,9 +1652,9 @@ def page():
 <div class="row"><div class="url-wrap"><input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()"><button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button></div><select id="qual" style="width:auto;min-width:88px">{QO}</select></div>
 <div id="player-preview"></div>
 <div class="row" style="margin-top:.3rem">
-<button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button><button onclick="pause()">⏸</button><button onclick="stop()" class="danger">⏹</button>
-<button onclick="seek(-10)">⏪10</button><button onclick="seek(10)">10⏩</button>
-<button onclick="vol(-10)">🔉</button><button onclick="vol(10)">🔊</button><button onclick="mute()" style="font-size:.85rem">🔇</button></div>
+<button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button><button onclick="pause()" aria-label="Pause">⏸</button><button onclick="stop()" class="danger" aria-label="Stop">⏹</button>
+<button onclick="seek(-10)" aria-label="Rewind 10 seconds">⏪10</button><button onclick="seek(10)" aria-label="Forward 10 seconds">10⏩</button>
+<button onclick="vol(-10)" aria-label="Volume down">🔉</button><button onclick="vol(10)" aria-label="Volume up">🔊</button><button onclick="mute()" style="font-size:.85rem" aria-label="Mute">🔇</button></div>
 <div style="margin-top:.4rem"><div style="display:flex;align-items:center;gap:.4rem"><span id="stime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span><input type="range" id="sbar" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false"><span id="dtime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span></div></div></div>
 <div class="sec"><h3 data-i18n="status">Status</h3><div id="st">—</div></div>
 <div class="sec"><h3 data-i18n="quick" data-tip="sectionQuick">Quick</h3><div class="row">
@@ -1685,11 +1685,11 @@ def page():
 <button id="brb" onclick="cecBr()">▶ Start</button><span id="brs" style="font-size:.75em;color:#8b949e">OFF</span></div>
 <div style="font-size:.7em;color:#666" data-i18n="cecBridgeDesc">Play/Pause, Stop, Seek, Vol via TV remote</div></div>
 <div class="sec"><h3 data-i18n="cecNav" data-tip="sectionCecNav">Nav</h3><div class="cec-grid">
-<button onclick="cecKey('menu')">📋</button><button onclick="cecKey('up')">▲</button><button onclick="cecKey('channels+')">CH+</button>
-<button onclick="cecKey('left')">◀</button><button onclick="cecKey('select')" style="font-size:.7rem">OK</button><button onclick="cecKey('right')">▶</button>
-<button onclick="cecKey('back')">◀◀</button><button onclick="cecKey('down')">▼</button><button onclick="cecKey('channels-')">CH-</button></div></div>
+<button onclick="cecKey('menu')" aria-label="TV Menu">📋</button><button onclick="cecKey('up')" aria-label="TV Up">▲</button><button onclick="cecKey('channels+')">CH+</button>
+<button onclick="cecKey('left')" aria-label="TV Left">◀</button><button onclick="cecKey('select')" style="font-size:.7rem">OK</button><button onclick="cecKey('right')" aria-label="TV Right">▶</button>
+<button onclick="cecKey('back')" aria-label="TV Back">◀◀</button><button onclick="cecKey('down')" aria-label="TV Down">▼</button><button onclick="cecKey('channels-')">CH-</button></div></div>
 <div class="sec"><h3 data-i18n="cecVol" data-tip="sectionCecVol">Vol</h3><div class="vol-row">
-<button onclick="cec('voldown')">🔉−</button><button onclick="cec('mute')">🔇</button><button onclick="cec('volup')">🔊+</button></div></div>
+<button onclick="cec('voldown')" aria-label="TV Volume down">🔉−</button><button onclick="cec('mute')" aria-label="TV Mute">🔇</button><button onclick="cec('volup')" aria-label="TV Volume up">🔊+</button></div></div>
 <div class="sec"><h3 data-i18n="cecInput" data-tip="sectionCecInput">Input</h3><div class="row">
 <button onclick="cecIn(1)">HDMI1</button><button onclick="cecIn(2)">HDMI2</button><button onclick="cecIn(3)">HDMI3</button></div></div>
 <div class="sec"><h3 data-i18n="cecDevices" data-tip="sectionCecDevices">Devices</h3><div id="cdev" data-i18n="clickScan" style="font-size:.8em;color:#8b949e">Click Scan</div></div></div>
