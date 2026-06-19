@@ -9,12 +9,15 @@ from pathlib import Path
 MOCK_TUI_CONTENT = """import time
 
 INACTIVITY_TIMEOUT = 999999.0
+class SystemStats:
+    def on_mount(self) -> None:
+        pass
+
 class MatrixRain:
     pass
 
 class IdleScreen(Screen):
     pass
-
 class RPiDashboard:
     def on_mount(self) -> None:
         pass
