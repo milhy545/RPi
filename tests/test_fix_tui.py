@@ -17,9 +17,6 @@ class MatrixRain:
     def on_mount(self) -> None:
         pass
 
-class MatrixRain:
-    pass
-
 class IdleScreen(Screen):
     pass
 
