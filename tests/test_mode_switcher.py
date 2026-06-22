@@ -3,6 +3,9 @@ import pytest
 import asyncio
 import signal
 from unittest.mock import Mock, patch, AsyncMock
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from mode_switcher import ModeSwitcher, ModeSwitcherState, InvalidTransition, LogBuffer
 
 class MockApp:
