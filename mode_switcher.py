@@ -188,7 +188,7 @@ class ModeSwitcher:
         if self.state == ModeSwitcherState.RUNNING:
             self._teardown_requested = True
             self._loop.call_soon_threadsafe(
-                lambda: asyncio.ensure_future(self._teardown_only(), loop=self._loop)
+                lambda: asyncio.ensure_future(self._teardown_only())
             )
 
     async def _teardown_and_exit(self):
