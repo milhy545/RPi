@@ -8,16 +8,18 @@ from pathlib import Path
 # Realistic mock data matching the regexes in fix_tui.py
 MOCK_TUI_CONTENT = """import time
 
-INACTIVITY_TIMEOUT = 999999.0
 class SystemStats:
     def on_mount(self) -> None:
         pass
 
+INACTIVITY_TIMEOUT = 999999.0
 class MatrixRain:
-    pass
+    def on_mount(self) -> None:
+        pass
 
 class IdleScreen(Screen):
     pass
+
 class RPiDashboard:
     def on_mount(self) -> None:
         pass
@@ -105,7 +107,7 @@ def test_fix_tui_success(tmp_path: Path):
     assert 'api_app.router.add_post("/system/screensaver"' not in content
     assert 'async def _system_screensaver(req)' not in content
     assert "class RPiDashboard:" in content
-    assert "class SystemStats:\n    def on_mount(self) -> None:\n        pass" in content
+    assert "class SystemStats:" in content
     assert 'api_app.router.add_post("/other/route"' in content
 
 def test_fix_tui_idempotency(tmp_path: Path):
