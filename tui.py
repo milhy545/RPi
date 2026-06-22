@@ -27,14 +27,6 @@ class SystemStats(Static):
         }
         self._settings_cache_ttl = 10.0
 
-        self._settings_cache = {
-            "network": 0.0,
-            "audio": 0.0,
-            "bluetooth": 0.0,
-            "wifi": 0.0
-        }
-        self._settings_cache_ttl = 10.0
-
         # Inicializace stavových proměnných pro výpočet CPU delta
         self._prev_cpu_idle = 0
         self._prev_cpu_total = 0
@@ -286,14 +278,6 @@ class RPiDashboard(App):
         self.api_server_paused = False
 
     def on_mount(self) -> None:
-        self._settings_cache = {
-            "network": 0.0,
-            "audio": 0.0,
-            "bluetooth": 0.0,
-            "wifi": 0.0
-        }
-        self._settings_cache_ttl = 10.0
-
         self._settings_cache = {
             "network": 0.0,
             "audio": 0.0,

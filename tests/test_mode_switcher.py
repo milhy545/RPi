@@ -98,6 +98,7 @@ async def test_launch_success(mode_switcher, mock_app):
 
 @pytest.mark.asyncio
 async def test_launch_concurrency_guard(mode_switcher):
+    """Test that concurrent launches are serialized (not run simultaneously)."""
     with patch("subprocess.Popen") as mock_popen:
         mock_process = Mock()
         # Make the first command wait a bit
@@ -111,20 +112,24 @@ async def test_launch_concurrency_guard(mode_switcher):
         # Launch the first process
         task1 = asyncio.create_task(mode_switcher.launch(["echo", "first"]))
 
-        # Wait a tiny bit to ensure the first process is running and state changed
+        # Wait a tiny bit to ensure the first process has acquired the lock
         await asyncio.sleep(0.1)
 
         # Try to launch a second process concurrently
+        # With the lock-based implementation, this will wait for the first to complete
         success2 = await mode_switcher.launch(["echo", "second"])
 
-        # The second process should be rejected immediately
-        assert success2 is False
+        # The second process should wait and then succeed (serialization)
+        assert success2 is True
 
         # Wait for the first process to finish
         success1 = await task1
 
         # The first process should succeed
         assert success1 is True
+
+        # Verify subprocess was called twice (serialized)
+        assert mock_popen.call_count == 2
 
 @pytest.mark.asyncio
 async def test_launch_with_exception(mode_switcher):
