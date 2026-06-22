@@ -1,12 +1,10 @@
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, Grid
-from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Input, Label, SelectionList
+from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label
 from textual.reactive import reactive
-from textual.screen import Screen
 import time
 import os
 import socket
-import random
 import asyncio
 import shlex
 from datetime import datetime
@@ -417,9 +415,13 @@ class RPiDashboard(App):
                 bt_list.add_option("Žádná spárovaná zařízení")
                 return
                 
-            for line in bt_out.split("\n"):
-                if line.strip():
-                    bt_list.add_option(line.strip())
+            options = [
+                f"{p[2]} ({p[1]})"
+                for line in bt_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
+            ]
+            if options:
+                bt_list.add_options(options)
         except Exception:
             pass
 
@@ -565,7 +567,7 @@ class RPiDashboard(App):
                 
             self.add_cors_headers(response)
             return response
-        except Exception as outer_e:
+        except Exception:
             import traceback
             with open("/tmp/api_error.log", "a") as f:
                 f.write("OUTER Exception in api_middleware:\n")
@@ -714,8 +716,16 @@ class RPiDashboard(App):
             paired_out = await self.run_sys_cmd("bluetoothctl devices Paired")
             connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
             
-            paired = [line.strip() for line in paired_out.split("\n") if line.strip()]
-            connected = [line.strip() for line in connected_out.split("\n") if line.strip()]
+            paired = [
+                f"{p[2]} ({p[1]})"
+                for line in paired_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
+            ]
+            connected = [
+                f"{p[2]} ({p[1]})"
+                for line in connected_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
+            ]
             
             return web.json_response({"status": "ok", "paired": paired, "connected": connected})
         except Exception as e:
