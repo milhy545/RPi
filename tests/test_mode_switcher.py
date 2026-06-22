@@ -157,6 +157,7 @@ async def test_sigterm_handling(mode_switcher):
     mode_switcher._transition(ModeSwitcherState.RUNNING)
     mode_switcher._teardown_and_exit = AsyncMock()
 
+    mode_switcher._loop = asyncio.get_running_loop()
     mode_switcher._handle_sigterm()
 
     # Needs a small sleep to allow the create_task to execute
@@ -165,6 +166,7 @@ async def test_sigterm_handling(mode_switcher):
 
 @pytest.mark.asyncio
 async def test_sigterm_handling_idle(mode_switcher, mock_app):
+    mode_switcher._loop = asyncio.get_running_loop()
     mode_switcher._handle_sigterm()
     assert mock_app.exit_called is True
 
@@ -174,6 +176,7 @@ async def test_sigint_handling(mode_switcher):
     mode_switcher._transition(ModeSwitcherState.RUNNING)
     mode_switcher._teardown_only = AsyncMock()
 
+    mode_switcher._loop = asyncio.get_running_loop()
     mode_switcher._handle_sigint()
 
     # Needs a small sleep to allow the create_task to execute
