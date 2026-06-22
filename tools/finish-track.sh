@@ -41,7 +41,8 @@ if [[ $# -lt 1 ]]; then usage >&2; exit 2; fi
 MSG="$1"
 MILHY_PC_HOST="${MILHY_PC_HOST:-Milhy-PC}"
 MILHY_PC_REPO="${MILHY_PC_REPO:-/home/milhy777/Develop/RPi}"
-TARGET_BRANCH="${TARGET_BRANCH:-master}"
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+TARGET_BRANCH="${TARGET_BRANCH:-$CURRENT_BRANCH}"
 
 if [[ -z "$MSG" ]]; then
   echo "FATAL: commit message must not be empty" >&2
