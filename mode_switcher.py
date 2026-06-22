@@ -85,6 +85,7 @@ class ModeSwitcher:
 
             loop = asyncio.get_running_loop()
             self._loop = loop
+            self._teardown_requested = False
             exit_code = -1
 
             self._transition(ModeSwitcherState.RUNNING)
