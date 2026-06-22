@@ -6,25 +6,17 @@ import subprocess
 from pathlib import Path
 
 # Realistic mock data matching the regexes in fix_tui.py
-# Structure: INACTIVITY_TIMEOUT -> IdleScreen -> (blank line) -> RPiDashboard
-# SystemStats is placed after RPiDashboard to avoid being caught by the regex
+# Structure: INACTIVITY_TIMEOUT -> MatrixRain -> IdleScreen -> (blank line) -> RPiDashboard
 MOCK_TUI_CONTENT = """import time
 
-class SystemStats:
-    def on_mount(self) -> None:
-        pass
-
 INACTIVITY_TIMEOUT = 999999.0
-class IdleScreen(Screen):
-    pass
-
-
 class MatrixRain:
     def on_mount(self) -> None:
         pass
 
 class IdleScreen(Screen):
     pass
+
 
 class RPiDashboard:
     def on_mount(self) -> None:
@@ -103,6 +95,7 @@ def test_fix_tui_success(tmp_path: Path):
 
     assert "INACTIVITY_TIMEOUT" not in content
     assert "class IdleScreen" not in content
+    assert "class MatrixRain" not in content
     assert "screensaver_active" not in content
     assert "async def handle_system_screensaver" not in content
     assert "self.reset_inactivity()" not in content
@@ -113,7 +106,6 @@ def test_fix_tui_success(tmp_path: Path):
     assert 'api_app.router.add_post("/system/screensaver"' not in content
     assert 'async def _system_screensaver(req)' not in content
     assert "class RPiDashboard:" in content
-    assert "class SystemStats:" in content
     assert 'api_app.router.add_post("/other/route"' in content
 
 def test_fix_tui_idempotency(tmp_path: Path):

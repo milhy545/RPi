@@ -866,13 +866,15 @@ class RPiDashboard(App):
         await self.mode_switcher.launch(["false"], timeout=0)
 
     async def run_concurrency_test(self) -> None:
-        """Runs a concurrency guard test (two rapid launch calls)."""
-        self.write_log("[TEST] Starting concurrency guard test...")
+        """Runs a concurrency serialization test (two rapid launch calls, second waits)."""
+        self.write_log("[TEST] Starting concurrency serialization test...")
         t1 = asyncio.create_task(self.mode_switcher.launch(["sleep", "2"], timeout=0))
         await asyncio.sleep(0.1)
         t2 = asyncio.create_task(self.mode_switcher.launch(["sleep", "2"], timeout=0))
-        await asyncio.gather(t1, t2)
-        self.write_log("[TEST] Concurrency guard test finished.")
+        results = await asyncio.gather(t1, t2)
+        # Both should succeed (serialized execution)
+        assert all(results), f"Expected both to succeed, got {results}"
+        self.write_log("[TEST] Concurrency serialization test passed - both launches succeeded.")
 
     MIN_FREE_RAM_MB = {
         "STEAM LINK":             100,
