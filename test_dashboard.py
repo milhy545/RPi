@@ -72,7 +72,7 @@ async def run_tests():
         print("✓ Test subprocess running")
 
         print("Sending SIGINT to process...")
-        app.mode_switcher._handle_sigint(signal.SIGINT, None)
+        app.mode_switcher._handle_sigint()
         
         await asyncio.sleep(1.0)
         assert app.mode_switcher.state == ModeSwitcherState.IDLE
@@ -87,7 +87,7 @@ async def run_tests():
         print("✓ Test subprocess running")
 
         print("Sending SIGTERM to process...")
-        app.mode_switcher._handle_sigterm(signal.SIGTERM, None)
+        app.mode_switcher._handle_sigterm()
         
         await asyncio.sleep(1.0)
         print("✓ SIGTERM handled, clean shutdown initiated")

@@ -320,7 +320,14 @@ class RPiDashboard(App):
         return ""
 
     async def update_settings_data(self) -> None:
-        """Refresh all settings panel widgets with system configuration data."""
+        """Refresh all settings panel widgets with system configuration data (with TTL and tab check)."""
+        try:
+            active_tab = self.query_one(TabbedContent).active
+            if active_tab != "tab_settings":
+                return
+        except Exception:
+            return
+
         current_time = time.time()
         self._updating_settings = True
         try:
@@ -515,7 +522,7 @@ class RPiDashboard(App):
         api_app.router.add_get("/wifi/networks", self.handle_wifi_get_networks)
         api_app.router.add_post("/wifi/connect", self.handle_wifi_connect)
         api_app.router.add_post("/system/reboot", self.handle_system_reboot)
-        api_app.router.add_post("/system/screensaver", self.handle_system_screensaver)
+        # api_app.router.add_post("/system/screensaver", self.handle_system_screensaver)
         api_app.router.add_post("/mode/launch", self.handle_mode_launch)
         api_app.router.add_post("/mode/stop", self.handle_mode_stop)
 
