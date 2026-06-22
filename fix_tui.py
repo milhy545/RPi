@@ -54,7 +54,7 @@ CACHE_INIT = """    def on_mount(self) -> None:
         }
         self._settings_cache_ttl = 10.0
 """
-if "self._settings_cache = {" not in content:
+if "class RPiDashboard:" in content and "self._settings_cache = {" not in content.split("class RPiDashboard:", 1)[1]:
     # Match only RPiDashboard's on_mount (preceded by 'class RPiDashboard:')
     content = re.sub(r'(class RPiDashboard:.*?)    def on_mount\(self\) -> None:', r'\1' + CACHE_INIT, content, flags=re.DOTALL)
     content = re.sub(r'class RPiDashboard:.*?    def on_mount\(self\) -> None:', 'class RPiDashboard:\n' + CACHE_INIT, content, flags=re.DOTALL)
