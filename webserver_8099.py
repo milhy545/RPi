@@ -1496,9 +1496,10 @@ realInputs.forEach(i=>{
   let sn=i.sink||'';
   let sinkLabel=shortName(sn);
   if(!pipeMap[sinkLabel])pipeMap[sinkLabel]=[];
-  pipeMap[sinkLabel].push({id:i.id,format:i.format||'unknown'});
+  pipeMap[sinkLabel].push({id:i.id,format:i.format||'unknown',raw:i});
   activeSinks.add(sinkLabel);
 });
+
 // Build output nodes from devices
 let outNodes=[];
 ds=r.default_sink||'';
@@ -1506,54 +1507,97 @@ if(d.hdmi&&d.hdmi.present)outNodes.push({icon:'📺',label:'HDMI',name:'HDMI',ac
 outNodes.push({icon:'🔊',label:'BT Soundbar',name:'BT Soundbar',active:ds.includes('bluez'),streams:pipeMap['BT Soundbar']||[]});
 outNodes.push({icon:'📡',label:'DLNA Output',name:'DLNA Output',active:ds.includes('WiiMu')||ds.includes('LinkPlayer'),streams:pipeMap['DLNA Output']||[]});
 if(d.usb_output&&d.usb_output.present)outNodes.push({icon:'🔌',label:'USB Output',name:'USB Output',active:ds.includes('usb'),streams:pipeMap['USB Output']||[]});
+
 // Build input nodes from sources
 let inNodes=[];
+// Ensure System/Media always exists if there's an internal stream that is not a physical input
+let hasSystemStreams = realInputs.some(i => !sources.some(s => s.id === i.client));
+if(hasSystemStreams || sources.length === 0) {
+  inNodes.push({icon:'🎵',label:'System / Media',active:hasSystemStreams,system:true});
+}
+
 sources.forEach(s=>{
   let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));
   let title=s.type==='usb_input'?'Alexa USB':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));
-  inNodes.push({icon:icon,label:title,active:s.state==='RUNNING'});
+  inNodes.push({icon:icon,label:title,active:s.state==='RUNNING',raw:s});
 });
+
 // Render as patchbay
 mixerHtml+='<div style="display:flex;gap:1rem;align-items:stretch;min-height:200px">';
+
 // Left column: inputs
-mixerHtml+='<div style="flex:0 0 140px;display:flex;flex-direction:column;gap:.4rem;justify-content:center">';
+mixerHtml+='<div style="flex:0 0 140px;display:flex;flex-direction:column;gap:.5rem;justify-content:center">';
 mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">INPUTS</div>';
 inNodes.forEach(n=>{
-  let border=n.active?'border-color:#238636':'border-color:#30363d';
-  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.3rem .5rem;font-size:.75rem;display:flex;align-items:center;gap:.3rem;background:#161b22">'+n.icon+' '+esc(n.label)+(n.active?' <span style="color:#3fb950">●</span>':'')+'</div>';
+  let border=n.active?'border-color:#3fb950;box-shadow: 0 0 8px rgba(63,185,80,0.2)':'border-color:#30363d';
+  let color=n.active?'color:#e6edf3':'color:#8b949e';
+  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.4rem .5rem;font-size:.8rem;display:flex;align-items:center;gap:.4rem;background:#161b22;transition:all 0.3s ease;'+color+'">';
+  mixerHtml+=n.icon+' <span>'+esc(n.label)+'</span>'+(n.active?'<span style="color:#3fb950;margin-left:auto;font-size:0.6rem;animation:pulse 2s infinite">●</span>':'')+'</div>';
 });
 mixerHtml+='</div>';
+
 // Middle: connections visual
-mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative">';
-mixerHtml+='<svg style="width:100%;height:100%;position:absolute;top:0;left:0" viewBox="0 0 200 200" preserveAspectRatio="none">';
-// Draw connection lines from active inputs to active outputs
+mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative" aria-hidden="true">';
+mixerHtml+='<svg style="width:100%;height:100%;position:absolute;top:0;left:0;overflow:visible" viewBox="0 0 200 200" preserveAspectRatio="none">';
+
+// Defs for animated gradient
+mixerHtml+='<defs><linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#238636" stop-opacity="0.3"/><stop offset="50%" stop-color="#3fb950" stop-opacity="1"/><stop offset="100%" stop-color="#238636" stop-opacity="0.3"/></linearGradient></defs>';
+mixerHtml+='<style>@keyframes flow { to { stroke-dashoffset: -20; } } @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }</style>';
+
 let activeOutputs=outNodes.filter(o=>o.streams.length>0);
 let totalOut=outNodes.length;
 let totalIn=inNodes.length;
+
 activeOutputs.forEach((o,oi)=>{
   let yOut=30+((oi+0.5)/totalOut)*140;
-  // Connect to the source that's playing
+
   o.streams.forEach(s=>{
-    let srcIdx=inNodes.findIndex(n=>n.label.includes('Alexa')||n.label.includes('DLNA')||n.label.includes('Remote')||n.label.includes('mpv'));
-    if(srcIdx<0)srcIdx=0;
+    // Determine which input this stream belongs to
+    let srcIdx = 0; // Default to first (System/Media)
+    if (!inNodes[0].system) {
+        // If System/Media is not there, we fallback
+        srcIdx = inNodes.findIndex(n=>n.label.includes('Alexa')||n.label.includes('DLNA'));
+        if(srcIdx<0)srcIdx=0;
+    }
+
+    // Try to be smarter - if it's the loopback module for Alexa, match the Alexa node
+    if (s.raw && s.raw.client && s.raw.client !== 'system') {
+        let matchedIdx = inNodes.findIndex(n => !n.system && n.raw && n.raw.id && s.raw.client.toString().includes(n.raw.id.toString()));
+        if (matchedIdx >= 0) srcIdx = matchedIdx;
+    }
+
     let yIn=30+((srcIdx+0.5)/totalIn)*140;
-    mixerHtml+='<line x1="10" y1="'+yIn+'" x2="190" y2="'+yOut+'" stroke="#238636" stroke-width="2" stroke-dasharray="4,2" opacity="0.6"/>';
+
+    // Smooth bezier curve
+    let path = `M 10 ${yIn} C 100 ${yIn}, 100 ${yOut}, 190 ${yOut}`;
+
+    // Background path
+    mixerHtml+=`<path d="${path}" fill="none" stroke="#238636" stroke-width="3" opacity="0.2"/>`;
+    // Animated overlay path
+    mixerHtml+=`<path d="${path}" fill="none" stroke="url(#flowGrad)" stroke-width="3" stroke-dasharray="10,10" style="animation: flow 1s linear infinite" />`;
   });
 });
 mixerHtml+='</svg>';
-mixerHtml+='<div style="position:relative;z-index:1;font-size:.7rem;color:#8b949e;text-align:center">'+activeOutputs.length+' active connection'+(activeOutputs.length!==1?'s':'')+'</div>';
+
+// Screen reader only summary for accessibility
+mixerHtml+='<div class="sr-only">Active audio routes: '+activeOutputs.map(o=>o.label+' has '+o.streams.length+' streams').join(', ')+'</div>';
+
+mixerHtml+='<div style="position:relative;z-index:1;font-size:.75rem;color:#8b949e;text-align:center;background:#0d1117;padding:0.2rem 0.6rem;border-radius:10px;border:1px solid #30363d">'+activeOutputs.length+' active route'+(activeOutputs.length!==1?'s':'')+'</div>';
 mixerHtml+='</div>';
+
 // Right column: outputs
-mixerHtml+='<div style="flex:0 0 160px;display:flex;flex-direction:column;gap:.4rem;justify-content:center">';
+mixerHtml+='<div style="flex:0 0 160px;display:flex;flex-direction:column;gap:.5rem;justify-content:center">';
 mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">OUTPUTS</div>';
 outNodes.forEach(n=>{
   let streams=n.streams;
   let hasStreams=streams.length>0;
-  let border=hasStreams?'border-color:#238636':(n.active?'border-color:#1f6feb':'border-color:#30363d');
-  let bg=hasStreams?'background:#0d1117':'';
-  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.3rem .5rem;font-size:.75rem;'+bg+'">';
-  mixerHtml+=n.icon+' '+esc(n.label)+(hasStreams?' <span style="color:#3fb950;font-size:.65rem">▶ '+streams.length+'</span>':'');
-  if(hasStreams){mixerHtml+='<div style="font-size:.65rem;color:#8b949e;margin-top:.15rem">'+streams.map(s=>esc(s.format)).join(', ')+'</div>'}
+  let border=hasStreams?'border-color:#3fb950;box-shadow: 0 0 8px rgba(63,185,80,0.15)':(n.active?'border-color:#1f6feb':'border-color:#30363d');
+  let bg=hasStreams?'background:#0d1117':'background:#161b22';
+  let color=hasStreams?'color:#e6edf3':'color:#8b949e';
+  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.4rem .5rem;font-size:.8rem;transition:all 0.3s ease;'+bg+';'+color+'">';
+  mixerHtml+='<div style="display:flex;align-items:center">'+n.icon+' <span style="margin-left:.4rem">'+esc(n.label)+'</span>'+(hasStreams?' <span style="color:#3fb950;margin-left:auto;font-size:.7rem;animation:pulse 2s infinite">▶ '+streams.length+'</span>':'')+'</div>';
+  if(hasStreams){mixerHtml+='<div style="font-size:.65rem;color:#8b949e;margin-top:.3rem;border-top:1px dashed #30363d;padding-top:.2rem">'+streams.map(s=>esc(s.format)).join(', ')+'</div>'}
   mixerHtml+='</div>';
 });
 mixerHtml+='</div>';
