@@ -718,13 +718,13 @@ class RPiDashboard(App):
             
             paired = [
                 f"{p[2]} ({p[1]})"
-                for line in paired_out.split("\n")
-                if line and len(p := line.split(" ", 2)) == 3
+                for line in paired_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
             ]
             connected = [
                 f"{p[2]} ({p[1]})"
-                for line in connected_out.split("\n")
-                if line and len(p := line.split(" ", 2)) == 3
+                for line in connected_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
             ]
             
             return web.json_response({"status": "ok", "paired": paired, "connected": connected})
