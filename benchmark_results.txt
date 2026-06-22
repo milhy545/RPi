@@ -1,0 +1,9 @@
+--- Benchmark Results ---
+
+Original update_bluetooth_devices: 0.983053 s
+Optimized update_bluetooth_devices: 0.868523 s
+Improvement: 11.65%
+
+Original handle_bluetooth_get_devices: 0.233219 s
+Optimized handle_bluetooth_get_devices: 0.173084 s
+Improvement: 25.78%
