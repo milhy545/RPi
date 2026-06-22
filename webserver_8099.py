@@ -2131,10 +2131,11 @@ async def term_handler(websocket):
     cols = 80
     poll_task = None
 
-    def resize_tmux():
+    async def resize_tmux():
         try:
-            subprocess.run(["tmux", "resize-pane", "-t", session_name, "-x", str(cols), "-y", str(rows)],
-                capture_output=True, timeout=1)
+            proc = await asyncio.create_subprocess_exec("tmux", "resize-pane", "-t", session_name, "-x", str(cols), "-y", str(rows),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            await asyncio.wait_for(proc.communicate(), timeout=1.0)
         except Exception:
             pass
 
@@ -2169,7 +2170,7 @@ async def term_handler(websocket):
                 session_name = data.get("session", "RPi")
                 rows = max(10, min(80, int(data.get("rows") or rows)))
                 cols = max(40, min(220, int(data.get("cols") or cols)))
-                resize_tmux()
+                await resize_tmux()
                 if poll_task:
                     poll_task.cancel()
                 poll_task = asyncio.create_task(poll_output())
@@ -2177,7 +2178,7 @@ async def term_handler(websocket):
                 r = data.get("resize") or {}
                 rows = max(10, min(80, int(r.get("rows") or rows)))
                 cols = max(40, min(220, int(r.get("cols") or cols)))
-                resize_tmux()
+                await resize_tmux()
             elif data.get("input"):
                 try:
                     inp = data["input"]
@@ -2198,11 +2199,13 @@ async def term_handler(websocket):
                         "\x1b[F": "End",
                     }
                     if inp in special_keys:
-                        subprocess.run(["tmux", "send-keys", "-t", session_name, special_keys[inp]],
-                            capture_output=True, timeout=1)
+                        proc = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, special_keys[inp],
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        await asyncio.wait_for(proc.communicate(), timeout=1.0)
                     else:
-                        subprocess.run(["tmux", "send-keys", "-t", session_name, "-l", inp],
-                            capture_output=True, timeout=1)
+                        proc = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "-l", inp,
+                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        await asyncio.wait_for(proc.communicate(), timeout=1.0)
                 except Exception:
                     pass
     except Exception:
