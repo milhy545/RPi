@@ -2029,7 +2029,7 @@ class H(BaseHTTPRequestHandler):
                         temp_c=round(int(open(tp).read().strip())/1000,1); break
                     except Exception: pass
                 global _hw_stats_freq_cache
-                now = time.time()
+                now = time.monotonic()
                 if now - _hw_stats_freq_cache["time"] > 2.0:
                     freq = []
                     for i in range(4):
