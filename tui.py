@@ -417,8 +417,8 @@ class RPiDashboard(App):
                 
             options = [
                 f"{p[2]} ({p[1]})"
-                for line in bt_out.split("\n")
-                if line and len(p := line.split(" ", 2)) == 3
+                for line in bt_out.splitlines()
+                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
             ]
             if options:
                 bt_list.add_options(options)
