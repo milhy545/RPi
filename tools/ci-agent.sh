@@ -8,7 +8,8 @@ cd "$ROOT"
 
 SOURCE_REMOTE="${SOURCE_REMOTE:-local}"   # local or a git remote name
 TARGET_REMOTE="${TARGET_REMOTE:-origin}"
-BRANCH="${BRANCH:-master}"
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+BRANCH="${BRANCH:-$CURRENT_BRANCH}"
 POLL_SECONDS="${POLL_SECONDS:-0}"
 REPORT_DIR="${REPORT_DIR:-conductor/ci/reports}"
 STATE_FILE="${STATE_FILE:-.git/rpi-ci-agent-last-sha}"
