@@ -686,6 +686,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "pytest-asyncio" },
     { name = "textual" },
 ]
 
@@ -699,6 +700,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.0" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "textual", specifier = ">=8.2.7" },
 ]
 
