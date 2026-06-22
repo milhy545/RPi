@@ -1769,6 +1769,9 @@ def page():
 <script>{JS}</script></body></html>"""
 
 
+
+_hw_stats_freq_cache = {"data": [None, None, None, None], "time": 0}
+
 class H(BaseHTTPRequestHandler):
     server_version="RPi-TV/4.2"
     def log_message(self,f,*a): pass
@@ -2068,10 +2071,20 @@ class H(BaseHTTPRequestHandler):
                     try:
                         temp_c=round(int(open(tp).read().strip())/1000,1); break
                     except Exception: pass
-                freq=[]
-                for i in range(4):
-                    try: freq.append(int(open(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq").read().strip())//1000)
-                    except Exception: freq.append(None)
+                global _hw_stats_freq_cache
+                now = time.monotonic()
+                if now - _hw_stats_freq_cache["time"] > 2.0:
+                    freq = []
+                    for i in range(4):
+                        try:
+                            with open(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq") as f:
+                                freq.append(int(f.read().strip()) // 1000)
+                        except Exception:
+                            freq.append(None)
+                    _hw_stats_freq_cache["data"] = freq
+                    _hw_stats_freq_cache["time"] = now
+                else:
+                    freq = _hw_stats_freq_cache["data"]
                 gpu={"core_mhz": None, "temp_c": temp_c}
                 try:
                     raw=subprocess.check_output(["vcgencmd","measure_clock","core"], text=True, timeout=2).strip()
