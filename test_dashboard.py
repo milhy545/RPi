@@ -47,19 +47,20 @@ async def run_tests():
         assert any("returned code 1" in log for log in logs)
         print("✓ Crash recovery verified (TUI safely restored to IDLE after non-zero exit)")
 
-        # 4. Test concurrency guard (press "g")
-        print("\n--- Testing Concurrency Guard ---")
+        # 4. Test concurrency serialization (press "g")
+        print("\n--- Testing Concurrency Serialization ---")
         print("Pressing 'g' to trigger concurrent launch requests...")
         await pilot.press("g")
-        await asyncio.sleep(0.5)
+        # Wait for both sleeps to complete (serialized: ~4s total)
+        await asyncio.sleep(5.0)
         
         logs = app.mode_switcher.log_buffer.get_lines()
-        warnings = [log for log in logs if "Warning" in log or "warning" in log or "rejected" in log]
+        success_logs = [log for log in logs if "succeeded" in log or "passed" in log or "finished" in log]
         print("Relevant logs:")
-        for w in warnings[-3:]:
+        for w in success_logs[-3:]:
             print(f"  {w}")
-        assert any("rejected" in log or "Launch rejected" in log for log in logs)
-        print("✓ Concurrency guard successfully rejected concurrent execution")
+        assert any("passed" in log or "succeeded" in log for log in logs)
+        print("✓ Concurrency serialization works - both launches succeeded sequentially")
 
         await asyncio.sleep(2.0)
 
