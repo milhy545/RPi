@@ -4,7 +4,12 @@ keys2mpv — Multimedia keyboard daemon for RPi.
 Reads /dev/input/event2 directly, sends commands to mpv via IPC.
 Works independently of TUI/webserver — runs as background service.
 """
-import json, os, socket, struct, sys, time, glob, signal
+import json
+import os
+import signal
+import socket
+import struct
+import sys
 
 INPUT_DEV = "/dev/input/event2"
 SOCKETS = ["/tmp/rpi-mpv.sock", "/tmp/mpv-socket"]
@@ -71,11 +76,11 @@ def main():
     if not os.path.exists(INPUT_DEV):
         print(f"keys2mpv: ERROR - {INPUT_DEV} not found")
         sys.exit(1)
-    
+
     print(f"keys2mpv: Listening on {INPUT_DEV}")
     print(f"keys2mpv: Sockets: {SOCKETS}")
     print(f"keys2mpv: Press Ctrl+C or kill to stop")
-    
+
     with open(INPUT_DEV, 'rb') as f:
         while True:
             data = f.read(24)

@@ -1,11 +1,6 @@
-🧪 [testing improvement] Fix regexes in fix_tui.py to be more robust for tests
+🧹 [Code Health] Remove unused time and glob imports in keys2mpv.py
 
-🎯 **What:** The `fix_tui.py` refactoring script contained regexes that were too greedy, which could inadvertently delete other unrelated classes if they appeared between the target strings (e.g., deleting `SystemStats` when targeting `INACTIVITY_TIMEOUT` and `IdleScreen`). It also replaced all `on_mount` instances instead of just the one belonging to `RPiDashboard`. These brittle regexes made the script fail the newly created regression tests in `test_fix_tui.py`.
-
-📊 **Coverage:** The test suite (`test_fix_tui.py`) now covers:
-- Successful and precise application of the refactoring rules.
-- Idempotency (running the script multiple times yields the same result).
-- Edge cases like the file being missing.
-We achieve 100% test coverage of `fix_tui.py`.
-
-✨ **Result:** The `fix_tui.py` script is now fully robust, preventing it from accidentally deleting code in other classes during execution. Tests pass and maintain full coverage, serving as a reliable safety net.
+🎯 **What:** Removed the unused `time` and `glob` imports from `keys2mpv.py` and formatted the remaining imports to follow PEP 8 standards (one per line). Also cleaned up a few instances of trailing whitespace.
+💡 **Why:** Improves code maintainability and readability by removing dead code. Re-formatting imports ensures standard library imports are grouped and easier to read.
+✅ **Verification:** Ran `python3 -m py_compile keys2mpv.py` to ensure there are no syntax errors. Checked that tests run correctly.
+✨ **Result:** Cleaner imports without changing any functionality.
