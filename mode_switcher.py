@@ -2,7 +2,6 @@ import asyncio
 import subprocess
 import signal
 import sys
-import time
 from enum import Enum, auto
 
 # Timeout constants per mode
@@ -45,6 +44,8 @@ class ModeSwitcher:
         self.log_buffer = LogBuffer()
         self.active_process = None
         self.watchdog_task = None
+        self._teardown_requested = False
+        self._loop = None
         self._setup_signals()
 
     def _setup_signals(self):
@@ -82,6 +83,8 @@ class ModeSwitcher:
                 self.app.pause_api_server()
 
             loop = asyncio.get_running_loop()
+            self._loop = loop
+            self._teardown_requested = False
             exit_code = -1
 
             self._transition(ModeSwitcherState.RUNNING)
@@ -158,14 +161,34 @@ class ModeSwitcher:
                     await asyncio.sleep(0.1)
 
     def _handle_sigterm(self):
+        if self._loop is None:
+            if self.state == ModeSwitcherState.IDLE:
+                self.app.exit()
+            return
+
+        if self._teardown_requested:
+            return
+
         if self.state == ModeSwitcherState.RUNNING:
-            asyncio.create_task(self._teardown_and_exit())
+            self._teardown_requested = True
+            self._loop.call_soon_threadsafe(
+                lambda: asyncio.ensure_future(self._teardown_and_exit())
+            )
         elif self.state == ModeSwitcherState.IDLE:
             self.app.exit()
 
     def _handle_sigint(self):
+        if self._loop is None:
+            return
+
+        if self._teardown_requested:
+            return
+
         if self.state == ModeSwitcherState.RUNNING:
-            asyncio.create_task(self._teardown_only())
+            self._teardown_requested = True
+            self._loop.call_soon_threadsafe(
+                lambda: asyncio.ensure_future(self._teardown_only())
+            )
 
     async def _teardown_and_exit(self):
         await self._teardown_active_process()

@@ -4,9 +4,15 @@ import re
 with open("tui.py", "r", encoding="utf-8") as f:
     content = f.read()
 
-# Remove INACTIVITY_TIMEOUT and MatrixRain and IdleScreen
+# Remove INACTIVITY_TIMEOUT
 content = re.sub(
-    r'INACTIVITY_TIMEOUT = 999999\.0.*?class IdleScreen\(Screen\):.*?(?=\n\nclass RPiDashboard)',
+    r'INACTIVITY_TIMEOUT = 999999\.0\n',
+    '', content
+)
+
+# Remove MatrixRain and IdleScreen
+content = re.sub(
+    r'class MatrixRain:.*?class IdleScreen\(Screen\):.*?(?=\nclass RPiDashboard|\n\nclass RPiDashboard)',
     '', content, flags=re.DOTALL
 )
 
@@ -51,6 +57,7 @@ CACHE_INIT = """    def on_mount(self) -> None:
 if "self._settings_cache = {" not in content:
     # Match only RPiDashboard's on_mount (preceded by 'class RPiDashboard:')
     content = re.sub(r'(class RPiDashboard:.*?)    def on_mount\(self\) -> None:', r'\1' + CACHE_INIT, content, flags=re.DOTALL)
+    content = re.sub(r'class RPiDashboard:.*?    def on_mount\(self\) -> None:', 'class RPiDashboard:\n' + CACHE_INIT, content, flags=re.DOTALL)
 
 # Replace update_settings_data with TTL logic
 UPDATE_SETTINGS = """    async def update_settings_data(self) -> None:
