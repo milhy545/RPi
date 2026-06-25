@@ -833,17 +833,34 @@ class RPiDashboard(App):
         self.write_log(f"[NETWORK] Playing cast URL: {url}")
         
         from mode_switcher import MPV_TIMEOUT
+        import subprocess as _sp
         # Force HDMI connector active for DRM output (RPi 3B+ quirk)
         try:
             with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f:
                 f.write("on")
         except Exception:
             pass
+        # Blank console so DRM planes are not overridden by fbcon
+        try:
+            _sp.run(["sudo", "bash", "-c",
+                     "echo 1 > /sys/class/vt/console/dkblnk 2>/dev/null;"
+                     "cat /dev/zero > /dev/fb0 2>/dev/null"],
+                    timeout=2, capture_output=True)
+        except Exception:
+            pass
         # MPV reads settings from /etc/mpv/mpv.conf (H.264-only, v4l2m2m HW decode)
         # use_suspend=False: DRM/KMS video output breaks when TUI suspends
         await self.mode_switcher.launch([
-            "mpv", "--input-ipc-server=/tmp/mpv-socket", url
+            "mpv", "--vo=drm", "--hwdec=auto", "--fs",
+            "--input-ipc-server=/tmp/mpv-socket", url
         ], timeout=MPV_TIMEOUT, use_suspend=False)
+        # Restore console after MPV finishes
+        try:
+            _sp.run(["sudo", "bash", "-c",
+                     "echo 0 > /sys/class/vt/console/dkblnk 2>/dev/null"],
+                    timeout=2, capture_output=True)
+        except Exception:
+            pass
         
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
