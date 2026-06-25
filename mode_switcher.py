@@ -68,7 +68,7 @@ class ModeSwitcher:
             raise InvalidTransition(f"Cannot transition from {self.state.name} to {new_state.name}")
         self.state = new_state
 
-    async def launch(self, command: list[str], timeout: float = 0):
+    async def launch(self, command: list[str], timeout: float = 0, use_suspend: bool = True):
         async with self.lock:
             # Concurrency guard: reject immediately if not in IDLE state
             if self.state != ModeSwitcherState.IDLE:
@@ -93,11 +93,12 @@ class ModeSwitcher:
 
             def run_sync():
                 try:
-                    # Execute synchronous command with inherited raw stdin/stdout/stderr
-                    # to ensure interactive apps receive direct TTY access
+                    # For DRM/KMS apps (mpv --vo=drm), don't pass stdin - TUI holds terminal in raw mode.
+                    # mpv is controlled via IPC socket, so stdin not needed.
+                    # stdout/stderr inherited so logs appear in journal/console.
                     self.active_process = subprocess.Popen(
                         command,
-                        stdin=sys.__stdin__,
+                        stdin=subprocess.DEVNULL,
                         stdout=sys.__stdout__,
                         stderr=sys.__stderr__,
                     )
@@ -108,17 +109,21 @@ class ModeSwitcher:
 
             try:
                 # Textual suspend context manager suspends TUI rendering.
-                # If running in a headless test environment, this is not supported,
-                # so we fall back to running without suspension.
-                try:
-                    with self.app.suspend():
-                        exit_code = await loop.run_in_executor(None, run_sync)
-                except Exception as e:
-                    if "not supported in this environment" in str(e):
-                        self.log_buffer.write("[SYSTEM] App.suspend not supported in this environment, running without suspension.")
-                        exit_code = await loop.run_in_executor(None, run_sync)
-                    else:
-                        raise e
+                # For DRM/KMS apps (mpv with --vo=drm), suspend breaks video output.
+                # If use_suspend=False or not supported, run without suspension.
+                if use_suspend:
+                    try:
+                        with self.app.suspend():
+                            exit_code = await loop.run_in_executor(None, run_sync)
+                    except Exception as e:
+                        if "not supported in this environment" in str(e):
+                            self.log_buffer.write("[SYSTEM] App.suspend not supported in this environment, running without suspension.")
+                            exit_code = await loop.run_in_executor(None, run_sync)
+                        else:
+                            raise e
+                else:
+                    self.log_buffer.write("[SYSTEM] Running without TUI suspend (DRM/KMS mode)")
+                    exit_code = await loop.run_in_executor(None, run_sync)
             except Exception as e:
                 self.log_buffer.write(f"[ERROR] Suspension block execution failed: {e}")
                 exit_code = -1

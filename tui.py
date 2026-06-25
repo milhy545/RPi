@@ -164,6 +164,12 @@ class RPiDashboard(App):
         width: 100%;
         margin-bottom: 1;
     }
+    .mpv-url-input {
+        width: 100%;
+        margin-bottom: 1;
+        background: $surface;
+        border: solid $accent;
+    }
     #settings-container {
         layout: grid;
         grid-size: 2 2;
@@ -195,6 +201,7 @@ class RPiDashboard(App):
                         yield Static("[bold]Ovládání[/bold]\n", classes="title")
                         yield Button("Spustit SteamLink", id="btn_steamlink", variant="primary")
                         yield Button("GeForce Now", id="btn_gfn", variant="default")
+                        yield Input(placeholder="YouTube URL nebo přímý odkaz...", id="input_mpv_url", classes="mpv-url-input")
                         yield Button("Spustit MPV", id="btn_mpv", variant="success")
                         yield Button("Spotify WebOS", id="btn_spotify", variant="warning")
                         yield Button("Amazon Music", id="btn_amazon", variant="default")
@@ -817,19 +824,26 @@ class RPiDashboard(App):
 
 
     async def play_media(self, url: str) -> None:
-        """Suspend TUI, play the URL using mpv (with IPC socket), and resume TUI using ModeSwitcher."""
+        """Suspend TUI, play the URL using mpv (with IPC socket), and resume TUI using ModeSwitcher.
+        
+        RPi 3B+ uses /etc/mpv/mpv.conf for H.264-only format selection and HW decode settings.
+        """
         mode_status = self.query_one("#mode_status", ModeStatus)
         mode_status.current_mode = "MPV (Přehrávač)"
         self.write_log(f"[NETWORK] Playing cast URL: {url}")
         
         from mode_switcher import MPV_TIMEOUT
-        # We start MPV with a UNIX IPC socket server at /tmp/mpv-socket
-        # so that player controls (pause, volume, seek) can be routed to it.
+        # Force HDMI connector active for DRM output (RPi 3B+ quirk)
+        try:
+            with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f:
+                f.write("on")
+        except Exception:
+            pass
+        # MPV reads settings from /etc/mpv/mpv.conf (H.264-only, v4l2m2m HW decode)
+        # use_suspend=False: DRM/KMS video output breaks when TUI suspends
         await self.mode_switcher.launch([
-            "mpv", "--fs", "--input-ipc-server=/tmp/mpv-socket", "--vo=drm",
-            "--cache=yes", "--demuxer-max-bytes=32MiB", "--demuxer-max-back-bytes=16MiB", "--hwdec=auto",
-            url
-        ], timeout=MPV_TIMEOUT)
+            "mpv", "--input-ipc-server=/tmp/mpv-socket", url
+        ], timeout=MPV_TIMEOUT, use_suspend=False)
         
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
@@ -926,11 +940,18 @@ class RPiDashboard(App):
             asyncio.create_task(self.launch_mode("GEFORCE NOW (Moonlight)", cmd, timeout=0))
             
         elif event.button.id == "btn_mpv":
-            cmd = ["mpv", "--vo=drm"]
-            if not shutil.which("mpv"):
-                self.write_log("[SYSTEM] 'mpv' not found, falling back to 'top' for visual test.")
-                cmd = ["top"]
-            asyncio.create_task(self.launch_mode("MPV (Přehrávač)", cmd, timeout=0))
+            try:
+                url_input = self.query_one("#input_mpv_url", Input)
+                url = url_input.value.strip()
+            except Exception:
+                url = ""
+            
+            if not url:
+                self.write_log("[ERROR] MPV: No URL provided. Enter a YouTube URL or direct media link.")
+                return
+            
+            # Use play_media which properly launches MPV with IPC socket
+            asyncio.create_task(self.play_media(url))
             
         elif event.button.id == "btn_spotify":
             cmd = ["cage", "-d", "--", "cog", "--platform=drm", "https://open.spotify.com"]
