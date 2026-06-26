@@ -4,6 +4,12 @@ Modules should import from this file instead of using hard‑coded literals.
 """
 
 # Server ports (environment variables can override)
+# Additional: allowed IP subnets for API access (local LAN + Tailscale)
+ALLOWED_SUBNETS = [
+    "127.0.0.0/8",      # localhost
+    "192.168.0.0/16",   # typical home LAN
+    "100.64.0.0/10",    # Tailscale range (default)
+]
 import os
 
 HOST = "0.0.0.0"

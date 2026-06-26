@@ -12,7 +12,8 @@ except ImportError:
 
 # yt-dlp is installed in venv, no need for Kodi addon path
 
-from config import HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT
+from config import HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, ALLOWED_SUBNETS
+import ipaddress
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -1838,6 +1839,20 @@ def page():
 _rate_limit_cache: dict[str, float] = {}
 from config import RATE_LIMIT_SECONDS
 
+def _is_allowed_ip(client_ip: str) -> bool:
+    """Return True if *client_ip* belongs to one of ALLOWED_SUBNETS.
+    Uses ipaddress module for robust CIDR checking.
+    """
+    try:
+        ip = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+    for net in ALLOWED_SUBNETS:
+        if ip in ipaddress.ip_network(net):
+            return True
+    return False
+
+
 def _check_rate_limit(client_ip: str) -> bool:
     """Check if request is rate limited. Returns True if allowed."""
     now = time.monotonic()
@@ -1867,6 +1882,10 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p=urlparse(self.path);q=parse_qs(p.query);path=p.path
 
+        # IP allowlist check
+        if not _is_allowed_ip(self.client_address[0]):
+            self.sj(403, {"error": "Forbidden – IP not allowed"})
+            return
         # Rate limit check
         if not _check_rate_limit(self.client_address[0]):
             self.send_error(429, "Rate limited")
@@ -2262,6 +2281,10 @@ class H(BaseHTTPRequestHandler):
             else: self.st(404,"nf","text/plain")
         except Exception as e: self.sj(500,{"error":str(e)})
     def do_POST(self):
+        # IP allowlist check for POST requests
+        if not _is_allowed_ip(self.client_address[0]):
+            self.sj(403, {"error": "Forbidden – IP not allowed"})
+            return
         ln=int(self.headers.get("Content-Length","0"))
         body=self.rfile.read(ln).decode()
         # Handle bug/feature reports submitted via POST /report
