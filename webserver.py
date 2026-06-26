@@ -616,6 +616,23 @@ def _save_audio_latency(data):
             json.dump(data, f)
     except Exception: pass
 
+# ------- Report handling -------
+def _save_report(report: dict, client_ip: str) -> str:
+    """Save a bug/feature report to the local `reports/` directory.
+    Returns the filename used for storage.
+    """
+    import time, json, os
+    ts = int(time.time())
+    filename = f"{ts}_{client_ip.replace('.','_')}.json"
+    path = os.path.join(os.path.dirname(__file__), "reports", filename)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        # Log error to stderr but do not crash server
+        print(f"[WARN] Failed to save report: {e}", file=sys.stderr)
+    return filename
+
 def _sink_name_by_id(sink_id, sinks):
     for s in sinks:
         if str(s["id"])==str(sink_id): return s["name"]
@@ -1856,6 +1873,10 @@ class H(BaseHTTPRequestHandler):
         if not _check_rate_limit(self.client_address[0]):
             self.send_error(429, "Rate limited")
             return
+        # Placeholder modes endpoint
+        if path == "/modes":
+            self.sj(200, {"ok": True, "modes": ["player","audio","devices","terminal"], "note": "Placeholder endpoint"})
+            return
         try:
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
@@ -2245,6 +2266,19 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         ln=int(self.headers.get("Content-Length","0"))
         body=self.rfile.read(ln).decode()
+        # Handle bug/feature reports submitted via POST /report
+        if self.path == "/report":
+            try:
+                report=json.loads(body)
+            except Exception:
+                return self.st(400,"Invalid JSON", "text/plain")
+            # Ensure required fields
+            if not isinstance(report, dict) or not report.get("type") or not report.get("description"):
+                return self.st(400,"Missing required fields (type, description)", "text/plain")
+            client_ip=self.client_address[0]
+            filename=_save_report({**report, "client_ip": client_ip, "timestamp": int(time.time())}, client_ip)
+            return self.sj(201,{"ok":True,"file": filename})
+        # Existing deprecated endpoint handling
         u=(parse_qs(body).get("url")or[""])[0].strip()
         if not u: return self.st(400,page())
         self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi POST playback was removed; use /mpv/play or the Player tab."})
