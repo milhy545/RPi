@@ -37,7 +37,7 @@ def norm(u):
         return ""
     u=u.strip()
     try: p=urlsplit(u)
-    except: return u
+    except Exception: return u
     if p.scheme in ("http","https"): return urlunsplit((p.scheme,p.netloc,re.sub(r"/{2,}","/",p.path),p.query,p.fragment))
     return u
 
@@ -80,10 +80,10 @@ def kodi_rpc(m, p=None, t=3):
             dec=json.JSONDecoder(); probe=d.decode("utf-8","replace").lstrip()
             while probe:
                 try: obj,i=dec.raw_decode(probe)
-                except: break
+                except Exception: break
                 if isinstance(obj,dict) and obj.get("id")==1: return obj
                 probe=probe[i:].lstrip()
-    except: pass
+    except Exception: pass
     return {"result":[]}
 
 # ── MPV ────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ def mpv_start(url, q=None, resume=False):
     # Force HDMI connector + activate HDMI audio profile
     try:
         with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f: f.write("on")
-    except: pass
+    except Exception: pass
     import subprocess as _sp
     _sp.run(["pactl","set-card-profile","alsa_card.platform-3f902000.hdmi","output:hdmi-stereo"],
             capture_output=True, timeout=3)
@@ -247,7 +247,7 @@ def mpv_st():
             "dur":mget("duration").get("data",0),
             "title":_mtitle or mget("media-title").get("data",""),
             "vol":mget("volume").get("data",100),"q":_mq}
-    except: return {"on":True,"err":True,"pid":(_mpv.pid if tracked else (pids[0] if pids else None)),"pids":pids,"tracked":bool(tracked),"orphan":not bool(tracked),"title":_mtitle}
+    except Exception: return {"on":True,"err":True,"pid":(_mpv.pid if tracked else (pids[0] if pids else None)),"pids":pids,"tracked":bool(tracked),"orphan":not bool(tracked),"title":_mtitle}
 
 # ── CEC ────────────────────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ def cec_scan():
     try:
         r = subprocess.run(["cec-ctl","-d","/dev/cec0","-S"], capture_output=True, text=True, timeout=5)
         return r.stdout.strip()[:500] if r.stdout.strip() else "No devices"
-    except: return "Timeout"
+    except Exception: return "Timeout"
 _bridg = None
 def br_start():
     global _bridg
@@ -346,7 +346,7 @@ def mc(c):
     try:
         s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.connect(MP);s.settimeout(1)
         s.sendall((json.dumps({"command":["parse-command",c]})+"\n").encode());s.recv(4096);s.close()
-    except: pass
+    except Exception: pass
 M={"play":"cycle pause","pause":"cycle pause","stop":"stop","backward":"seek -10",
    "forward":"seek 10","rewind":"seek -60","fast_forward":"seek 60",
    "left":"seek -10","right":"seek 10","select":"cycle pause","exit":"stop",
@@ -363,9 +363,9 @@ while True:
                 ll=l.lower()
                 for k,c in M.items():
                     if k in ll: mc(c); break
-    except: pass
+    except Exception: pass
     try: p.wait(timeout=2)
-    except: p.kill()
+    except Exception: p.kill()
     time.sleep(2)
 '''
     _bridg=subprocess.Popen([sys.executable,"-c",sc],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -376,7 +376,7 @@ def br_stop():
     if _bridg and _bridg.poll() is None:
         _bridg.terminate()
         try: _bridg.wait(timeout=3)
-        except: _bridg.kill()
+        except Exception: _bridg.kill()
     _bridg=None
 
 def br_st():
@@ -482,7 +482,7 @@ def _start_loopback(source, sink, rate=48000, channels=2):
             "latency_msec=20","remix=true"], t=10)
     if r.returncode==0:
         try: return int(r.stdout.strip())
-        except: pass
+        except Exception: pass
     return None
 
 def _stop_loopback(module_id):
@@ -502,7 +502,7 @@ def _stop_loopback_by_source(source_name):
 def _get_default_sink():
     """Get current default sink."""
     try: return _run(["pactl","get-default-sink"]).stdout.strip()
-    except: return None
+    except Exception: return None
 
 def _resolve_alexa_target():
     """Determine where Alexa AUX should route based on default sink.
@@ -525,12 +525,12 @@ _DLNAIN_MODE_FILE=os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
 def _load_dlnain_mode():
     try:
         with open(_DLNAIN_MODE_FILE) as f: return json.load(f)
-    except: return {"mode":"follow","manual_sink":None}
+    except Exception: return {"mode":"follow","manual_sink":None}
 
 def _save_dlnain_mode(data):
     try:
         with open(_DLNAIN_MODE_FILE,"w") as f: json.dump(data,f)
-    except: pass
+    except Exception: pass
 
 def _resolve_dlnain_target():
     """Determine DLNA Input target based on mode."""
@@ -549,7 +549,7 @@ def _dlnain_loopback_running():
             if "gmediarender" in l.lower() or "gmrender" in l.lower():
                 parts=l.split()
                 if len(parts)>=2: gmrender_src=parts[1]
-    except: pass
+    except Exception: pass
     if not gmrender_src: return False, None
     lb=_find_loopback_by_source(gmrender_src)
     return lb is not None, gmrender_src
@@ -565,7 +565,7 @@ def _alexa_loopback_running():
                 m2=re.search(r'^(\d+)', l)
                 mod_id=m2.group(1) if m2 else None
                 return True, target, mod_id
-    except: pass
+    except Exception: pass
     return False, None, None
 
 def _paired_bt_device(paired_text, mac=BT_SOUNDBAR_MAC):
@@ -594,13 +594,15 @@ def _classify_source(name):
 def _load_audio_latency():
     try:
         if os.path.exists(AUDIO_LATENCY_FILE):
-            return json.load(open(AUDIO_LATENCY_FILE))
+            with open(AUDIO_LATENCY_FILE) as f:
+                return json.load(f)
     except Exception: pass
     return {"dlna_output_offset_ms": 0, "default_latency_ms": 0}
 
 def _save_audio_latency(data):
     try:
-        json.dump(data, open(AUDIO_LATENCY_FILE, "w"))
+        with open(AUDIO_LATENCY_FILE, "w") as f:
+            json.dump(data, f)
     except Exception: pass
 
 def _sink_name_by_id(sink_id, sinks):
@@ -739,10 +741,9 @@ def audio_set_latency(key, value_ms):
 def _ensure_silent_wav():
     if os.path.exists(SILENT_WAV): return
     import struct, wave
-    f=wave.open(SILENT_WAV,'w')
-    f.setnchannels(1); f.setsampwidth(2); f.setframerate(48000)
-    f.writeframes(struct.pack('<'+'h'*48000, *([0]*48000)))
-    f.close()
+    with wave.open(SILENT_WAV,'w') as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(48000)
+        f.writeframes(struct.pack('<'+'h'*48000, *([0]*48000)))
 
 def _keepalive_start(sink_name):
     global _ka_procs
@@ -764,7 +765,7 @@ def _keepalive_stop(sink_name=None):
         if proc and proc.poll() is None:
             proc.terminate()
             try: proc.wait(timeout=3)
-            except: proc.kill()
+            except Exception: proc.kill()
         return True
     for sn in list(_ka_procs):
         _keepalive_stop(sn)
@@ -1022,7 +1023,7 @@ def _dlnain_start():
             if "gmediarender" in l.lower() or "gmrender" in l.lower():
                 parts=l.split()
                 if len(parts)>=2: gmrender_src=parts[1]
-    except: pass
+    except Exception: pass
     if not gmrender_src:
         return {"ok":False,"error":"gmrender source not found in PipeWire"}
     target=_resolve_dlnain_target()
@@ -2107,7 +2108,8 @@ class H(BaseHTTPRequestHandler):
                 temp_c=None
                 for tp in ("/sys/class/thermal/thermal_zone0/temp","/sys/class/thermal/thermal_zone1/temp"):
                     try:
-                        temp_c=round(int(open(tp).read().strip())/1000,1); break
+                        with open(tp) as f:
+                            temp_c=round(int(f.read().strip())/1000,1); break
                     except Exception: pass
                 global _hw_stats_freq_cache
                 now = time.monotonic()
@@ -2132,7 +2134,8 @@ class H(BaseHTTPRequestHandler):
                     raw=subprocess.check_output(["vcgencmd","measure_temp"], text=True, timeout=2).strip()
                     gpu["temp_c"]=round(float(raw.split("=")[-1].replace("'C","")),1)
                 except Exception: pass
-                up=int(float(open("/proc/uptime").read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
+                with open("/proc/uptime") as f:
+                    up=int(float(f.read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
                 self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
             elif path=="/system/https-info":
                 host=(self.headers.get('Host','').split(':')[0] or '192.168.0.205')
@@ -2153,7 +2156,7 @@ class H(BaseHTTPRequestHandler):
                         mask_val = int(mpv_mask, 16)
                         cores = [str(i) for i in range(4) if mask_val & (1 << i)]
                         mpv_cores = ",".join(cores) if cores else "none"
-                    except:
+                    except Exception:
                         mpv_cores = "?"
 
                 dash_pid = subprocess.check_output(["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"], text=True).strip()
@@ -2362,7 +2365,8 @@ def ensure_https_cert():
     os.makedirs(HTTPS_CERT_DIR, mode=0o700, exist_ok=True)
     san = _https_san()
     try:
-        old_san = open(HTTPS_SAN_FILE, "r", encoding="utf-8").read().strip()
+        with open(HTTPS_SAN_FILE, "r", encoding="utf-8") as f:
+            old_san = f.read().strip()
     except Exception:
         old_san = ""
     if os.path.exists(HTTPS_CERT_FILE) and os.path.exists(HTTPS_KEY_FILE) and old_san == san:
@@ -2543,7 +2547,7 @@ def _load_dlnain_config():
     try:
         with open(path) as f:
             return json.load(f)
-    except:
+    except Exception:
         return {"mode":"follow","manual_sinks":[],"multi_output":False}
 
 def _save_dlnain_config(data):
@@ -2552,7 +2556,7 @@ def _save_dlnain_config(data):
         with open(path,"w") as f:
             json.dump(data,f,indent=2)
         return True
-    except:
+    except Exception:
         return False
 
 def dlna_input_get_config():
@@ -2605,7 +2609,7 @@ def dlna_input_status():
             if "gmediarender" in l.lower():
                 gmrender_src=l.split()[0]
                 break
-    except:
+    except Exception:
         pass
     running,sink=_dlnain_loopback_running()
     active=[]
@@ -2663,7 +2667,7 @@ def audio_route_dlna_input():
                     if len(parts)>=2:
                         gmrender_src=parts[1]
                         break
-        except:
+        except Exception:
             pass
         
         if not gmrender_src:
