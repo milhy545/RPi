@@ -71,3 +71,4 @@ playback-memory.json
 
 # Local CI generated reports
 conductor/ci/reports/
+core
