@@ -30,12 +30,40 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
-      - name: Run project CI
+      - name: Run project CI (core)
         env:
           STRICT_SECURITY_TOOLS: '0'
         run: |
           chmod +x tools/*.sh tools/*.py
           tools/run-ci.sh
+
+      - name: Install lint/type/coverage tools
+        run: |
+          python -m pip install mypy ruff pytest pytest-cov
+
+      - name: Type checking with mypy
+        run: |
+          mypy .
+
+      - name: Lint with ruff
+        run: |
+          ruff check .
+
+      - name: Run tests with coverage
+        run: |
+          .venv/bin/python -m pytest --cov=.
+
+      - name: Build Docker image
+        run: |
+          docker build -t rpi-dashboard:ci .
+
+      - name: Security scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: rpi-dashboard:ci
+          format: sarif
+          output: trivy.sarif
+
 
       - name: Upload CI reports
         if: always()

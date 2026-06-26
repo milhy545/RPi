@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: RPi‑TV Dashboard API
+  version: 1.0.0
+  description: API endpoints for the RPi‑TV Dashboard web UI.
+servers:
+  - url: http://{host}:{port}
+    variables:
+      host:
+        default: localhost
+      port:
+        enum:
+          - 80
+          - 8080
+          - 8443
+          - 443
+        default: 8080
+paths:
+  /mpv/play:
+    get:
+      summary: Play a YouTube URL via MPV.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: resume
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Playback started.
+        "400":
+          description: Missing or invalid URL.
+  /audio/default-sink:
+    get:
+      summary: Set the default audio sink.
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sink changed.
+  /report:
+    post:
+      summary: Submit a bug or feature report.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - description
+              properties:
+                type:
+                  type: string
+                  enum: [bug, feature]
+                description:
+                  type: string
+                tab:
+                  type: string
+      responses:
+        "201":
+          description: Report stored.
+        "400":
+          description: Invalid payload.
