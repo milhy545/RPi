@@ -190,6 +190,31 @@ def mpv_start(url, q=None, resume=False):
     _mpv=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask,"resume_pos":resume_pos}
 
+def _restore_console():
+    """Restore fbcon after MPV DRM exit."""
+    import subprocess as _sp
+    try:
+        # Find which VT the TUI is running on
+        tui_pid = None
+        for line in _sp.check_output(["ps","axo","pid,tty,comm"], text=True).splitlines():
+            if "tui.py" in line and "bash" not in line:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1] != "?":
+                    tui_pid = parts[1]
+                    break
+        target_vt = "/dev/tty1"  # fallback
+        if tui_pid:
+            tty = _sp.check_output(["ps","-o","tty=","-p",tui_pid], text=True).strip()
+            if tty and tty != "?":
+                target_vt = f"/dev/{tty}"
+        # Activate the TUI's VT to restore console
+        _sp.run(["setfont"], capture_output=True, timeout=2)
+        _sp.run(["chvt","1"], capture_output=True, timeout=2)
+        # Try to rebind fbcon
+        _sp.run(["sh","-c","echo 0 > /sys/class/vt/vtblank"], capture_output=True, timeout=2)
+    except Exception:
+        pass
+
 def mpv_stop():
     global _mpv
     pids=[]
@@ -205,6 +230,8 @@ def mpv_stop():
     stopped=_terminate_pids(pids)
     _mpv=None
     cleanup_stale_mpv_socket()
+    time.sleep(0.5)
+    _restore_console()
     return {"ok":True,"stopped":stopped,"pids":sorted(set(pids)),"socket_live":mpv_ipc_socket_live()}
 
 def mpv_st():
