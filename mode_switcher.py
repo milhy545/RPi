@@ -1,6 +1,5 @@
 import asyncio
 import os
-import select
 import subprocess
 import signal
 import sys
@@ -95,42 +94,17 @@ class ModeSwitcher:
 
             def run_sync():
                 try:
-                    # For DRM/KMS apps (mpv --vo=drm), don't pass stdin - TUI holds terminal in raw mode.
-                    # mpv is controlled via IPC socket, so stdin not needed.
-                    # stdout/stderr: pipe them so external app output doesn't
-                    # overlay the TUI on the shared VT.
+                    # When use_suspend=True, Textual releases the terminal (restores cooked mode)
+                    # so the subprocess can receive keyboard input normally.
+                    # When use_suspend=False (DRM/KMS apps like mpv), stdin is not needed.
+                    stdin_opt = None if use_suspend else subprocess.DEVNULL
                     self.active_process = subprocess.Popen(
                         command,
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
+                        stdin=stdin_opt,
+                        stdout=sys.__stdout__,
+                        stderr=sys.__stderr__,
                     )
-                    # Read subprocess output line by line and feed to TUI log
-                    import select
-                    proc = self.active_process
-                    fd = proc.stdout.fileno()
-                    buf = b""
-                    while True:
-                        r, _, _ = select.select([fd], [], [], 0.5)
-                        if r:
-                            chunk = os.read(fd, 4096)
-                            if not chunk:
-                                break
-                            buf += chunk
-                            while b"\n" in buf:
-                                line, buf = buf.split(b"\n", 1)
-                                text = line.decode("utf-8", errors="replace").strip()
-                                if text:
-                                    loop.call_soon_threadsafe(self.log_buffer.write, f"[APP] {text}")
-                        elif proc.poll() is not None:
-                            # Process exited, drain remaining output
-                            remaining = proc.stdout.read()
-                            if remaining:
-                                for line in remaining.decode("utf-8", errors="replace").splitlines():
-                                    if line.strip():
-                                        loop.call_soon_threadsafe(self.log_buffer.write, f"[APP] {line.strip()}")
-                            break
-                    return proc.wait()
+                    return self.active_process.wait()
                 except Exception as e:
                     loop.call_soon_threadsafe(self.log_buffer.write, f"[ERROR] Subprocess exception: {e}")
                     return -1
