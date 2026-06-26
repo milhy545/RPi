@@ -33,6 +33,8 @@ QUALITY = {
 DQ = "720p"
 
 def norm(u):
+    if not isinstance(u, str):
+        return ""
     u=u.strip()
     try: p=urlsplit(u)
     except: return u
