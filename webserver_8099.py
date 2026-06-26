@@ -147,6 +147,15 @@ def _terminate_pids(pids, timeout=3.0):
 
 def mpv_start(url, q=None, resume=False):
     global _mpv,_mq,_mtitle,_murl
+    # Force HDMI connector + activate HDMI audio profile
+    try:
+        with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f: f.write("on")
+    except: pass
+    import subprocess as _sp
+    _sp.run(["pactl","set-card-profile","alsa_card.platform-3f902000.hdmi","output:hdmi-stereo"],
+            capture_output=True, timeout=3)
+    _sp.run(["pactl","set-default-sink","alsa_output.platform-3f902000.hdmi.hdmi-stereo"],
+            capture_output=True, timeout=3)
     if not resume and mpv_ipc_socket_live():
         save_mpv_resume_memory()
     mpv_stop(); _mq=q or _mq
@@ -172,7 +181,7 @@ def mpv_start(url, q=None, resume=False):
                 resume_pos = None
     cmd=["taskset", "-c", core_mask, "mpv",
          "--vo=drm","--drm-mode=640x480","--hwdec=v4l2m2m",
-         "--fullscreen","--no-terminal","--ytdl=no","--ao=alsa",
+         "--fullscreen","--no-terminal","--ytdl=no","--ao=pulse",
          f"--title={_mtitle}",
          f"--input-ipc-server={MSOCK}","--keep-open=always"]
     if resume_pos is not None:
