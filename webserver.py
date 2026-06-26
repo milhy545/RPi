@@ -23,6 +23,14 @@ HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
 HTTPS_SAN_FILE = os.path.join(HTTPS_CERT_DIR, "webui.san")
 KODI_H, KODI_P = "127.0.0.1", 9090
 MSOCK = "/tmp/rpi-mpv.sock"
+
+# Constants
+MAX_SOCKET_BUFFER = 65536
+SOCKET_RECV_SIZE = 4096
+TERMINAL_POLL_INTERVAL = 0.35
+DEFAULT_TIMEOUT = 3
+CEC_TIMEOUT = 5
+MPV_CONNECT_TIMEOUT = 2
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
 QUALITY = {
@@ -33,7 +41,8 @@ QUALITY = {
 }
 DQ = "720p"
 
-def norm(u):
+def norm(u: str) -> str:
+    """Normalize URL by removing redundant slashes in path."""
     if not isinstance(u, str):
         return ""
     u=u.strip()
@@ -42,7 +51,8 @@ def norm(u):
     if p.scheme in ("http","https"): return urlunsplit((p.scheme,p.netloc,re.sub(r"/{2,}","/",p.path),p.query,p.fragment))
     return u
 
-def yt_id(u):
+def yt_id(u: str) -> str:
+    """Extract YouTube video ID from URL."""
     m=YT_RE.search(norm(u)); return m.group(1) if m else ""
 
 def resolve(url, q=None):
@@ -73,8 +83,8 @@ def kodi_rpc(m, p=None, t=3):
         with socket.create_connection((KODI_H,KODI_P),timeout=t) as s:
             s.sendall(json.dumps(r).encode()+b"\n"); s.settimeout(t)
             d=b""
-            while len(d)<65536:
-                c=s.recv(4096)
+            while len(d)<MAX_SOCKET_BUFFER:
+                c=s.recv(SOCKET_RECV_SIZE)
                 if not c: break
                 d+=c
                 if b"\n" in d: break
@@ -98,7 +108,7 @@ def mcmd(*a):
         s.sendall((json.dumps({"command":list(a)})+"\n").encode())
         d=b""
         while True:
-            c=s.recv(4096)
+            c=s.recv(SOCKET_RECV_SIZE)
             if not c: break
             d+=c
             if b"\n" in d: break
@@ -346,7 +356,7 @@ def mc(c):
     if not os.path.exists(MP): return
     try:
         s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.connect(MP);s.settimeout(1)
-        s.sendall((json.dumps({"command":["parse-command",c]})+"\n").encode());s.recv(4096);s.close()
+        s.sendall((json.dumps({"command":["parse-command",c]})+"\n").encode());s.recv(SOCKET_RECV_SIZE);s.close()
     except Exception: pass
 M={"play":"cycle pause","pause":"cycle pause","stop":"stop","backward":"seek -10",
    "forward":"seek 10","rewind":"seek -60","fast_forward":"seek 60",
@@ -1809,24 +1819,43 @@ def page():
 <script>{JS}</script></body></html>"""
 
 
+# Rate limiting
+_rate_limit_cache: dict[str, float] = {}
+RATE_LIMIT_SECONDS = 1.0
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Check if request is rate limited. Returns True if allowed."""
+    now = time.monotonic()
+    last = _rate_limit_cache.get(client_ip, 0)
+    if now - last < RATE_LIMIT_SECONDS:
+        return False
+    _rate_limit_cache[client_ip] = now
+    return True
+
 
 _hw_stats_freq_cache = {"data": [None, None, None, None], "time": 0}
 
 class H(BaseHTTPRequestHandler):
+    """HTTP request handler for RPi-TV Dashboard WebUI."""
     server_version="RPi-TV/4.2"
     def log_message(self,f,*a): pass
     def sj(self,c,o):
         d=json.dumps(o,ensure_ascii=False).encode()
         self.send_response(c);self.send_header("Content-Type","application/json")
-        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","*")
+        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","http://localhost")
         self.end_headers();self.wfile.write(d)
     def st(self,c,b,ct="text/html;charset=utf-8"):
         d=b.encode()
         self.send_response(c);self.send_header("Content-Type",ct)
-        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","*")
+        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","http://localhost")
         self.end_headers();self.wfile.write(d)
     def do_GET(self):
         p=urlparse(self.path);q=parse_qs(p.query);path=p.path
+
+        # Rate limit check
+        if not _check_rate_limit(self.client_address[0]):
+            self.send_error(429, "Rate limited")
+            return
         try:
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
@@ -2431,7 +2460,7 @@ def mpv_ipc_query(command, path=MSOCK, quiet=True):
         s.settimeout(1.0)
         s.connect(path)
         s.sendall((json.dumps(command) + "\n").encode('utf-8'))
-        data = s.recv(4096)
+        data = s.recv(SOCKET_RECV_SIZE)
         s.close()
         return json.loads(data.decode('utf-8'))
     except Exception as e:
