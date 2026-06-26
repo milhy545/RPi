@@ -12,11 +12,7 @@ except ImportError:
 
 # yt-dlp is installed in venv, no need for Kodi addon path
 
-HOST = "0.0.0.0"
-PORT = int(os.environ.get("RPIDASHBOARD_PORT", "8080"))
-HTTP_PORT = int(os.environ.get("RPIDASHBOARD_HTTP_PORT", "80"))
-HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT", "8443"))
-HTTPS_PORT_ALT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT_ALT", "443"))
+from config import HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -737,9 +733,11 @@ def audio_set_volume(kind, name, volume):
     return {"ok":r.returncode==0,"kind":kind,"name":name,"volume":vol,"out":(r.stdout+r.stderr).strip()[:200]}
 
 def audio_set_default(name):
-    if not name: return {"ok":False,"error":"name required"}
-    r=_run(["pactl","set-default-sink",name], t=5)
-    return {"ok":r.returncode==0,"name":name,"out":(r.stdout+r.stderr).strip()[:200]}
+    if not name:
+        return {"ok": False, "error": "name required"}
+    # Use default timeout (5s) by not passing t
+    r = _run(["pactl", "set-default-sink", name])
+    return {"ok": r.returncode == 0, "name": name, "out": (r.stdout + r.stderr).strip()[:200]}
 
 def _apply_dlna_delay():
     """Apply saved DLNA latency offset as mpv audio-delay (in seconds)."""
@@ -1838,7 +1836,7 @@ def page():
 
 # Rate limiting
 _rate_limit_cache: dict[str, float] = {}
-RATE_LIMIT_SECONDS = 1.0
+from config import RATE_LIMIT_SECONDS
 
 def _check_rate_limit(client_ip: str) -> bool:
     """Check if request is rate limited. Returns True if allowed."""
