@@ -4,7 +4,12 @@ keys2mpv — Multimedia keyboard daemon for RPi.
 Reads /dev/input/event2 directly, sends commands to mpv via IPC.
 Works independently of TUI/webserver — runs as background service.
 """
-import json, os, socket, struct, sys, time, glob, signal
+import json
+import os
+import signal
+import socket
+import struct
+import sys
 
 INPUT_DEV = "/dev/input/event2"
 SOCKETS = ["/tmp/rpi-mpv.sock", "/tmp/mpv-socket"]
