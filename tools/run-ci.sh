@@ -61,11 +61,11 @@ optional_step() {
 } > "$REPORT"
 
 run_step "git diff whitespace check" git diff --check
-run_step "Python compile: webserver" python3 -m py_compile webserver_8099.py
+run_step "Python compile: webserver" python3 -m py_compile webserver.py
 run_step "Python compile: tui" python3 -m py_compile tui.py
 run_step "Python compile: mode_switcher" python3 -m py_compile mode_switcher.py
 run_step "Python compile: keys2mpv" python3 -m py_compile keys2mpv.py
-python3 tools/extract-webui-js.py webserver_8099.py > /tmp/rpi-webui-ci.js
+python3 tools/extract-webui-js.py webserver.py > /tmp/rpi-webui-ci.js
 run_step "Extract WebUI JS" test -s /tmp/rpi-webui-ci.js
 
 if command -v node >/dev/null 2>&1; then
@@ -101,7 +101,7 @@ optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact 
 optional_step bandit "Bandit Python security scan (high severity gate)" bandit -q -lll -r . -x .venv,__pycache__
 optional_step pip-audit "pip-audit dependency scan" pip-audit
 
-run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver_8099.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null'
+run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null'
 
 append "# Final Result"
 if [[ $FAILURES -eq 0 ]]; then

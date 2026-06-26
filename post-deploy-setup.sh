@@ -32,7 +32,7 @@ fi
 
 echo ""
 echo "=== 4. Deploying legacy webserver on port 8099 ==="
-cp /home/milhy777/rpi-dashboard/webserver_8099.py /home/milhy777/webserver_8099.py
+cp /home/milhy777/rpi-dashboard/webserver.py /home/milhy777/webserver.py
 
 cat > /tmp/webserver-8099.service << 'EOF'
 [Unit]
@@ -43,7 +43,7 @@ After=network.target
 Type=simple
 User=milhy777
 WorkingDirectory=/home/milhy777
-ExecStart=/home/milhy777/rpi-dashboard/.venv/bin/python /home/milhy777/webserver_8099.py
+ExecStart=/home/milhy777/rpi-dashboard/.venv/bin/python /home/milhy777/webserver.py
 Restart=on-failure
 RestartSec=5
 Environment=PATH=/home/milhy777/.local/bin:/usr/local/bin:/usr/bin:/bin

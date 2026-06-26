@@ -1,0 +1,29 @@
+[Unit]
+Description=RPi-TV Dashboard Webserver
+After=network.target
+
+[Service]
+Type=simple
+User=milhy777
+WorkingDirectory=/home/milhy777/rpi-dashboard
+ExecStart=/home/milhy777/rpi-dashboard/.venv/bin/python /home/milhy777/rpi-dashboard/webserver.py
+Restart=on-failure
+RestartSec=5
+KillMode=process
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+Environment=PATH=/home/milhy777/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=HOME=/home/milhy777
+Environment=RPIDASHBOARD_PORT=8080
+Environment=RPIDASHBOARD_HTTP_PORT=80
+Environment=RPIDASHBOARD_HTTPS_PORT=8443
+Environment=RPIDASHBOARD_HTTPS_PORT_ALT=443
+
+# CPU Affinity: Core 0 (Background I/O pool)
+CPUAffinity=0
+
+[Install]
+WantedBy=multi-user.target

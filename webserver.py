@@ -12,10 +12,11 @@ except ImportError:
 
 # yt-dlp is installed in venv, no need for Kodi addon path
 
-HOST, PORT = "0.0.0.0", 8099
-FRIENDLY_HTTP_PORT = int(os.environ.get("RPIDASHBOARD_FRIENDLY_HTTP_PORT", "80"))
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("RPIDASHBOARD_PORT", "8080"))
+HTTP_PORT = int(os.environ.get("RPIDASHBOARD_HTTP_PORT", "80"))
 HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT", "8443"))
-FRIENDLY_HTTPS_PORT = int(os.environ.get("RPIDASHBOARD_FRIENDLY_HTTPS_PORT", "443"))
+HTTPS_PORT_ALT = int(os.environ.get("RPIDASHBOARD_HTTPS_PORT_ALT", "443"))
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -1318,7 +1319,7 @@ function msg(t,c){let d=document.createElement('div');d.className='t '+c;d.textC
 async function api(u){try{return await(await fetch(u)).json()}catch(e){return{error:e.message}}}
 function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
 let previewTimer=null,previewSeq=0;
-function httpsUrlForCurrent(){let host=location.hostname||'rpi-tv';let p=location.port;if(p==='8099')return 'https://'+host+':8443'+location.pathname;if(p==='80'||p==='')return 'https://'+host+location.pathname;return 'https://'+host+(p?':'+p:'')+location.pathname}
+function httpsUrlForCurrent(){let host=location.hostname||'rpi-tv';let p=location.port;if(p==='8080')return 'https://'+host+':8443'+location.pathname;if(p==='80'||p==='')return 'https://'+host+location.pathname;return 'https://'+host+(p?':'+p:'')+location.pathname}
 function updateSecurityBanner(){let b=$('#security-banner');if(!b)return;if(location.protocol==='https:'){b.className='ok show';b.innerHTML='<span>'+L('secureClipboardEnabled')+'</span>';return}let u=httpsUrlForCurrent();b.className='warn show';b.innerHTML='<span>'+L('httpFallbackBanner')+'</span><a href="'+esc(u)+'">'+L('openHttps')+'</a>'}
 function playerActive(){let p=$('#p-player');return !!(p&&p.classList.contains('active'))}
 function playerEnter(){ytCookieStatus();autoClipboardUrl();schedulePreview()}
@@ -2140,7 +2141,7 @@ class H(BaseHTTPRequestHandler):
             elif path=="/system/https-info":
                 host=(self.headers.get('Host','').split(':')[0] or '192.168.0.205')
                 names, ips = _dashboard_hostnames_and_ips()
-                self.sj(200,{"ok":True,"http_port":PORT,"https_port":HTTPS_PORT,"friendly_http_port":FRIENDLY_HTTP_PORT,"friendly_https_port":FRIENDLY_HTTPS_PORT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{host}:{HTTPS_PORT}/","friendly_https_url":f"https://{host}/","friendly_http_url":f"http://{host}/","names":names,"ips":ips})
+                self.sj(200,{"ok":True,"http_port":PORT,"https_port":HTTPS_PORT,"friendly_http_port":HTTP_PORT,"friendly_https_port":HTTPS_PORT_ALT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{host}:{HTTPS_PORT}/","friendly_https_url":f"https://{host}/","friendly_http_url":f"http://{host}/","names":names,"ips":ips})
             elif path=="/system/status":
                 # Get CPU mask info for all services
                 try:
@@ -2169,7 +2170,7 @@ class H(BaseHTTPRequestHandler):
                 if keys_pid and keys_pid != "0":
                     keys_mask = subprocess.check_output(["taskset", "-p", keys_pid], text=True).strip().split(":")[-1].strip()
 
-                ws_pid = subprocess.check_output(["systemctl", "show", "webserver-8099", "-p", "MainPID", "--value"], text=True).strip()
+                ws_pid = subprocess.check_output(["systemctl", "show", "webserver", "-p", "MainPID", "--value"], text=True).strip()
                 ws_mask = "N/A"
                 if ws_pid and ws_pid != "0":
                     ws_mask = subprocess.check_output(["taskset", "-p", ws_pid], text=True).strip().split(":")[-1].strip()
@@ -2715,10 +2716,10 @@ if __name__=="__main__":
     cleanup_stale_mpv_socket()
     start_ws_server()
     start_resume_poller()
-    start_http_server(FRIENDLY_HTTP_PORT, "friendly HTTP")
+    start_http_server(HTTP_PORT, "friendly HTTP")
     start_https_server(HTTPS_PORT, "HTTPS")
-    if FRIENDLY_HTTPS_PORT != HTTPS_PORT:
-        start_https_server(FRIENDLY_HTTPS_PORT, "friendly HTTPS")
+    if HTTPS_PORT_ALT != HTTPS_PORT:
+        start_https_server(HTTPS_PORT_ALT, "friendly HTTPS")
     httpd=ThreadingHTTPServer((HOST,PORT),H)
     print(f"RPi-TV HTTP on http://{HOST}:{PORT}",flush=True)
     httpd.serve_forever()
