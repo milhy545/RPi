@@ -42,41 +42,59 @@ fi
 
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
 echo "=== Check 3: Receipt for HEAD ==="
-RECEIPT="$(find "$RECEIPT_DIR" -name "${HEAD_SHA}-*.json" -type f 2>/dev/null | sort -r | head -1 || true)"
+RECEIPT="$(find "$RECEIPT_DIR" -name "${HEAD_SHA}-*.json" -type f 2>/dev/null | sort -r | head -1)"
 if [[ -z "$RECEIPT" ]]; then
   err "No receipt found for HEAD=$HEAD_SHA in $RECEIPT_DIR"
   echo "  This means finish-track.sh was not run or it failed." >&2
   echo "  The agent MUST NOT claim 'done' without a receipt." >&2
 else
-  # Validate receipt contents
-  RECEIPT_STATUS="$(python3 -c "import json; print(json.load(open('$RECEIPT'))['status'])" 2>/dev/null || echo corrupt)"
-  RECEIPT_SHA="$(python3 -c "import json; print(json.load(open('$RECEIPT'))['commit_sha'])" 2>/dev/null || echo unknown)"
+  # Validate receipt contents with explicit failure handling
+  if ! RECEIPT_STATUS=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('status',''))"); then
+    err "Failed to read receipt status from $RECEIPT"
+    RECEIPT_STATUS=""
+  fi
+  if [[ -z "$RECEIPT_STATUS" ]]; then
+    err "Failed to read receipt status from $RECEIPT"
+  fi
+  if ! RECEIPT_SHA=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('commit_sha',''))"); then
+    err "Failed to read receipt commit_sha from $RECEIPT"
+    RECEIPT_SHA=""
+  fi
+  if [[ -z "$RECEIPT_SHA" ]]; then
+    err "Failed to read receipt commit_sha from $RECEIPT"
+  fi
 
-  if [[ "$RECEIPT_STATUS" != "done" ]]; then
+  if [[ -z "$RECEIPT_STATUS" ]]; then
+    err "Receipt missing or unreadable"
+  elif [[ "$RECEIPT_STATUS" != "done" ]]; then
     err "Receipt status is '$RECEIPT_STATUS' (expected 'done')"
+  elif [[ -z "$RECEIPT_SHA" ]]; then
+    err "Receipt missing commit_sha"
   elif [[ "$RECEIPT_SHA" != "$HEAD_SHA" ]]; then
     err "Receipt SHA ($RECEIPT_SHA) does not match HEAD ($HEAD_SHA)"
   else
     ok "Valid receipt: $RECEIPT"
-  fi
-fi
-
-# ─── Check 4: CI report exists for HEAD ─────────────────────────────────────
-echo "=== Check 4: CI report ==="
-REPORT="$(find "$REPORT_DIR" -name "${HEAD_SHA}-*.md" -type f 2>/dev/null | sort -r | head -1 || true)"
-if [[ -z "$REPORT" ]]; then
-  # CI report uses pre-commit SHA; fall back to most recent report.
-  REPORT="$(find "$REPORT_DIR" -name '*.md' -type f 2>/dev/null | sort -r | head -1 || true)"
-fi
-if [[ -z "$REPORT" ]]; then
-  err "No CI report found in $REPORT_DIR"
-else
-  if grep -q '^PASS' "$REPORT" 2>/dev/null; then
-    ok "CI report PASS: $REPORT"
-  elif grep -q '^FAILURES' "$REPORT" 2>/dev/null; then
-    err "CI report shows FAILURES: $REPORT"
-  else
-    ok "CI report exists (final line unclear): $REPORT"
+    # Additional checks for ci_report and actions_url
+    if ! CI_REPORT=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('ci_report',''))"); then
+      err "Failed to read receipt ci_report from $RECEIPT"
+      CI_REPORT=""
+    fi
+    if [[ -z "$CI_REPORT" || "$CI_REPORT" == "null" ]]; then
+      err "Receipt ci_report is empty or missing"
+    elif [[ ! -f "$CI_REPORT" ]]; then
+      err "ci_report file does not exist at $CI_REPORT"
+    elif ! grep -q '^PASS' "$CI_REPORT"; then
+      err "ci_report file $CI_REPORT does not contain PASS line"
+    fi
+    if ! ACTIONS_URL=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('actions_url',''))"); then
+      err "Failed to read receipt actions_url from $RECEIPT"
+      ACTIONS_URL=""
+    fi
+    if [[ -z "$ACTIONS_URL" || "$ACTIONS_URL" == "null" ]]; then
+      err "Receipt actions_url is empty or missing"
+    elif [[ "$ACTIONS_URL" != https://* ]]; then
+      err "Receipt actions_url is not an https URL"
+    fi
   fi
 fi
 
@@ -122,7 +140,7 @@ fi
 
 # ─── Check 8: Forbid forbidden strings ──────────────────────────────────────
 echo "=== Check 8: Forbidden strings ==="
-if git show HEAD -- webserver_8099.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null | grep -E 'GFN-TV|killall mpv|pkill mpv'; then
+if git show HEAD -- webserver.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null | grep -E 'GFN-TV|killall mpv|pkill mpv'; then
   err "Forbidden strings found in HEAD commit source files"
 else
   ok "No forbidden strings in HEAD"

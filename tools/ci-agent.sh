@@ -69,12 +69,56 @@ run_once() {
   if tools/run-ci.sh; then
     echo "CI passed for $source_sha. Pushing to $TARGET_REMOTE/$BRANCH"
     if GIT_TERMINAL_PROMPT=0 git push "$TARGET_REMOTE" "$BRANCH:$BRANCH"; then
-      printf '%s\n' "$source_sha" > "$STATE_FILE"
       echo "Pushed $source_sha to GitHub remote $TARGET_REMOTE."
+      # Discover GitHub Actions run for this SHA with bounded retries and strict matching
+      MAX_RETRIES=12
+      RETRY=0
+      GH_RUN_ID=""
+      while [[ $RETRY -lt $MAX_RETRIES && -z $GH_RUN_ID ]]; do
+        # List runs for the commit; capture errors but continue retries
+        if ! GH_RUN_JSON=$(gh run list --commit "$source_sha" --workflow ci.yml --json databaseId,url,headSha 2>&1); then
+          notify_fail "gh run list command failed for SHA $source_sha: $GH_RUN_JSON"
+          GH_RUN_JSON="[]"
+        fi
+        # Accept empty JSON array as no run yet
+        if [[ -z "$GH_RUN_JSON" ]]; then
+          GH_RUN_JSON="[]"
+        fi
+        GH_RUN_ID=$(python3 -c "import json, sys; runs=json.load(sys.stdin); target='$source_sha'; print(next((r.get('databaseId') for r in runs if r.get('headSha')==target), ''))" <<<"$GH_RUN_JSON")
+        if [[ -n $GH_RUN_ID ]]; then
+          break
+        fi
+        RETRY=$((RETRY+1))
+        sleep 5
+      done
+      if [[ -z $GH_RUN_ID ]]; then
+        notify_fail "No GitHub Actions run found for SHA $source_sha after $MAX_RETRIES retries"
+        return 1
+      fi
+      # Wait for run completion with a 600s timeout
+      if ! timeout 600 gh run watch "$GH_RUN_ID" --exit-status; then
+        notify_fail "GitHub Actions run $GH_RUN_ID did not succeed within timeout"
+        return 1
+      fi
+      GH_RUN_URL=$(gh run view "$GH_RUN_ID" --json url --jq '.url')
+      # Emit CI report only if it exists and is non‑empty
+      CI_REPORT=$(latest_report)
+      if [[ -z "$CI_REPORT" ]]; then
+        notify_fail "CI report not found after successful run"
+        return 1
+      fi
+      echo "CI_REPORT=$CI_REPORT"
+      echo "GITHUB_ACTIONS_URL=$GH_RUN_URL"
+      # Update state file only after successful CI run
+      printf '%s\n' "$source_sha" > "$STATE_FILE"
       return 0
     fi
     local report
-    report="$(latest_report || true)"
+    report="$(latest_report)"
+    if [[ -z "$report" ]]; then
+      notify_fail "CI report not found after push failure"
+      return 1
+    fi
     notify_fail "Commit $source_sha passed CI but GitHub push failed. Check GitHub authentication. Report: ${report:-none}"
     return 1
   fi

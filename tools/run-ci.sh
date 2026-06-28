@@ -78,12 +78,15 @@ else
 fi
 
 if [[ -f test_testaudio_webui.py ]]; then
-  if curl -fsS --max-time 2 http://127.0.0.1:8099/ >/dev/null 2>&1; then
+  # Configurable WebUI port (default 8080) and URL for safe audio tests
+  WEBUI_PORT="${RPIDASHBOARD_WEBUI_PORT:-8080}"
+  export RPIDASHBOARD_WEBUI_URL="http://127.0.0.1:${WEBUI_PORT}"
+  if curl -fsS --max-time 2 "${RPIDASHBOARD_WEBUI_URL}/" >/dev/null 2>&1; then
     run_step "Safe WebUI audio unit tests" python3 test_testaudio_webui.py
   else
-    log "SKIP: Safe WebUI audio unit tests (server not running on 127.0.0.1:8099)"
+    log "SKIP: Safe WebUI audio unit tests (server not running on ${RPIDASHBOARD_WEBUI_URL})"
     append "## Safe WebUI audio unit tests"
-    append "SKIP: WebUI server is not running on 127.0.0.1:8099."
+    append "SKIP: WebUI server is not running on ${RPIDASHBOARD_WEBUI_URL}."
     append ""
   fi
 fi
@@ -100,6 +103,8 @@ optional_step shellcheck "ShellCheck shell scripts" bash -lc 'shopt -s nullglob;
 optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source .
 optional_step bandit "Bandit Python security scan (high severity gate)" bandit -q -lll -r . -x .venv,__pycache__
 optional_step pip-audit "pip-audit dependency scan" pip-audit
+# Run full pytest suite to ensure comprehensive test coverage
+run_step "Run full pytest suite" uv run pytest -q
 
 run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null'
 

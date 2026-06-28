@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
 import html, json, os, re, socket, sys, subprocess, time, stat, ssl, shutil
 import asyncio, threading
+from typing import Dict
 try:
     import websockets
     HAS_WS = True
@@ -402,7 +403,7 @@ SILENT_WAV="/tmp/rpi-silent-48k.wav"
 PA_DLNA_LOG="/tmp/pa-dlna-webui.log"
 _PA_DLNA_PORT="8088"
 _pa_dlna_proc=None
-_ka_procs={}  # sink_name -> subprocess.Popen
+_ka_procs: Dict[str, subprocess.Popen] = {}  # sink_name -> subprocess.Popen
 _audio_state_cache={"ts": 0.0, "data": None}
 _audio_state_lock=threading.Lock()
 AUDIO_STATE_CACHE_TTL=0.75
@@ -1886,10 +1887,8 @@ class H(BaseHTTPRequestHandler):
         if not _is_allowed_ip(self.client_address[0]):
             self.sj(403, {"error": "Forbidden – IP not allowed"})
             return
-        # Rate limit check
-        if not _check_rate_limit(self.client_address[0]):
-            self.send_error(429, "Rate limited")
-            return
+        # No rate limit on GET — frontend polls /audio/state etc. frequently
+
         # Placeholder modes endpoint
         if path == "/modes":
             self.sj(200, {"ok": True, "modes": ["player","audio","devices","terminal"], "note": "Placeholder endpoint"})
@@ -2285,6 +2284,10 @@ class H(BaseHTTPRequestHandler):
         if not _is_allowed_ip(self.client_address[0]):
             self.sj(403, {"error": "Forbidden – IP not allowed"})
             return
+        # Rate limit check for POST requests
+        if not _check_rate_limit(self.client_address[0]):
+            self.send_error(429, "Rate limited")
+            return
         ln=int(self.headers.get("Content-Length","0"))
         body=self.rfile.read(ln).decode()
         # Handle bug/feature reports submitted via POST /report
@@ -2297,7 +2300,7 @@ class H(BaseHTTPRequestHandler):
             if not isinstance(report, dict) or not report.get("type") or not report.get("description"):
                 return self.st(400,"Missing required fields (type, description)", "text/plain")
             client_ip=self.client_address[0]
-            filename=_save_report({**report, "client_ip": client_ip, "timestamp": int(time.time())}, client_ip)
+            filename=_save_report({**report, "timestamp": int(time.time())}, client_ip)
             return self.sj(201,{"ok":True,"file": filename})
         # Existing deprecated endpoint handling
         u=(parse_qs(body).get("url")or[""])[0].strip()
@@ -2666,23 +2669,6 @@ def dlna_input_get_config():
         "stats":audio_state().get("dlna_connected", False)
     }
 
-def dlna_input_set_config():
-    """Set DLNA Input routing configuration."""
-    data=json.loads(request.data.decode())
-    mode=data.get("mode","follow")
-    manual_sinks=data.get("manual_sinks",[])
-    multi_output=data.get("multi_output",False)
-    
-    cfg={"mode":mode,"manual_sinks":manual_sinks,"multi_output":multi_output}
-    _save_dlnain_config(cfg)
-    
-    # Apply new config if loopback is running
-    running,src=_dlnain_loopback_running()
-    if running:
-        _dlnain_retarget(_resolve_dlnain_target())
-    
-    return dlna_input_get_config()
-
 def dlna_input_status():
     """Get DLNA Input routing status."""
     cfg=_load_dlnain_config()
@@ -2715,73 +2701,6 @@ def dlna_input_status():
         "connectable_sinks":[s["name"] for s in sinks],
         "status_slot":{"mode":mode_label}
     }
-
-def audio_route_dlna_input():
-    """Route DLNA Input based on current config.
-    Body JSON: {\"action\":\"start\"|\"stop\"|\"retarget\"}
-    """
-    body=json.loads(request.data.decode())
-    action=body.get("action","start")
-    cfg=_load_dlnain_config()
-    
-    if action=="stop":
-        stopped=_dlnain_stop()
-        return {"ok":True,"action":"stop","changed":stopped}
-    
-    if action=="start" or action=="retarget":
-        running,_= _dlnain_loopback_running()
-        dst=_resolve_dlnain_target()
-        if not dst:
-            return {"ok":False,"error":"No available output selected"}
-        
-        if running:
-            lb=_find_loopback_by_source(_dlnain_loopback_running()[1])
-            if lb and lb["sink"]==dst:
-                return {"ok":True,"unchanged":True,"target":dst}
-            _dlnain_stop()
-            time.sleep(0.5)
-        
-        ok= False
-        # Find gmrender source
-        gmrender_src=None
-        try:
-            r=_run(["pactl","list","short","sources"])
-            for l in r.stdout.splitlines():
-                if "gmediarender" in l.lower() or "gmrender" in l.lower():
-                    parts=l.split()
-                    if len(parts)>=2:
-                        gmrender_src=parts[1]
-                        break
-        except Exception:
-            pass
-        
-        if not gmrender_src:
-            return {"ok":False,"error":"gmrender source not available"}
-        
-        configs=[dst]
-        if cfg.get("multi_output",False):
-            configs= cfg.get("manual_sinks",[dst])
-        
-        modules=[]
-        for cfg_sink in configs:
-            if cfg_sink:
-                mid=_start_loopback(gmrender_src, cfg_sink)
-                if mid:
-                    modules.append({"sink":cfg_sink,"module_id":mid})
-                else:
-                    # Cleanup partial set
-                    for m in modules:
-                        _stop_loopback(m.get("module_id"))
-                    return {"ok":False,"error":"Failed to start loopback for sink "+cfg_sink}
-        
-        return {
-            "ok":True,
-            "action":action,
-            "modules":modules,
-            "target":dst,
-            "multi":len(modules)>1
-        }
-    return {"ok":False,"error":"invalid action"}
 
 def start_resume_poller():
     """Background thread to periodically save playback position while mpv is alive."""

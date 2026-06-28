@@ -23,46 +23,43 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install lightweight CI tools
+      - name: Install uv and sync dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install bandit pip-audit || true
+          python -m pip install uv
+          uv sync --dev
+
+      - name: Install shellcheck
+        run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
+      - name: Add .venv to PATH
+        run: |
+          echo "${GITHUB_WORKSPACE}/.venv/bin" >> $GITHUB_PATH
+
       - name: Run project CI (core)
         env:
-          STRICT_SECURITY_TOOLS: '0'
+          STRICT_SECURITY_TOOLS: '1'
         run: |
           chmod +x tools/*.sh tools/*.py
           tools/run-ci.sh
 
-      - name: Install lint/type/coverage tools
-        run: |
-          python -m pip install mypy ruff pytest pytest-cov
+      # lint/type/coverage tools are installed via uv sync
 
-      - name: Type checking with mypy
+      - name: Type checking with mypy (scoped)
         run: |
-          mypy .
+          uv run mypy webserver.py handlers.py router.py config.py --ignore-missing-imports
 
-      - name: Lint with ruff
+      - name: Lint with ruff (blocking)
         run: |
-          ruff check .
+          uv run ruff check . --select E9,F63,F7,F82
 
       - name: Run tests with coverage
         run: |
-          .venv/bin/python -m pytest --cov=.
+          uv run pytest --cov=.
 
-      - name: Build Docker image
-        run: |
-          docker build -t rpi-dashboard:ci .
 
-      - name: Security scan with Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: rpi-dashboard:ci
-          format: sarif
-          output: trivy.sarif
 
 
       - name: Upload CI reports

@@ -80,7 +80,7 @@ fi
 
 # ─── Step 4: Verify no forbidden regressions ────────────────────────────────
 echo "Checking for forbidden patterns..."
-if grep -nE 'GFN-TV|killall mpv|pkill mpv' webserver_8099.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null; then
+if grep -nE 'GFN-TV|killall mpv|pkill mpv' webserver.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null; then
   echo "FATAL: forbidden regression strings found in source files — fix before committing" >&2
   exit 1
 fi
@@ -157,9 +157,49 @@ echo "Milhy-PC mirror verified: $REMOTE_SHA"
 # ─── Step 9: Trigger Milhy-PC CI gateway ────────────────────────────────────
 echo "Triggering Milhy-PC CI gateway on $MILHY_PC_HOST:$MILHY_PC_REPO"
 # shellcheck disable=SC2029 # Intentional client-side expansion of configured host/path/branch.
-if ! ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && BRANCH='$TARGET_BRANCH' SOURCE_REMOTE=local tools/ci-agent.sh"; then
+CI_AGENT_OUTPUT=$(ssh "$MILHY_PC_HOST" "cd '$MILHY_PC_REPO' && BRANCH='$TARGET_BRANCH' SOURCE_REMOTE=local tools/ci-agent.sh" 2>&1)
+CI_EXIT=$?
+if [[ $CI_EXIT -ne 0 ]]; then
   echo "FATAL: Milhy-PC CI agent failed — commit exists locally but GitHub push may not have happened" >&2
+  echo "$CI_AGENT_OUTPUT" >&2
   exit 1
+fi
+# Echo captured CI agent output for diagnostics
+echo "--- CI Agent Output ---"
+echo "$CI_AGENT_OUTPUT"
+echo "--- End of CI Agent Output ---"
+# Extract required markers using explicit grep -m1
+CI_REPORT_LINE=""
+GITHUB_URL_LINE=""
+if CI_REPORT_LINE=$(printf "%s\n" "$CI_AGENT_OUTPUT" | grep -m1 '^CI_REPORT='); then
+  :
+fi
+if GITHUB_URL_LINE=$(printf "%s\n" "$CI_AGENT_OUTPUT" | grep -m1 '^GITHUB_ACTIONS_URL='); then
+  :
+fi
+if [[ -z "$CI_REPORT_LINE" || -z "$GITHUB_URL_LINE" ]]; then
+  echo "FATAL: CI agent did not emit required CI_REPORT and GITHUB_ACTIONS_URL lines" >&2
+  exit 1
+fi
+CI_REPORT="${CI_REPORT_LINE#CI_REPORT=}"
+GITHUB_ACTIONS_URL="${GITHUB_URL_LINE#GITHUB_ACTIONS_URL=}"
+# Validate CI_REPORT is a relative path without leading slash or '..'
+if [[ "$CI_REPORT" =~ ^/ || "$CI_REPORT" == *".."* ]]; then
+  echo "FATAL: CI_REPORT path is not a safe relative path: $CI_REPORT" >&2
+  exit 1
+fi
+# Copy the CI report back to local reports if it exists on remote
+if [[ -n "$CI_REPORT" ]]; then
+  LOCAL_CI_REPORT_PATH="$REPORT_DIR/$(basename "$CI_REPORT")"
+  scp "$MILHY_PC_HOST:$MILHY_PC_REPO/$CI_REPORT" "$LOCAL_CI_REPORT_PATH" || {
+    echo "FATAL: Failed to copy CI report $CI_REPORT from Milhy-PC" >&2
+    exit 1
+  }
+  # Verify the file exists after copy
+  if [[ ! -f "$LOCAL_CI_REPORT_PATH" ]]; then
+    echo "FATAL: Copied CI report not found at $LOCAL_CI_REPORT_PATH" >&2
+    exit 1
+  fi
 fi
 
 # ─── Step 10: Write atomic receipt ───────────────────────────────────────────
@@ -179,7 +219,8 @@ cat > "$RECEIPT_FILE" <<RECEIPT
   "host": "$(hostname)",
   "branch": "$TARGET_BRANCH",
   "timestamp": "$(date -Is)",
-  "ci_report": "$(find conductor/ci/reports -name "${POST_COMMIT_SHA}-*.md" -type f 2>/dev/null | sort -r | head -1 || echo unknown)",
+  "ci_report": "$LOCAL_CI_REPORT_PATH",
+  "actions_url": "$GITHUB_ACTIONS_URL",
   "safety_snapshot": "$SNAP"
 }
 RECEIPT
