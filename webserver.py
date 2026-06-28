@@ -13,7 +13,11 @@ except ImportError:
 
 # yt-dlp is installed in venv, no need for Kodi addon path
 
-from config import HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, ALLOWED_SUBNETS
+from config import (
+    HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, ALLOWED_SUBNETS,
+    MAX_SOCKET_BUFFER, SOCKET_RECV_SIZE, TERMINAL_POLL_INTERVAL,
+    DEFAULT_TIMEOUT, CEC_TIMEOUT, MPV_CONNECT_TIMEOUT
+)
 import ipaddress
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
@@ -22,13 +26,6 @@ HTTPS_SAN_FILE = os.path.join(HTTPS_CERT_DIR, "webui.san")
 KODI_H, KODI_P = "127.0.0.1", 9090
 MSOCK = "/tmp/rpi-mpv.sock"
 
-# Constants
-MAX_SOCKET_BUFFER = 65536
-SOCKET_RECV_SIZE = 4096
-TERMINAL_POLL_INTERVAL = 0.35
-DEFAULT_TIMEOUT = 3
-CEC_TIMEOUT = 5
-MPV_CONNECT_TIMEOUT = 2
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
 QUALITY = {

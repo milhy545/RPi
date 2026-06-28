@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract embedded WebUI JavaScript from webserver_8099.py for syntax checks."""
+"""Extract embedded WebUI JavaScript from webserver.py for syntax checks."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +7,7 @@ import sys
 
 
 def main() -> int:
-    source = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("webserver_8099.py")
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("webserver.py")
     text = source.read_text(encoding="utf-8")
     marker = 'JS=r"""'
     start = text.find(marker)
