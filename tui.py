@@ -205,6 +205,7 @@ class RPiDashboard(App):
                         yield Button("Spotify WebOS", id="btn_spotify", variant="warning")
                         yield Button("Amazon Music", id="btn_amazon", variant="default")
                         yield Button("Zastavit vše", id="btn_stop", variant="error")
+                        yield Button("Otevřít Terminál", id="btn_terminal", variant="default")
                         
                     # Hlavní panel (Informace)
                     with Vertical(id="main-content"):
@@ -217,6 +218,15 @@ class RPiDashboard(App):
                     with Vertical(classes="settings-panel", id="panel_audio"):
                         yield Static("[bold]Zvukový výstup (DLNA/BT/HDMI)[/bold]", classes="settings-title")
                         yield OptionList(id="list_audio_sinks")
+                        with Horizontal():
+                            yield Button("Vol -10%", id="btn_vol_down")
+                            yield Button("Vol +10%", id="btn_vol_up")
+                        yield Label("DLNA Latence (ms):")
+                        yield Input(placeholder="0", id="input_dlna_latency")
+                        yield Button("Uložit latenci", id="btn_save_latency")
+                        with Horizontal():
+                            yield Label("Alexa AUX -> BT:")
+                            yield Switch(id="switch_alexa_bt", value=False)
                         yield Button("Restartovat pa-dlna", id="btn_restart_padlna", variant="default")
                         
                     with Vertical(classes="settings-panel", id="panel_bluetooth"):
@@ -406,6 +416,19 @@ class RPiDashboard(App):
                         sinks_list.add_option(f"✓ {friendly_name}")
                     else:
                         sinks_list.add_option(friendly_name)
+            # Load and populate DLNA latency and Alexa loopback switch
+            import webserver
+            try:
+                latency_data = webserver._load_audio_latency()
+                lat = latency_data.get("dlna_output_offset_ms", 0)
+                self.query_one("#input_dlna_latency", Input).value = str(lat)
+            except Exception:
+                pass
+            try:
+                loopback_active = bool(webserver._loopback_module_id())
+                self.query_one("#switch_alexa_bt", Switch).value = loopback_active
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -490,6 +513,15 @@ class RPiDashboard(App):
             action = "start" if event.value else "stop"
             self.write_log(f"[SYSTEM] Nastavuji Spotify Connect (raspotify): {action}")
             await self.run_sys_cmd(f"sudo -n systemctl {action} raspotify")
+        elif event.switch.id == "switch_alexa_bt":
+            action = "start" if event.value else "stop"
+            self.write_log(f"[AUDIO] Nastavuji Alexa AUX -> BT loopback: {action}")
+            import webserver
+            try:
+                res = webserver.audio_route_alexa_bt(action)
+                self.write_log(f"[AUDIO] Alexa Loopback {action}: {res}")
+            except Exception as e:
+                self.write_log(f"[ERROR] Alexa Loopback failed: {e}")
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle selection of default audio sink in OptionList."""
@@ -806,17 +838,17 @@ class RPiDashboard(App):
             data = await request.json()
             mode = data.get("mode", "")
             modes = {
-                "steamlink": ["steamlink"],
-                "gfn": ["cage", "-d", "--", "moonlight-qt", "stream", "192.168.0.67", "GeForce Now"],
-                "mpv": ["mpv", "--vo=drm"],
-                "spotify": ["cage", "-d", "--", "cog", "--platform=drm", "https://open.spotify.com"],
-                "amazon": ["cage", "-d", "--", "chromium-browser", "--kiosk", "--autoplay-policy=no-user-gesture-required", "https://music.amazon.com"],
+                "steamlink": (["steamlink"], False),
+                "gfn": (["cage", "-d", "--", "moonlight-qt", "stream", "192.168.0.67", "GeForce Now"], False),
+                "mpv": (["mpv", "--vo=drm"], False),
+                "spotify": (["cage", "-d", "--", "cog", "--platform=drm", "https://open.spotify.com"], False),
+                "amazon": (["cage", "-d", "--", "chromium-browser", "--kiosk", "--autoplay-policy=no-user-gesture-required", "https://music.amazon.com"], False),
             }
             if mode not in modes:
                 return web.json_response({"error": f"Unknown mode: {mode}"}, status=400)
-            cmd = modes[mode]
+            cmd, use_suspend = modes[mode]
             self.write_log(f"[NETWORK] Launching mode: {mode} via Web UI")
-            asyncio.create_task(self.launch_mode(mode.upper(), cmd))
+            asyncio.create_task(self.launch_mode(mode.upper(), cmd, use_suspend=use_suspend))
             return web.json_response({"status": "ok", "mode": mode})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)
@@ -926,7 +958,7 @@ class RPiDashboard(App):
             pass
         return 9999  # optimistic fallback
 
-    async def launch_mode(self, mode_name: str, command: list[str], timeout: float = 0) -> None:
+    async def launch_mode(self, mode_name: str, command: list[str], timeout: float = 0, use_suspend: bool = True) -> None:
         """Helper to transition states, launch external app via switcher, and restore TUI."""
         needed = self.MIN_FREE_RAM_MB.get(mode_name, 100)
         free = self._free_ram_mb()
@@ -943,7 +975,7 @@ class RPiDashboard(App):
         mode_status.current_mode = mode_name
         self.write_log(f"[SYSTEM] Activating mode: {mode_name}")
         
-        await self.mode_switcher.launch(command, timeout=timeout)
+        await self.mode_switcher.launch(command, timeout=timeout, use_suspend=use_suspend)
         
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log(f"[SYSTEM] Mode {mode_name} terminated. Dashboard restored.")
@@ -955,17 +987,21 @@ class RPiDashboard(App):
         if event.button.id == "btn_steamlink":
             test_command = os.getenv("RPIDASHBOARD_TEST_COMMAND")
             cmd = shlex.split(test_command) if test_command else ["steamlink"]
+            is_fallback = False
             if not test_command and not shutil.which("steamlink"):
                 self.write_log("[SYSTEM] 'steamlink' not found, falling back to 'nano' for TTY test.")
                 cmd = ["nano"]
-            asyncio.create_task(self.launch_mode("STEAM LINK", cmd, timeout=0))
+                is_fallback = True
+            asyncio.create_task(self.launch_mode("STEAM LINK", cmd, timeout=0, use_suspend=is_fallback))
             
         elif event.button.id == "btn_gfn":
             cmd = ["cage", "-d", "--", "moonlight-qt", "stream", "192.168.0.67", "GeForce Now"]
+            is_fallback = False
             if not shutil.which("cage") or not shutil.which("moonlight-qt"):
                 self.write_log("[SYSTEM] 'cage' or 'moonlight-qt' not found, falling back to 'nano' for TTY test.")
                 cmd = ["nano"]
-            asyncio.create_task(self.launch_mode("GEFORCE NOW (Moonlight)", cmd, timeout=0))
+                is_fallback = True
+            asyncio.create_task(self.launch_mode("GEFORCE NOW (Moonlight)", cmd, timeout=0, use_suspend=is_fallback))
             
         elif event.button.id == "btn_mpv":
             try:
@@ -983,17 +1019,21 @@ class RPiDashboard(App):
             
         elif event.button.id == "btn_spotify":
             cmd = ["cage", "-d", "--", "cog", "--platform=drm", "https://open.spotify.com"]
+            is_fallback = False
             if not shutil.which("cage") or not shutil.which("cog"):
                 self.write_log("[SYSTEM] 'cage' or 'cog' (WPE WebKit) not found, falling back to 'top' for visual test.")
                 cmd = ["top"]
-            asyncio.create_task(self.launch_mode("SPOTIFY (WPE WebKit)", cmd, timeout=0))
+                is_fallback = True
+            asyncio.create_task(self.launch_mode("SPOTIFY (WPE WebKit)", cmd, timeout=0, use_suspend=is_fallback))
             
         elif event.button.id == "btn_amazon":
             cmd = ["cage", "-d", "--", "chromium", "--kiosk", "--autoplay-policy=no-user-gesture-required", "--disable-gpu", "--single-process", "--memory-pressure-off", "https://music.amazon.com"]
+            is_fallback = False
             if not shutil.which("cage") or not shutil.which("chromium"):
                 self.write_log("[SYSTEM] 'chromium' not found, falling back to 'top' for visual test.")
                 cmd = ["top"]
-            asyncio.create_task(self.launch_mode("AMAZON MUSIC (Chromium)", cmd, timeout=0))
+                is_fallback = True
+            asyncio.create_task(self.launch_mode("AMAZON MUSIC (Chromium)", cmd, timeout=0, use_suspend=is_fallback))
             
         elif event.button.id == "btn_stop":
             if hasattr(self, "mode_switcher") and self.mode_switcher.active_process:
@@ -1004,9 +1044,38 @@ class RPiDashboard(App):
             
         elif event.button.id == "btn_scan_bluetooth":
             asyncio.create_task(self.scan_bluetooth())
-            
+
         elif event.button.id == "btn_disconnect_bluetooth":
             asyncio.create_task(self.disconnect_all_bluetooth())
+
+        elif event.button.id == "btn_vol_down":
+            self.write_log("[AUDIO] Snižuji hlasitost o 10%")
+            asyncio.create_task(self.run_sys_cmd("pactl set-sink-volume @DEFAULT_SINK@ -10%"))
+            asyncio.create_task(self.update_audio_sinks())
+
+        elif event.button.id == "btn_vol_up":
+            self.write_log("[AUDIO] Zvyšuji hlasitost o 10%")
+            asyncio.create_task(self.run_sys_cmd("pactl set-sink-volume @DEFAULT_SINK@ +10%"))
+            asyncio.create_task(self.update_audio_sinks())
+
+        elif event.button.id == "btn_save_latency":
+            try:
+                val_str = self.query_one("#input_dlna_latency", Input).value.strip()
+                val = int(val_str)
+            except Exception:
+                self.write_log("[ERROR] Neplatná hodnota latence. Zadejte celé číslo.")
+            else:
+                self.write_log(f"[AUDIO] Ukládám DLNA latenci: {val} ms")
+                import webserver
+                try:
+                    res = webserver.audio_set_latency("dlna_output_offset_ms", val)
+                    self.write_log(f"[AUDIO] Latence uložena: {res}")
+                except Exception as e:
+                    self.write_log(f"[ERROR] Uložení latence selhalo: {e}")
+
+        elif event.button.id == "btn_terminal":
+            cmd = ["tmux", "new-session", "-A", "-s", "RPi"]
+            asyncio.create_task(self.launch_mode("TERMINAL (tmux)", cmd, timeout=0, use_suspend=True))
 
 if __name__ == "__main__":
     import sys as _sys

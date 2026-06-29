@@ -18,6 +18,8 @@ install_unit() {
 install_unit "$ROOT/systemd/user/rpi-git-handoff.service" "$USER_SYSTEMD_DIR/rpi-git-handoff.service"
 install_unit "$ROOT/systemd/user/rpi-git-handoff.timer" "$USER_SYSTEMD_DIR/rpi-git-handoff.timer"
 install_unit "$ROOT/systemd/user/rpi-ci-agent.service" "$USER_SYSTEMD_DIR/rpi-ci-agent.service"
+install_unit "$ROOT/systemd/user/report-processor.service" "$USER_SYSTEMD_DIR/report-processor.service"
+install_unit "$ROOT/systemd/user/report-processor.timer" "$USER_SYSTEMD_DIR/report-processor.timer"
 
 systemctl --user daemon-reload
 
@@ -35,7 +37,8 @@ fi
 case "$ROLE" in
   rpi)
     systemctl --user enable --now rpi-git-handoff.timer
-    echo "Enabled rpi-git-handoff.timer"
+    systemctl --user enable --now report-processor.timer
+    echo "Enabled rpi-git-handoff.timer and report-processor.timer"
     ;;
   milhy)
     systemctl --user enable --now rpi-ci-agent.service

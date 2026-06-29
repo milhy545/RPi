@@ -104,7 +104,17 @@ optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact 
 optional_step bandit "Bandit Python security scan (high severity gate)" bandit -q -lll -r . -x .venv,__pycache__
 optional_step pip-audit "pip-audit dependency scan" pip-audit
 # Run full pytest suite to ensure comprehensive test coverage
-run_step "Run full pytest suite" uv run pytest -q
+if [[ -f .venv/bin/pytest ]]; then
+  run_step "Run full pytest suite" .venv/bin/pytest -q
+elif command -v uv >/dev/null 2>&1; then
+  run_step "Run full pytest suite" uv run pytest -q
+elif [[ -f "$HOME/.local/bin/uv" ]]; then
+  run_step "Run full pytest suite" "$HOME/.local/bin/uv" run pytest -q
+elif command -v pytest >/dev/null 2>&1; then
+  run_step "Run full pytest suite" pytest -q
+else
+  run_step "Run full pytest suite" python3 -m pytest -q
+fi
 
 run_step "Forbidden regression strings" bash -lc '! grep -nE "GFN-TV|killall mpv|pkill mpv" webserver.py tui.py mode_switcher.py keys2mpv.py 2>/dev/null'
 

@@ -21,7 +21,13 @@ uv run python tui.py
 ## Project layout
 - `main.py` — minimal entry point
 - `tui.py` — Textual dashboard
-- `webserver_8099.py` — WebUI, API, and terminal WebSocket server
+- `webserver.py` — WebUI, API, and terminal WebSocket server
 - `mode_switcher.py` — foreground app supervision
 - `keys2mpv.py` — multimedia keyboard daemon
 - `conductor/` — product context, workflow, and tracks
+
+## User Feedback & Conductor Integration
+The WebUI includes a feedback modal (accessible via the "Feedback" button in the topbar) allowing users to submit bug reports and feature requests.
+
+- **Storage**: Feedback is sent as a `POST /report` JSON request, validated by the backend, and saved to the `reports/` directory.
+- **Conductor Intake**: A systemd timer triggers the `tools/process_reports.py` worker every minute. This worker processes new reports, creates Conductor tracks (containing `spec.md` and a skeleton `plan.md`) under `conductor/tracks/`, and appends them to `conductor/tracks.md`.
