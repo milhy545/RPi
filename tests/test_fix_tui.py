@@ -1,6 +1,6 @@
 """Tests for fix_tui.py refactoring script."""
 
-import os
+import os, sys
 import shutil
 import subprocess
 from pathlib import Path
@@ -89,7 +89,7 @@ def test_fix_tui_success(tmp_path: Path):
     fix_tui_path = tmp_path / "fix_tui.py"
     shutil.copy(get_fix_tui_source_path(), fix_tui_path)
 
-    subprocess.run(["python", "fix_tui.py"], cwd=tmp_path, check=True)
+    subprocess.run([sys.executable, "fix_tui.py"], cwd=tmp_path, check=True)
 
     content = tui_file.read_text()
 
@@ -120,10 +120,10 @@ def test_fix_tui_idempotency(tmp_path: Path):
     fix_tui_path = tmp_path / "fix_tui.py"
     shutil.copy(get_fix_tui_source_path(), fix_tui_path)
 
-    subprocess.run(["python", "fix_tui.py"], cwd=tmp_path, check=True)
+    subprocess.run([sys.executable, "fix_tui.py"], cwd=tmp_path, check=True)
     content_after_first = tui_file.read_text()
 
-    subprocess.run(["python", "fix_tui.py"], cwd=tmp_path, check=True)
+    subprocess.run([sys.executable, "fix_tui.py"], cwd=tmp_path, check=True)
     content_after_second = tui_file.read_text()
 
     assert content_after_first == content_after_second
@@ -138,7 +138,7 @@ def test_fix_tui_missing_file(tmp_path: Path):
     shutil.copy(get_fix_tui_source_path(), fix_tui_path)
 
     result = subprocess.run(
-        ["python", "fix_tui.py"],
+        [sys.executable, "fix_tui.py"],
         cwd=tmp_path,
         capture_output=True,
         text=True,

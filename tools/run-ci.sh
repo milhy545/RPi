@@ -106,10 +106,10 @@ optional_step pip-audit "pip-audit dependency scan" pip-audit
 # Run full pytest suite to ensure comprehensive test coverage
 if [[ -f .venv/bin/pytest ]]; then
   run_step "Run full pytest suite" .venv/bin/pytest -q
-elif command -v uv >/dev/null 2>&1; then
-  run_step "Run full pytest suite" uv run pytest -q
 elif [[ -f "$HOME/.local/bin/uv" ]]; then
   run_step "Run full pytest suite" "$HOME/.local/bin/uv" run pytest -q
+elif command -v uv >/dev/null 2>&1; then
+  run_step "Run full pytest suite" uv run pytest -q
 elif command -v pytest >/dev/null 2>&1; then
   run_step "Run full pytest suite" pytest -q
 else
