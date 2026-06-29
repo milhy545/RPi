@@ -45,7 +45,7 @@ def mpv_cmd(cmd_list):
         s.close()
         data = json.loads(resp.decode())
         return data.get("error") == "success"
-    except:
+    except (OSError, json.JSONDecodeError):
         return False
 
 def mpv_get(prop):
@@ -62,7 +62,7 @@ def mpv_get(prop):
         s.close()
         data = json.loads(resp.decode())
         return data.get("data")
-    except:
+    except (OSError, json.JSONDecodeError):
         return None
 
 def graceful_exit(sig, frame):

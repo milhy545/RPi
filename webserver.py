@@ -89,7 +89,7 @@ def kodi_rpc(m, p=None, t=3):
                 except Exception: break
                 if isinstance(obj,dict) and obj.get("id")==1: return obj
                 probe=probe[i:].lstrip()
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return {"result":[]}
 
 # ── MPV ────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ def _mpv_pids_for_socket(path=MSOCK):
         if len(parts)<2: continue
         if needle in parts[1]:
             try: pids.append(int(parts[0]))
-            except Exception: pass
+            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return pids
 
 def _terminate_pids(pids, timeout=3.0):
@@ -158,7 +158,7 @@ def mpv_start(url, q=None, resume=False):
     # Force HDMI connector + activate HDMI audio profile
     try:
         with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f: f.write("on")
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     import subprocess as _sp
     _sp.run(["pactl","set-card-profile","alsa_card.platform-3f902000.hdmi","output:hdmi-stereo"],
             capture_output=True, timeout=3)
@@ -220,8 +220,7 @@ def _restore_console():
         _sp.run(["chvt","1"], capture_output=True, timeout=2)
         # Try to rebind fbcon
         _sp.run(["sh","-c","echo 0 > /sys/class/vt/vtblank"], capture_output=True, timeout=2)
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 
 def mpv_stop():
     global _mpv
@@ -231,9 +230,9 @@ def mpv_stop():
     pids.extend(_mpv_pids_for_socket(MSOCK))
     if mpv_ipc_socket_live():
         try: save_mpv_resume_memory()
-        except Exception: pass
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
         try: mcmd("quit")
-        except Exception: pass
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
         time.sleep(0.3)
     stopped=_terminate_pids(pids)
     _mpv=None
@@ -352,7 +351,7 @@ def mc(c):
     try:
         s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);s.connect(MP);s.settimeout(1)
         s.sendall((json.dumps({"command":["parse-command",c]})+"\n").encode());s.recv(SOCKET_RECV_SIZE);s.close()
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 M={"play":"cycle pause","pause":"cycle pause","stop":"stop","backward":"seek -10",
    "forward":"seek 10","rewind":"seek -60","fast_forward":"seek 60",
    "left":"seek -10","right":"seek 10","select":"cycle pause","exit":"stop",
@@ -369,7 +368,7 @@ while True:
                 ll=l.lower()
                 for k,c in M.items():
                     if k in ll: mc(c); break
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try: p.wait(timeout=2)
     except Exception: p.kill()
     time.sleep(2)
@@ -447,7 +446,7 @@ def _loopback_module_id():
         for l in r.stdout.splitlines():
             if "module-loopback" in l and USB_ALEXA_SRC in l and BT_SOUNDBAR_SINK in l:
                 return l.split()[0]
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
 def _find_loopback_by_source(source_name):
@@ -457,7 +456,7 @@ def _find_loopback_by_source(source_name):
         for l in r.stdout.splitlines():
             if "module-loopback" in l and source_name in l:
                 return l.split()[0]
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
 def _find_loopbacks():
@@ -475,7 +474,7 @@ def _find_loopbacks():
                 m=re.search(r'sink=(\S+)', l)
                 snk=m.group(1) if m else None
                 loops.append({"id":mod_id,"source":src,"sink":snk})
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return loops
 
 def _start_loopback(source, sink, rate=48000, channels=2):
@@ -488,7 +487,7 @@ def _start_loopback(source, sink, rate=48000, channels=2):
             "latency_msec=20","remix=true"], t=10)
     if r.returncode==0:
         try: return int(r.stdout.strip())
-        except Exception: pass
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
 def _stop_loopback(module_id):
@@ -536,7 +535,7 @@ def _load_dlnain_mode():
 def _save_dlnain_mode(data):
     try:
         with open(_DLNAIN_MODE_FILE,"w") as f: json.dump(data,f)
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 
 def _resolve_dlnain_target():
     """Determine DLNA Input target based on mode."""
@@ -555,7 +554,7 @@ def _dlnain_loopback_running():
             if "gmediarender" in l.lower() or "gmrender" in l.lower():
                 parts=l.split()
                 if len(parts)>=2: gmrender_src=parts[1]
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     if not gmrender_src: return False, None
     lb=_find_loopback_by_source(gmrender_src)
     return lb is not None, gmrender_src
@@ -571,7 +570,7 @@ def _alexa_loopback_running():
                 m2=re.search(r'^(\d+)', l)
                 mod_id=m2.group(1) if m2 else None
                 return True, target, mod_id
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return False, None, None
 
 def _paired_bt_device(paired_text, mac=BT_SOUNDBAR_MAC):
@@ -602,14 +601,14 @@ def _load_audio_latency():
         if os.path.exists(AUDIO_LATENCY_FILE):
             with open(AUDIO_LATENCY_FILE) as f:
                 return json.load(f)
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return {"dlna_output_offset_ms": 0, "default_latency_ms": 0}
 
 def _save_audio_latency(data):
     try:
         with open(AUDIO_LATENCY_FILE, "w") as f:
             json.dump(data, f)
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 
 # ------- Report handling -------
 def _save_report(report: dict, client_ip: str) -> str:
@@ -651,7 +650,7 @@ def _sink_input_streams(sinks=None):
                     pr=_run(["ps","-o","args=","-p",client_pid],t=2)
                     if pr.returncode==0 and "pw-cat" in pr.stdout and SILENT_WAV in pr.stdout:
                         is_keepalive=True
-                except Exception: pass
+                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
                 out.append({"id":p[0],"sink_id":sink_id,"sink":sink_label,"client":client_pid,"format":p[4] if len(p)>4 else "","keepalive":is_keepalive})
         return out
     except Exception: return []
@@ -812,8 +811,7 @@ def _keepalive_orphans():
                 km=re.search(r'rpi-keepalive\s+(\S+)\s+'+re.escape(SILENT_WAV), args)
                 if km: target=km.group(1).strip()
             out.append({"pid": int(m.group(1)), "ppid": int(m.group(2)), "target": target})
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return out
 
 def _stop_keepalive_orphans():
@@ -827,8 +825,7 @@ def _stop_keepalive_orphans():
                 killed.append(pid)
             except ProcessLookupError:
                 pass
-            except Exception:
-                pass
+            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     time.sleep(0.2)
     for item in _keepalive_orphans():
         for pid in (item.get("pid"), item.get("ppid")):
@@ -839,8 +836,7 @@ def _stop_keepalive_orphans():
                 if pid not in killed: killed.append(pid)
             except ProcessLookupError:
                 pass
-            except Exception:
-                pass
+            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return killed
 
 def _keepalive_status():
@@ -873,8 +869,8 @@ def _start_pa_dlna():
     global _pa_dlna_proc
     if _pa_dlna_running(): return True
     try:
-        log=open(PA_DLNA_LOG,"ab")
-        _pa_dlna_proc=subprocess.Popen(["pa-dlna","--nics","eth0","--loglevel","info","--port",_PA_DLNA_PORT],stdout=log,stderr=log)
+        with open(PA_DLNA_LOG, "ab") as log:
+            _pa_dlna_proc=subprocess.Popen(["pa-dlna","--nics","eth0","--loglevel","info","--port",_PA_DLNA_PORT],stdout=log,stderr=log)
         return True
     except Exception:
         return False
@@ -894,7 +890,7 @@ def _gmrender_pid():
         r=subprocess.run(["pgrep","-f","gmediarender"],capture_output=True,text=True,timeout=2)
         if r.returncode==0 and r.stdout.strip():
             return int(r.stdout.strip().splitlines()[0])
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
 def _gmrender_uptime(pid):
@@ -910,7 +906,7 @@ def _gmrender_uptime(pid):
             uptime=float(f.read().split()[0])
         start_sec=uptime-(start_ticks/clk)
         return int(uptime-start_sec)
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
 def dlna_renderer_status():
@@ -923,7 +919,7 @@ def dlna_renderer_status():
     try:
         r=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True,timeout=3)
         pw_ok=r.returncode==0
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return {
         "ok":True,
         "running":running,
@@ -958,7 +954,7 @@ def dlna_renderer_stop():
         try:
             os.kill(pid,15)
             time.sleep(1)
-        except Exception: pass
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return {"ok":not _gmrender_running(),"method":"signal","status":dlna_renderer_status()}
 
 def _selected_dlna_sink_name():
@@ -1048,7 +1044,7 @@ def _dlnain_start():
             if "gmediarender" in l.lower() or "gmrender" in l.lower():
                 parts=l.split()
                 if len(parts)>=2: gmrender_src=parts[1]
-    except Exception: pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     if not gmrender_src:
         return {"ok":False,"error":"gmrender source not found in PipeWire"}
     target=_resolve_dlnain_target()
@@ -2174,7 +2170,7 @@ class H(BaseHTTPRequestHandler):
                     try:
                         with open(tp) as f:
                             temp_c=round(int(f.read().strip())/1000,1); break
-                    except Exception: pass
+                    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
                 global _hw_stats_freq_cache
                 now = time.monotonic()
                 if now - _hw_stats_freq_cache["time"] > 2.0:
@@ -2193,11 +2189,11 @@ class H(BaseHTTPRequestHandler):
                 try:
                     raw=subprocess.check_output(["vcgencmd","measure_clock","core"], text=True, timeout=2).strip()
                     gpu["core_mhz"]=int(raw.split("=")[-1])//1000000
-                except Exception: pass
+                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
                 try:
                     raw=subprocess.check_output(["vcgencmd","measure_temp"], text=True, timeout=2).strip()
                     gpu["temp_c"]=round(float(raw.split("=")[-1].replace("'C","")),1)
-                except Exception: pass
+                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
                 with open("/proc/uptime") as f:
                     up=int(float(f.read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
                 self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
@@ -2308,6 +2304,12 @@ class H(BaseHTTPRequestHandler):
 WS_PORT = 8098
 
 async def term_handler(websocket):
+    client_ip = websocket.remote_address[0] if websocket.remote_address else None
+    if not client_ip or not _is_allowed_ip(client_ip):
+        try:
+            await websocket.close(1008, "Forbidden – IP not allowed")
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+        return
     session_name = "RPi:0"
     rows = 24
     cols = 80
@@ -2318,8 +2320,7 @@ async def term_handler(websocket):
             proc = await asyncio.create_subprocess_exec("tmux", "resize-pane", "-t", session_name, "-x", str(cols), "-y", str(rows),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             await asyncio.wait_for(proc.communicate(), timeout=1.0)
-        except Exception:
-            pass
+        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 
     async def poll_output():
         while True:
@@ -2388,10 +2389,8 @@ async def term_handler(websocket):
                         proc = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "-l", inp,
                             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                         await asyncio.wait_for(proc.communicate(), timeout=1.0)
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     finally:
         if poll_task:
             poll_task.cancel()
@@ -2416,20 +2415,17 @@ def _dashboard_hostnames_and_ips():
         hn=socket.gethostname().strip()
         if hn:
             names.add(hn); names.add(f"{hn}.local")
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
         for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
             if ip: ips.add(ip)
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
         for flag in ("-4","-6"):
             r=subprocess.run(["tailscale","ip",flag],capture_output=True,text=True,timeout=3)
             if r.returncode==0:
                 for ip in r.stdout.split(): ips.add(ip)
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
         r=subprocess.run(["tailscale","status","--json"],capture_output=True,text=True,timeout=3)
         if r.returncode==0:
@@ -2438,8 +2434,7 @@ def _dashboard_hostnames_and_ips():
             if dns:
                 names.add(dns.rstrip("."))
                 names.add(dns.split(".")[0])
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return sorted(names), sorted(ips)
 
 def _https_san():
@@ -2469,8 +2464,7 @@ def ensure_https_cert():
         os.chmod(HTTPS_KEY_FILE, 0o600)
         os.chmod(HTTPS_CERT_FILE, 0o644)
         os.chmod(HTTPS_SAN_FILE, 0o644)
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return True, "generated"
 
 def start_http_server(port, label="HTTP"):
@@ -2547,8 +2541,7 @@ def _load_playback_memory():
         if os.path.exists(mem_file):
             with open(mem_file, "r") as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return {}
 
 def _save_playback_memory(data):
@@ -2607,8 +2600,7 @@ def clear_mpv_memory_for_url(url):
             del data[video_id]
             _save_playback_memory(data)
             return True
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return False
 
 def cleanup_stale_mpv_socket():
@@ -2677,8 +2669,7 @@ def dlna_input_status():
             if "gmediarender" in l.lower():
                 gmrender_src=l.split()[0]
                 break
-    except Exception:
-        pass
+    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     running,sink=_dlnain_loopback_running()
     active=[]
     if running and sink:
@@ -2707,8 +2698,7 @@ def start_resume_poller():
             try:
                 if mpv_ipc_socket_live():
                     save_mpv_resume_memory()
-            except Exception:
-                pass  # keep thread alive
+            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)  # keep thread alive
     t = threading.Thread(target=_poller, daemon=True)
     t.start()
 
