@@ -1177,9 +1177,18 @@ def wifi_scan():
 def wifi_connect(ssid, password):
     if not ssid: return {"ok":False,"error":"ssid required"}
     if not _wifi_nmcli_available(): return {"ok":False,"error":"Wi-Fi connect requires nmcli on this system"}
-    cmd=["nmcli","device","wifi","connect",ssid]
-    if password: cmd += ["password", password]
-    r=_run(cmd, t=30)
+    if password:
+        cmd = ["nmcli", "--ask", "device", "wifi", "connect", ssid]
+        try:
+            r = subprocess.run(cmd, input=password + "\n", capture_output=True, text=True, timeout=30)
+        except Exception as e:
+            return {"ok": False, "error": f"nmcli failed: {e}"}
+    else:
+        cmd = ["nmcli", "device", "wifi", "connect", ssid]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        except Exception as e:
+            return {"ok": False, "error": f"nmcli failed: {e}"}
     return {"ok":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
 
 def kodi_status():
@@ -1721,7 +1730,7 @@ async function devicesRefresh(){let r=await api('/devices/state');if(r.error){ms
 async function deviceBtScan(){msg(L('scan')+' Bluetooth...','info');let r=await api('/devices/bt/scan?seconds=6');let all=[...(r.paired||[]),...(r.devices||[])];$('#dev-bt-list').innerHTML=renderBtDevices(all);$('#dev-bt-status').textContent=(r.devices||[]).length+' '+L('found')+', '+(r.paired||[]).length+' '+L('paired');msg(L('scan')+' Bluetooth done','ok')}
 async function wifiStatus(){let r=await api('/wifi/status');$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>'}
 async function wifiScan(){msg('Scanning Wi-Fi...','info');let r=await api('/wifi/scan');if(r.networks){let h=r.networks.map(n=>'<div style="margin:3px 0"><button onclick="$(\'#wifi-ssid\').value=\''+jsarg(n.ssid)+'\'" style="font-size:.72em;padding:2px 8px">Use</button> '+esc(n.ssid)+' <span style="color:#8b949e">'+esc(n.signal||'')+' '+esc(n.security||'')+'</span></div>').join('');$('#wifi-list').innerHTML=h||'No networks found';msg('Wi-Fi scan done','ok')}else{$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>';msg(r.error||'Wi-Fi scan failed','err')}}
-async function wifiConnect(){let ssid=$('#wifi-ssid').value.trim(),pw=$('#wifi-pass').value;if(!ssid){msg('SSID required','err');return}let r=await api('/wifi/connect?ssid='+encodeURIComponent(ssid)+'&password='+encodeURIComponent(pw));msg(r.ok?'Wi-Fi connected':(r.error||r.out||'Wi-Fi failed'),r.ok?'ok':'err');wifiStatus()}
+async function wifiConnect(){let ssid=$('#wifi-ssid').value.trim(),pw=$('#wifi-pass').value;if(!ssid){msg('SSID required','err');return}let r=await fetch('/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid,password:pw})}).then(res=>res.json()).catch(e=>({error:e.message}));msg(r.ok?'Wi-Fi connected':(r.error||r.out||'Wi-Fi failed'),r.ok?'ok':'err');wifiStatus()}
 async function ytCookieStatus(){let r=await api('/youtube/cookies/status');$('#yt-cookie-status').textContent=JSON.stringify(r,null,2)}
 async function ytAgeCheck(){let u=$('#yt-age-url').value.trim();if(!u){msg('Enter YouTube URL','err');return}msg('Checking YouTube age/cookies...','info');let r=await api('/youtube/age-check?url='+encodeURIComponent(u));$('#yt-cookie-status').textContent=JSON.stringify(r,null,2);msg(r.ok?'Video is extractable':'Age/cookie check failed',r.ok?'ok':'err')}
 async function launchApp(mode){msg('Launching '+mode+'...','info');let r=await fetch('http://192.168.0.205:8090/mode/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})}).then(r=>r.json());msg(r.status?'OK: '+mode:(r.error||'fail'),r.status?'ok':'err')}
@@ -1862,16 +1871,40 @@ _hw_stats_freq_cache = {"data": [None, None, None, None], "time": 0}
 class H(BaseHTTPRequestHandler):
     """HTTP request handler for RPi-TV Dashboard WebUI."""
     server_version="RPi-TV/4.2"
-    def log_message(self,f,*a): pass
+    def _send_cors_headers(self):
+        origin = self.headers.get("Origin")
+        if origin:
+            try:
+                parsed = urlparse(origin)
+                host = parsed.hostname
+                if host:
+                    if host == "localhost" or host.endswith(".local") or _is_allowed_ip(host):
+                        self.send_header("Access-Control-Allow-Origin", origin)
+                        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                        self.send_header("Vary", "Origin")
+                        return
+            except Exception as e:
+                print(f"[WARN] Exception in CORS origin parse: {e}", file=sys.stderr)
+        self.send_header("Access-Control-Allow-Origin", "http://localhost")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
     def sj(self,c,o):
         d=json.dumps(o,ensure_ascii=False).encode()
         self.send_response(c);self.send_header("Content-Type","application/json")
-        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","http://localhost")
+        self.send_header("Content-Length",str(len(d)))
+        self._send_cors_headers()
         self.end_headers();self.wfile.write(d)
+
     def st(self,c,b,ct="text/html;charset=utf-8"):
         d=b.encode()
         self.send_response(c);self.send_header("Content-Type",ct)
-        self.send_header("Content-Length",str(len(d)));self.send_header("Access-Control-Allow-Origin","http://localhost")
+        self.send_header("Content-Length",str(len(d)))
+        self._send_cors_headers()
         self.end_headers();self.wfile.write(d)
     def do_GET(self):
         p=urlparse(self.path);q=parse_qs(p.query);path=p.path
@@ -1880,7 +1913,17 @@ class H(BaseHTTPRequestHandler):
         if not _is_allowed_ip(self.client_address[0]):
             self.sj(403, {"error": "Forbidden – IP not allowed"})
             return
-        # No rate limit on GET — frontend polls /audio/state etc. frequently
+        # Rate limit GET endpoints that trigger system actions
+        action_endpoints = {
+            "/system/reboot", "/devices/bt/scan", "/wifi/scan", "/audio/default-sink",
+            "/audio/latency", "/dlna/select", "/dlna/connect", "/dlna/disconnect",
+            "/keepalive", "/dlna/scan", "/youtube/age-check", "/media/preview",
+            "/mpv/play", "/mpv/stop", "/mpv/toggle", "/mpv/seek", "/mpv/volume", "/mpv/mute"
+        }
+        if path in action_endpoints:
+            if not _check_rate_limit(self.client_address[0]):
+                self.send_error(429, "Rate limited")
+                return
 
         # Placeholder modes endpoint
         if path == "/modes":
@@ -2037,10 +2080,7 @@ class H(BaseHTTPRequestHandler):
                 self.sj(200,bluetooth_scan_devices(seconds))
             elif path=="/wifi/status": self.sj(200,wifi_status())
             elif path=="/wifi/scan": self.sj(200,wifi_scan())
-            elif path=="/wifi/connect":
-                ssid=(q.get("ssid")or[""])[0]
-                password=(q.get("password")or[""])[0]
-                self.sj(200,wifi_connect(ssid,password))
+
             elif path=="/youtube/cookies/status": self.sj(200,youtube_cookie_status())
             elif path=="/youtube/age-check":
                 u=(q.get("url")or[""])[0].strip()
@@ -2283,6 +2323,17 @@ class H(BaseHTTPRequestHandler):
             return
         ln=int(self.headers.get("Content-Length","0"))
         body=self.rfile.read(ln).decode()
+        if self.path == "/wifi/connect":
+            try:
+                data = json.loads(body)
+            except Exception:
+                try:
+                    data = {k: v[0] for k, v in parse_qs(body).items()}
+                except Exception:
+                    return self.st(400, "Invalid JSON or body", "text/plain")
+            ssid = data.get("ssid", "").strip()
+            password = data.get("password", "")
+            return self.sj(200, wifi_connect(ssid, password))
         # Handle bug/feature reports submitted via POST /report
         if self.path == "/report":
             try:

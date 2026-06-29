@@ -296,3 +296,13 @@ Deletes dead sockets only; preserves live playback.
 
 ## Notes on the Kodi tab
 Kodi is intentionally documented here because it is part of the WebUI. It is a legacy launcher, not the main media path.
+
+## HTTPS and SSL Setup
+The webserver automatically configures and runs an HTTPS listener (default port `8443`) alongside the HTTP listener.
+
+- **Auto-generation**: On startup, if certificates are missing or network interfaces have changed, the server uses `openssl` to auto-generate a new self-signed certificate.
+- **Subject Alternative Names (SAN)**: The certificate is generated with SANs containing all local IP addresses, `localhost`, and Tailscale IPs to prevent browser security warnings when using the dashboard locally.
+- **Certificate Path**: Certificates are stored in `~/.config/rpi-dashboard/https/`:
+  - `webui.crt` (Certificate)
+  - `webui.key` (Private key, secured with `600` permissions)
+  - `webui.san` (State tracker for current SAN properties)

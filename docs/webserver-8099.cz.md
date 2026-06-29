@@ -163,3 +163,13 @@ python3 webserver_8099.py
 # WebUI: http://0.0.0.0:8099
 # Terminal WS: ws://0.0.0.0:8098
 ```
+
+## HTTPS a SSL Nastavení
+Webserver automaticky konfiguruje a spouští HTTPS posluchač (výchozí port `8443`) paralelně s HTTP posluchačem.
+
+- **Automatické generování**: Při spuštění, pokud certifikáty chybí nebo se změnily síťové rozhraní (např. IP adresa), server použije `openssl` k automatickému generování nového self-signed certifikátu.
+- **Subject Alternative Names (SAN)**: Certifikát se generuje se SAN záznamy obsahujícími všechny lokální IP adresy, `localhost` a Tailscale IP adresy, čímž zabraňuje varováním prohlížeče o zabezpečení při lokálním používání.
+- **Cesta k certifikátům**: Certifikáty jsou uloženy v adresáři `~/.config/rpi-dashboard/https/`:
+  - `webui.crt` (Certifikát)
+  - `webui.key` (Soukromý klíč, zabezpečený právy `600`)
+  - `webui.san` (Sledování stavu aktuálních SAN vlastností)
