@@ -100,7 +100,7 @@ if [[ -f test_production_api.py ]]; then
 fi
 
 optional_step shellcheck "ShellCheck shell scripts" bash -lc 'shopt -s nullglob; shellcheck *.sh provisioning/*.sh tools/*.sh'
-optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source .
+optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source . 
 optional_step bandit "Bandit Python security scan (high severity gate)" bandit -q -lll -r . -x .venv,__pycache__
 optional_step pip-audit "pip-audit dependency scan" pip-audit
 # Run full pytest suite to ensure comprehensive test coverage
