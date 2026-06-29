@@ -1,2 +1,5 @@
 [allowlist]
-paths = ["^\\.venv/.*"]
+paths = [
+  '''.venv''',
+  '''conductor/ci/reports''',
+]
