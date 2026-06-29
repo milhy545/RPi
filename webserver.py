@@ -2,7 +2,7 @@
 """RPi-TV v4.2 — fixed title, no black screen, fast CEC."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
-import html, json, os, re, socket, sys, subprocess, time, stat, ssl, shutil
+import json, os, re, socket, sys, subprocess, time, stat, ssl, shutil
 import asyncio, threading
 from typing import Dict
 try:
@@ -15,16 +15,16 @@ except ImportError:
 
 from config import (
     HOST, PORT, HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, ALLOWED_SUBNETS,
-    MAX_SOCKET_BUFFER, SOCKET_RECV_SIZE, TERMINAL_POLL_INTERVAL,
-    DEFAULT_TIMEOUT, CEC_TIMEOUT, MPV_CONNECT_TIMEOUT
+    MAX_SOCKET_BUFFER, SOCKET_RECV_SIZE,
+    KODI_HOST, KODI_PORT, MPV_SOCKET, WS_PORT, PA_DLNA_PORT, AUDIO_STATE_CACHE_TTL
 )
 import ipaddress
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
 HTTPS_SAN_FILE = os.path.join(HTTPS_CERT_DIR, "webui.san")
-KODI_H, KODI_P = "127.0.0.1", 9090
-MSOCK = "/tmp/rpi-mpv.sock"
+KODI_H, KODI_P = KODI_HOST, KODI_PORT
+MSOCK = MPV_SOCKET
 
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
@@ -397,12 +397,12 @@ DLNA_SINK_KEYWORDS=["uuid_","WiiMu","LinkPlayer","Sphere","TIBO"]
 AUDIO_LATENCY_FILE=os.path.expanduser("~/rpi-dashboard/.audio-latency.json")
 SILENT_WAV="/tmp/rpi-silent-48k.wav"
 PA_DLNA_LOG="/tmp/pa-dlna-webui.log"
-_PA_DLNA_PORT="8088"
+_PA_DLNA_PORT = PA_DLNA_PORT
 _pa_dlna_proc=None
 _ka_procs: Dict[str, subprocess.Popen] = {}  # sink_name -> subprocess.Popen
 _audio_state_cache={"ts": 0.0, "data": None}
 _audio_state_lock=threading.Lock()
-AUDIO_STATE_CACHE_TTL=0.75
+AUDIO_STATE_CACHE_TTL = AUDIO_STATE_CACHE_TTL
 
 
 def _run(cmd, t=5):
@@ -1934,7 +1934,7 @@ class H(BaseHTTPRequestHandler):
             elif path=="/cec/in":
                 n=(q.get("n")or["1"])[0]
                 # Send active-source to request TV to switch to our input
-                self.sj(200,cec_cmd(f"active-source phys-addr=1.0.0.0"))
+                self.sj(200,cec_cmd("active-source phys-addr=1.0.0.0"))
             elif path=="/cec/scan": self.sj(200,{"ok":True,"out":cec_scan()})
             elif path=="/cec/br/start": self.sj(200,br_start())
             elif path=="/cec/br/stop": br_stop();self.sj(200,{"ok":True})
@@ -2300,8 +2300,7 @@ class H(BaseHTTPRequestHandler):
         if not u: return self.st(400,page())
         self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi POST playback was removed; use /mpv/play or the Player tab."})
 
-# ── Terminal WebSocket Server ─────────────────────────────────────────
-WS_PORT = 8098
+# WS_PORT is imported from config
 
 async def term_handler(websocket):
     client_ip = websocket.remote_address[0] if websocket.remote_address else None

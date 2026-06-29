@@ -4,7 +4,7 @@ Each handler receives the request instance (`self`), the parsed
 query dict (`q`) and the path string.
 """
 
-from typing import Callable, Dict, Optional
+from typing import Callable, Optional
 from handlers import route_table
 
 # route_table is a dict mapping path -> callable

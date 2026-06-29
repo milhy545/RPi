@@ -1,4 +1,3 @@
-import re
 
 with open("fix_tui.py", "r") as f:
     content = f.read()

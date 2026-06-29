@@ -7,7 +7,6 @@ as part of the safe E2E suite.
 """
 
 import os
-import sys
 import urllib.request
 import json
 

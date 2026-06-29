@@ -10,6 +10,7 @@ import shlex
 from datetime import datetime
 from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
+from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -29,7 +30,7 @@ class SystemStats(Static):
         self._prev_cpu_idle = 0
         self._prev_cpu_total = 0
         self.update_stats()
-        self.set_interval(2.0, self.update_stats)
+        self.set_interval(TUI_STATS_INTERVAL, self.update_stats)
         
     def get_cpu_usage(self) -> float:
         try:
@@ -298,8 +299,8 @@ class RPiDashboard(App):
         
         self.api_task = asyncio.create_task(self.start_api_server())
         
-        # Periodic settings panel updates (every 5.0 seconds)
-        self.set_interval(5.0, self.update_settings_data)
+        # Periodic settings panel updates (every TUI_SETTINGS_INTERVAL seconds)
+        self.set_interval(TUI_SETTINGS_INTERVAL, self.update_settings_data)
         # Run immediately on mount
         asyncio.create_task(self.update_settings_data())
 
@@ -377,7 +378,7 @@ class RPiDashboard(App):
         """Fetch and list available PulseAudio/PipeWire sinks."""
         try:
             sinks_list = self.query_one("#list_audio_sinks", OptionList)
-            sinks_list.clear()
+            sinks_list.clear_options()
             
             # Get default sink name
             default_sink = await self.run_sys_cmd("pactl get-default-sink")
@@ -412,7 +413,7 @@ class RPiDashboard(App):
         """Fetch and list paired Bluetooth devices."""
         try:
             bt_list = self.query_one("#list_bluetooth_devices", OptionList)
-            bt_list.clear()
+            bt_list.clear_options()
             
             bt_out = await self.run_sys_cmd("bluetoothctl devices Paired")
             if not bt_out:
@@ -493,7 +494,7 @@ class RPiDashboard(App):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle selection of default audio sink in OptionList."""
         if event.option_list.id == "list_audio_sinks":
-            selected_text = event.option.prompt.plain
+            selected_text = str(event.option.prompt)
             if " - " in selected_text:
                 sink_id = selected_text.split(" - ")[-1].strip()
                 self.write_log(f"[AUDIO] Nastavuji výchozí zvukový výstup na: {sink_id}")

@@ -1,7 +1,4 @@
 import sys, os
-import json
-import subprocess
-import builtins
 
 # Import the webserver module to access audio_set_default
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

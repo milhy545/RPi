@@ -1,5 +1,4 @@
 import asyncio
-import os
 import subprocess
 import signal
 import sys
@@ -24,7 +23,7 @@ class LogBuffer:
     """Stores the last N log lines in memory to survive TUI suspension/resume."""
     def __init__(self, max_lines: int = 200):
         self.max_lines = max_lines
-        self.lines = []
+        self.lines: list[str] = []
 
     def write(self, line: str):
         self.lines.append(line)

@@ -35,3 +35,21 @@ REPORTS_DIR = os.path.join(BASE_DIR, "reports")
 
 # Ensure reports directory exists at import time
 os.makedirs(REPORTS_DIR, exist_ok=True)
+
+# KODI config
+KODI_HOST = "127.0.0.1"
+KODI_PORT = 9090
+
+# MPV config
+MPV_SOCKET = "/tmp/rpi-mpv.sock"
+
+# WS config
+WS_PORT = 8098
+
+# DLNA config
+PA_DLNA_PORT = "8088"
+AUDIO_STATE_CACHE_TTL = 0.75
+
+# TUI intervals
+TUI_STATS_INTERVAL = 2.0
+TUI_SETTINGS_INTERVAL = 5.0

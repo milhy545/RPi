@@ -79,7 +79,7 @@ def main():
     
     print(f"keys2mpv: Listening on {INPUT_DEV}")
     print(f"keys2mpv: Sockets: {SOCKETS}")
-    print(f"keys2mpv: Press Ctrl+C or kill to stop")
+    print("keys2mpv: Press Ctrl+C or kill to stop")
     
     with open(INPUT_DEV, 'rb') as f:
         while True:

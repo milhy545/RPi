@@ -1,4 +1,3 @@
-import re
 
 with open("provisioning/01-install-apt-deps.sh", "r") as f:
     content = f.read()

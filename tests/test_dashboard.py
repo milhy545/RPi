@@ -1,6 +1,5 @@
 import asyncio
 import os
-import signal
 from tui import RPiDashboard
 from mode_switcher import ModeSwitcherState
 

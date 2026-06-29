@@ -23,3 +23,13 @@ dev = [
     "bandit>=1.7.9",
     "pip-audit>=2.6.1",
 ]
+
+[tool.ruff.lint]
+select = ["F"]
+ignore = ["F841"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = false
+warn_unused_configs = true
