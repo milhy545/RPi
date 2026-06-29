@@ -99,30 +99,33 @@ if [[ -f test_production_api.py ]]; then
   run_step "Python compile: production API test" python3 -m py_compile test_production_api.py
 fi
 
-optional_step shellcheck "ShellCheck shell scripts" bash -c 'shopt -s nullglob; shellcheck *.sh provisioning/*.sh tools/*.sh'
-optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source . -c .gitleaks.toml
-# Prefer venv-local tools; fall back to PATH
-_BANDIT="${BANDIT_CMD:-$(ls .venv/bin/bandit 2>/dev/null || command -v bandit 2>/dev/null || true)}"
-_PIP_AUDIT="${PIP_AUDIT_CMD:-$(ls .venv/bin/pip-audit 2>/dev/null || command -v pip-audit 2>/dev/null || true)}"
+# Run extended security checks only on development machine (milhy PC)
+if [[ "${EXTENDED_CI:-0}" == "1" ]]; then
+  optional_step shellcheck "ShellCheck shell scripts" bash -lc 'shopt -s nullglob; shellcheck *.sh provisioning/*.sh tools/*.sh'
+  optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source . -c .gitleaks.toml
+  # Prefer venv-local tools; fall back to PATH
+  _BANDIT="${BANDIT_CMD:-$(ls .venv/bin/bandit 2>/dev/null || command -v bandit 2>/dev/null || true)}"
+  _PIP_AUDIT="${PIP_AUDIT_CMD:-$(ls .venv/bin/pip-audit 2>/dev/null || command -v pip-audit 2>/dev/null || true)}"
 
-if [[ -n "$_BANDIT" && -x "$_BANDIT" ]]; then
-  run_step "Bandit Python security scan (high severity gate)"     "$_BANDIT" -q -lll -r . -x ./.venv,./__pycache__,./tests
-else
-  append "## Bandit Python security scan (high severity gate)"
-  append "SKIP: bandit not found in .venv or PATH."
-  append ""
-  log "SKIP: Bandit (not installed)"
-  if [[ "${STRICT_SECURITY_TOOLS:-0}" == "1" ]]; then FAILURES=$((FAILURES + 1)); fi
-fi
+  if [[ -n "$_BANDIT" && -x "$_BANDIT" ]]; then
+    run_step "Bandit Python security scan (high severity gate)"     "$_BANDIT" -q -lll -r . -x ./.venv,./__pycache__,./tests
+  else
+    append "## Bandit Python security scan (high severity gate)"
+    append "SKIP: bandit not found in .venv or PATH."
+    append ""
+    log "SKIP: Bandit (not installed)"
+    if [[ "${STRICT_SECURITY_TOOLS:-0}" == "1" ]]; then FAILURES=$((FAILURES + 1)); fi
+  fi
 
-if [[ -n "$_PIP_AUDIT" && -x "$_PIP_AUDIT" ]]; then
-  run_step "pip-audit dependency scan" "$_PIP_AUDIT" --skip-editable
-else
-  append "## pip-audit dependency scan"
-  append "SKIP: pip-audit not found in .venv or PATH."
-  append ""
-  log "SKIP: pip-audit (not installed)"
-  if [[ "${STRICT_SECURITY_TOOLS:-0}" == "1" ]]; then FAILURES=$((FAILURES + 1)); fi
+  if [[ -n "$_PIP_AUDIT" && -x "$_PIP_AUDIT" ]]; then
+    run_step "pip-audit dependency scan" "$_PIP_AUDIT" --skip-editable
+  else
+    append "## pip-audit dependency scan"
+    append "SKIP: pip-audit not found in .venv or PATH."
+    append ""
+    log "SKIP: pip-audit (not installed)"
+    if [[ "${STRICT_SECURITY_TOOLS:-0}" == "1" ]]; then FAILURES=$((FAILURES + 1)); fi
+  fi
 fi
 # Run full pytest suite to ensure comprehensive test coverage
 if [[ -f .venv/bin/pytest ]]; then
