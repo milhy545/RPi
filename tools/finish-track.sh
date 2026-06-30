@@ -190,6 +190,7 @@ if [[ "$CI_REPORT" =~ ^/ || "$CI_REPORT" == *".."* ]]; then
 fi
 # Copy the CI report back to local reports if it exists on remote
 if [[ -n "$CI_REPORT" ]]; then
+  REPORT_DIR="conductor/ci/reports"
   LOCAL_CI_REPORT_PATH="$REPORT_DIR/$(basename "$CI_REPORT")"
   scp "$MILHY_PC_HOST:$MILHY_PC_REPO/$CI_REPORT" "$LOCAL_CI_REPORT_PATH" || {
     echo "FATAL: Failed to copy CI report $CI_REPORT from Milhy-PC" >&2
