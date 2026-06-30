@@ -3,7 +3,7 @@
 
 > Load this file at the start of every session.
 > This is the AGY equivalent of GEMINI.md — authoritative and always up to date.
-> Last updated: 2026-06-30
+> Last updated: 2026-06-30 (rebased)
 
 ---
 
