@@ -1756,12 +1756,15 @@ function openFeedback(){$('#feedback-desc').value='';$('#feedback-modal').classL
 function closeFeedback(){$('#feedback-modal').classList.remove('show')}
 async function submitFeedback(){let t=$('#feedback-type').value,d=$('#feedback-desc').value.trim();if(!d){msg(L('feedbackRequired'),'err');return}closeFeedback();msg(L('feedbackSending'),'info');let r=await fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:t,description:d})}).then(res=>res.json()).catch(e=>({error:e.message}));if(r.ok){msg(L('feedbackSuccess')+' '+r.file,'ok')}else{msg(r.error||L('feedbackFailed'),'err')}}
 setInterval(()=>{st();updBr()},3000);playerEnter();addTips();applyLang();
+let sp=new URLSearchParams(window.location.search);let shared=sp.get('share_url')||sp.get('text');
+if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/http[s]?:\/\/[^\s]+/)[0];play();}
 """
 
 QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
 
 def page():
     return f"""<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="/manifest.json">
 <title>RPi-TV</title><style>{CSS}</style></head><body>
 <div id="topbar"><h1 id="app-title">RPi-TV</h1><div style="display:flex;gap:.5rem;align-items:center"><button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer">💬 Feedback</button><div id="lang-switch"><button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button><button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button></div></div></div><div id="security-banner"></div><div id="toast"></div>
 <div class="tabs">
@@ -1962,6 +1965,19 @@ class H(BaseHTTPRequestHandler):
         try:
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
+            elif path=="/manifest.json":
+                import json
+                m = {
+                    "name": "RPi Dashboard",
+                    "short_name": "RPiDash",
+                    "start_url": "/",
+                    "display": "standalone",
+                    "background_color": "#0d1117",
+                    "theme_color": "#0d1117",
+                    "icons": [{"src": 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23238636"/><text x="50" y="50" font-size="50" text-anchor="middle" dy=".3em" fill="white">📺</text></svg>', "sizes": "192x192 512x512", "type": "image/svg+xml"}],
+                    "share_target": {"action": "/", "method": "GET", "params": {"title": "title", "text": "text", "url": "share_url"}}
+                }
+                return self.st(200,json.dumps(m),"application/manifest+json")
             elif path=="/mpv/play":
                 u=(q.get("url")or[""])[0].strip();ql=(q.get("q")or[None])[0]
                 resume=(q.get("resume")or["0"])[0] not in ("0", "", "false", "False")

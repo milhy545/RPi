@@ -45,5 +45,5 @@
 - [x] webui-report-conductor-intake
 - [x] webui-czech-completion
 - [x] dashboard-modes-settings-terminal
-- [ ] android-share-app
-- [ ] smart-home-integrations
+- [x] android-share-app
+- [x] smart-home-integrations

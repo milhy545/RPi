@@ -12,6 +12,11 @@ Low-RAM Raspberry Pi TV dashboard for media playback, device control, and quick 
 - [Tests and verification](./docs/testing.md)
 - [Operational playbooks](./docs/operations.md)
 
+## Core Features
+- **Mode Switching:** Zero-overhead switching between Dashboard and fullscreen applications.
+- **Android Integration:** Install as a Web App (PWA) to share YouTube links directly from your phone's share menu.
+- **Multimedia Keyboard Bridge:** Forward hardware media keys to `mpv`.
+
 ## Quick start
 ```bash
 uv sync

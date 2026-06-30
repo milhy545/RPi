@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: RPi‑TV Dashboard API
   version: 1.0.0
-  description: API endpoints for the RPi‑TV Dashboard web UI.
+  description: API endpoints for the RPi‑TV Dashboard to integrate with Home Assistant, Alexa, and Google Home via Mega-Orchestrator.
 servers:
   - url: http://{host}:{port}
     variables:
@@ -10,15 +10,14 @@ servers:
         default: localhost
       port:
         enum:
-          - 80
           - 8080
-          - 8443
-          - 443
-        default: 8080
+          - 8090
+          - 8099
+        default: 8090
 paths:
   /mpv/play:
     get:
-      summary: Play a YouTube URL via MPV.
+      summary: Play a media URL via MPV.
       parameters:
         - name: url
           in: query
@@ -41,9 +40,71 @@ paths:
           description: Playback started.
         "400":
           description: Missing or invalid URL.
+  /mpv/stop:
+    get:
+      summary: Stop MPV playback.
+      responses:
+        "200":
+          description: Playback stopped.
+  /mpv/toggle:
+    get:
+      summary: Toggle Play/Pause in MPV.
+      responses:
+        "200":
+          description: Playback toggled.
+  /mpv/vol:
+    get:
+      summary: Adjust MPV volume.
+      parameters:
+        - name: d
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Volume delta (e.g., 10 or -10).
+      responses:
+        "200":
+          description: Volume adjusted.
+  /mpv/seek:
+    get:
+      summary: Seek within MPV playback.
+      parameters:
+        - name: d
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Seek delta in seconds.
+      responses:
+        "200":
+          description: Seeked.
+  /mode/launch:
+    post:
+      summary: Launch a full-screen application mode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mode
+              properties:
+                mode:
+                  type: string
+                  enum: [steamlink, gfn, mpv, spotify, amazon, terminal]
+      responses:
+        "200":
+          description: Mode launched.
+  /mode/stop:
+    post:
+      summary: Stop the currently active full-screen mode.
+      responses:
+        "200":
+          description: Active mode stopped.
   /audio/default-sink:
     get:
-      summary: Set the default audio sink.
+      summary: Set the default audio output sink.
       parameters:
         - name: name
           in: query
@@ -53,6 +114,12 @@ paths:
       responses:
         "200":
           description: Sink changed.
+  /system/reboot:
+    get:
+      summary: Reboot the Raspberry Pi.
+      responses:
+        "200":
+          description: Reboot initiated.
   /report:
     post:
       summary: Submit a bug or feature report.
