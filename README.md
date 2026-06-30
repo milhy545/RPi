@@ -26,8 +26,10 @@ uv run python tui.py
 - `keys2mpv.py` — multimedia keyboard daemon
 - `conductor/` — product context, workflow, and tracks
 
-## User Feedback & Conductor Integration
-The WebUI includes a feedback modal (accessible via the "Feedback" button in the topbar) allowing users to submit bug reports and feature requests.
+### Security Notice
+To avoid triggering automated scanners, the project follows strict rules against executing untrusted input via shell. Safe alternatives (like direct subprocess argument passing) are preferred.
 
-- **Storage**: Feedback is sent as a `POST /report` JSON request, validated by the backend, and saved to the `reports/` directory.
-- **Conductor Intake**: A systemd timer triggers the `tools/process_reports.py` worker every minute. This worker processes new reports, creates Conductor tracks (containing `spec.md` and a skeleton `plan.md`) under `conductor/tracks/`, and appends them to `conductor/tracks.md`.
+### User Feedback & Conductor Integration
+The RPi Dashboard includes a built-in user feedback system via the WebUI.
+When a user submits a bug or feature request, it is saved locally to the `reports/` directory.
+A background `report-processor` service scans these files and automatically generates draft Conductor tracks inside `conductor/tracks/` so that developers (and AI agents) can investigate and implement them.

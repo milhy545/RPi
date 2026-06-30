@@ -1,0 +1,9 @@
+[Unit]
+Description=RPi Dashboard Report Processor
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/milhy777/rpi-dashboard/tools/process_reports.py
+WorkingDirectory=/home/milhy777/rpi-dashboard
+User=milhy777

@@ -1,96 +1,75 @@
 #!/usr/bin/env python3
 import os
-import sys
 import json
+import glob
 import time
 import shutil
-from datetime import datetime
 
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-REPORTS_DIR = os.path.join(BASE_DIR, "reports")
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPORTS_DIR = os.path.join(ROOT_DIR, "reports")
 PROCESSED_DIR = os.path.join(REPORTS_DIR, "processed")
-TRACKS_DIR = os.path.join(BASE_DIR, "conductor", "tracks")
-TRACKS_MD = os.path.join(BASE_DIR, "conductor", "tracks.md")
+TRACKS_DIR = os.path.join(ROOT_DIR, "conductor", "tracks")
+TRACKS_MD = os.path.join(ROOT_DIR, "conductor", "tracks.md")
 
 def process_reports():
-    os.makedirs(PROCESSED_DIR, exist_ok=True)
-    
     if not os.path.exists(REPORTS_DIR):
         return
-        
-    for name in os.listdir(REPORTS_DIR):
-        path = os.path.join(REPORTS_DIR, name)
-        if not os.path.isfile(path) or not name.endswith(".json"):
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    os.makedirs(TRACKS_DIR, exist_ok=True)
+
+    report_files = glob.glob(os.path.join(REPORTS_DIR, "*.json"))
+    for file_path in report_files:
+        if "processed" in file_path:
             continue
-            
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception as e:
-            print(f"Error reading report {name}: {e}", file=sys.stderr)
-            continue
-            
-        rep_type = data.get("type", "bug")
-        desc = data.get("description", "").strip()
-        ts = data.get("timestamp", int(time.time()))
-        
-        if not desc:
-            print(f"Empty description in {name}, skipping", file=sys.stderr)
-            continue
-            
-        track_id = f"report_{ts}_{rep_type}"
-        track_dir = os.path.join(TRACKS_DIR, track_id)
-        os.makedirs(track_dir, exist_ok=True)
-        
-        # 1. Write metadata.json
-        created_at = datetime.fromtimestamp(ts).strftime("%Y-%m-%dT%H:%M:%SZ")
-        with open(os.path.join(track_dir, "metadata.json"), "w", encoding="utf-8") as f:
-            json.dump({"status": "pending", "created_at": created_at}, f, indent=2)
-            
-        # 2. Write spec.md
-        spec_content = f"""# User Submission Report
+            with open(file_path, "r", encoding="utf-8") as f:
+                report = json.load(f)
 
-- **Type**: {rep_type}
-- **Submitted At**: {created_at}
-- **Client IP**: {data.get('client_ip', 'unknown')}
-
-## Description
-{desc}
-"""
-        with open(os.path.join(track_dir, "spec.md"), "w", encoding="utf-8") as f:
-            f.write(spec_content)
+            rtype = report.get("type", "unknown")
+            desc = report.get("description", "No description")
+            ts = report.get("timestamp", int(time.time()))
             
-        # 3. Write plan.md
-        plan_content = f"""# Implementation Plan – {track_id}
-
-## Goal
-Investigate and resolve the user-submitted {rep_type} report.
-
-## Tasks
-- [ ] **1.0** Investigate and resolve the report: "{desc[:100]}"
-"""
-        with open(os.path.join(track_dir, "plan.md"), "w", encoding="utf-8") as f:
-            f.write(plan_content)
+            track_name = f"report_{ts}_{rtype}"
+            track_dir = os.path.join(TRACKS_DIR, track_name)
+            os.makedirs(track_dir, exist_ok=True)
             
-        # 4. Append to conductor/tracks.md
-        desc_summary = desc[:60].replace("\n", " ") + ("..." if len(desc) > 60 else "")
-        track_entry = f"- [ ] **Track: {track_id}** — {rep_type.capitalize()} report: {desc_summary} | [Plan](./tracks/{track_id}/plan.md)\n"
-        
-        try:
-            with open(TRACKS_MD, "r", encoding="utf-8") as f:
-                tracks_content = f.read()
-            if track_id not in tracks_content:
+            # Create spec.md
+            spec_path = os.path.join(track_dir, "spec.md")
+            with open(spec_path, "w", encoding="utf-8") as f:
+                f.write(f"# User Report: {rtype.upper()}\n\n")
+                f.write(f"**Timestamp:** {ts}\n")
+                f.write(f"**Type:** {rtype}\n\n")
+                f.write("## Description\n")
+                f.write(f"{desc}\n")
+
+            # Create plan.md
+            plan_path = os.path.join(track_dir, "plan.md")
+            with open(plan_path, "w", encoding="utf-8") as f:
+                f.write(f"# Implementation Plan - {track_name}\n\n")
+                f.write(f"## Goal\nInvestigate and resolve the user report.\n\n")
+                f.write(f"Description: {desc}\n\n")
+                f.write("## Tasks\n")
+                f.write("| # | Description | Owner | Status |\n")
+                f.write("|---|-------------|-------|--------|\n")
+                f.write("| 1 | Investigate and resolve the report | agent | ⏳ Pending |\n")
+
+            # Create metadata.json
+            meta_path = os.path.join(track_dir, "metadata.json")
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump({"type": rtype, "timestamp": ts}, f)
+
+            # Append to tracks.md
+            if os.path.exists(TRACKS_MD):
                 with open(TRACKS_MD, "a", encoding="utf-8") as f:
-                    f.write(track_entry)
+                    f.write(f"\n- [ ] **Track: {track_name}** — {rtype.capitalize()} report | [Plan](./tracks/{track_name}/plan.md)\n")
+
+            # Move processed report
+            shutil_dest = os.path.join(PROCESSED_DIR, os.path.basename(file_path))
+            shutil.move(file_path, shutil_dest)
+            print(f"Processed report {os.path.basename(file_path)} into {track_name}")
+
         except Exception as e:
-            print(f"Error updating tracks.md: {e}", file=sys.stderr)
-            
-        # 5. Move original report to processed/
-        try:
-            shutil.move(path, os.path.join(PROCESSED_DIR, name))
-            print(f"Processed report {name} -> {track_id}")
-        except Exception as e:
-            print(f"Error moving report {name}: {e}", file=sys.stderr)
+            print(f"Failed to process {file_path}: {e}")
 
 if __name__ == "__main__":
     process_reports()

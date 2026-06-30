@@ -89,7 +89,7 @@ def test_post_rate_limited(monkeypatch):
         return "fake_report.json"
     monkeypatch.setattr(webserver, "_save_report", fake_save_report)
 
-    payload = {"type": "test", "description": "rate‑limit test"}
+    payload = {"type": "bug", "description": "rate‑limit test"}
     s1 = post("/report", payload)
     s2 = post("/report", payload)
     assert s1 == 201, f"First POST failed with {s1}"

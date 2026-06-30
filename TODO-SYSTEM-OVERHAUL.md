@@ -6,42 +6,44 @@
 ---
 
 ## Phase 0: Repo Cleanup
-- [ ] Zkontrolovat Jules open tasks
-- [ ] Vyřešit merge conflicts PR #20
-- [ ] Merge PR #15 (yt_id tests)
-- [ ] Merge PR #20 (unused imports)
-- [ ] Ověřit GH Actions green
-- [ ] Smazat merged branches
-- [ ] Sync local = remote
-- [ ] Rename master → main (pokudANO)
+- [x] Zkontrolovat Jules open tasks
+- [x] Vyřešit merge conflicts PR #20
+- [x] Merge PR #15 (yt_id tests)
+- [x] Merge PR #20 (unused imports)
+- [x] Ověřit GH Actions green
+- [x] Smazat merged branches
+- [x] Sync local = remote
+- [x] Rename master → main (pokudANO)
 
 ## Phase 1: Critical Fixes
-- [ ] 37x bare `except:` → `except Exception:`
-- [ ] Resource leaky (json.load/open)
-- [ ] WebSocket auth
-- [ ] File context managery
+- [x] 37x bare `except:` → `except Exception:`
+- [x] Resource leaky (json.load/open)
+- [x] WebSocket auth
+- [x] File context managery
 
 ## Phase 2: Rename & Ports
-- [ ] Rename webserver_8099.py → webserver.py
-- [ ] Update imports/references
-- [ ] Přidat porty 80, 8080, 443, 8443
-- [ ] Update systemd units
-- [ ] Test na všech portech
+- [x] Rename webserver_8099.py → webserver.py
+- [x] Update imports/references
+- [x] Přidat porty 80, 8080, 443, 8443
+- [x] Update systemd units
+- [x] Test na všech portech
 
 ## Phase 3: Code Quality
-- [ ] Type hints
-- [ ] Magic numbers → constants
-- [ ] English comments
-- [ ] Docstrings
-- [ ] pytest testy
+- [x] Type hints
+- [x] Magic numbers → constants
+- [x] English comments
+- [x] Docstrings
+- [x] pytest testy
 
 ## Phase 4: Security
-- [ ] WiFi heslo bez cmdline
-- [ ] Rate limiting
-- [ ] CORS
-- [ ] HTTPS automation
+- [x] WiFi heslo bez cmdline
+- [x] Rate limiting
+- [x] CORS
+- [x] HTTPS automation
 
 ## Phase 5: Open Tracks
-- [ ] webui-report-conductor-intake
-- [ ] webui-czech-completion
+- [x] webui-report-conductor-intake
+- [x] webui-czech-completion
 - [ ] dashboard-modes-settings-terminal
+- [ ] android-share-app
+- [ ] smart-home-integrations
