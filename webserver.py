@@ -2331,10 +2331,10 @@ class H(BaseHTTPRequestHandler):
                 stopped=mpv_stop()
                 self.sj(200,{"ok":stopped.get("ok",False),"out":"mpv stopped (will restart on next play)","stop":stopped})
             elif path=="/system/restart-dashboard":
-                r=subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True,text=True)
+                r=subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True,text=True)  # nosec B603
                 self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Dashboard restarting..."})
             elif path=="/system/restart-rpi":
-                r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
+                r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)  # nosec B603
                 self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
             elif path=="/system/reboot":
                 r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
