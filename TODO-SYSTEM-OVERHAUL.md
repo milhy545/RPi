@@ -44,6 +44,6 @@
 ## Phase 5: Open Tracks
 - [x] webui-report-conductor-intake
 - [x] webui-czech-completion
-- [ ] dashboard-modes-settings-terminal
+- [x] dashboard-modes-settings-terminal
 - [ ] android-share-app
 - [ ] smart-home-integrations

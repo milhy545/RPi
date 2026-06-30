@@ -234,7 +234,12 @@ class RPiDashboard(App):
                         yield OptionList(id="list_bluetooth_devices")
                         with Horizontal():
                             yield Button("Skenovat", id="btn_scan_bluetooth", variant="primary")
-                            yield Button("Odpojit vše", id="btn_disconnect_bluetooth", variant="error")
+                            yield Button("Spárovat", id="btn_pair_bluetooth", variant="success")
+                            yield Button("Důvěřovat", id="btn_trust_bluetooth", variant="warning")
+                        with Horizontal():
+                            yield Button("Připojit", id="btn_connect_bluetooth", variant="success")
+                            yield Button("Odpojit", id="btn_disconnect_bluetooth", variant="error")
+                            yield Button("Odebrat", id="btn_remove_bluetooth", variant="error")
                             
                     with Vertical(classes="settings-panel", id="panel_network"):
                         yield Static("[bold]Síť a Tailscale[/bold]", classes="settings-title")
@@ -243,6 +248,11 @@ class RPiDashboard(App):
                         
                     with Vertical(classes="settings-panel", id="panel_wifi"):
                         yield Static("[bold]Wi-Fi a Záchranný Hotspot[/bold]", classes="settings-title")
+                        yield OptionList(id="list_wifi_networks")
+                        with Horizontal():
+                            yield Button("Skenovat Wi-Fi", id="btn_scan_wifi", variant="primary")
+                        yield Input(placeholder="Heslo (nepovinné pro otevřené)", id="input_wifi_password", password=True)
+                        yield Button("Připojit k vybrané síti", id="btn_connect_wifi", variant="success")
                         yield Static("Hotspot SSID: RPi-service (Skrytá)", id="txt_hotspot_ssid")
                         yield Static("Připojení klienti: --", id="txt_hotspot_clients")
                         with Horizontal():
@@ -488,6 +498,60 @@ class RPiDashboard(App):
         await self.run_sys_cmd("bluetoothctl --timeout 5 scan on")
         self.write_log("[BLUETOOTH] Vyhledávání dokončeno.")
         await self.update_bluetooth_devices()
+
+    async def run_bluetooth_action(self, action: str) -> None:
+        try:
+            bt_list = self.query_one("#list_bluetooth_devices", OptionList)
+            if bt_list.highlighted is not None:
+                option = bt_list.get_option_at_index(bt_list.highlighted)
+                prompt = str(option.prompt)
+                if prompt == "Žádná spárovaná zařízení": return
+                if "(" in prompt and ")" in prompt:
+                    mac = prompt.split("(")[-1].strip(")")
+                    self.write_log(f"[BLUETOOTH] {action.capitalize()} pro {mac}...")
+                    out = await self.run_sys_cmd(f"bluetoothctl {action} {shlex.quote(mac)}")
+                    self.write_log(f"[BLUETOOTH] Výsledek: {out.strip()}")
+                    if action in ["connect", "disconnect"]:
+                        await self.update_audio_sinks()
+                    await self.update_bluetooth_devices()
+        except Exception as e:
+            self.write_log(f"[ERROR] Bluetooth {action} selhalo: {e}")
+
+    async def scan_wifi(self) -> None:
+        self.write_log("[WIFI] Skenuji dostupné sítě...")
+        out = await self.run_sys_cmd("nmcli -t -f SSID dev wifi")
+        wifi_list = self.query_one("#list_wifi_networks", OptionList)
+        wifi_list.clear_options()
+        if out:
+            seen = set()
+            for line in out.splitlines():
+                ssid = line.strip()
+                if ssid and ssid not in seen:
+                    seen.add(ssid)
+                    wifi_list.add_option(ssid)
+        if not wifi_list.option_count:
+             wifi_list.add_option("Žádné sítě")
+        self.write_log("[WIFI] Skenování dokončeno.")
+
+    async def connect_wifi(self) -> None:
+        try:
+            wifi_list = self.query_one("#list_wifi_networks", OptionList)
+            if wifi_list.highlighted is not None:
+                option = wifi_list.get_option_at_index(wifi_list.highlighted)
+                ssid = str(option.prompt)
+                if ssid == "Žádné sítě": return
+                pwd_input = self.query_one("#input_wifi_password", Input)
+                pwd = pwd_input.value.strip()
+                self.write_log(f"[WIFI] Připojuji k {ssid}...")
+                if pwd:
+                    cmd = f"nmcli dev wifi connect {shlex.quote(ssid)} password {shlex.quote(pwd)}"
+                else:
+                    cmd = f"nmcli dev wifi connect {shlex.quote(ssid)}"
+                out = await self.run_sys_cmd(cmd)
+                self.write_log(f"[WIFI] {out.strip()}")
+                pwd_input.value = ""
+        except Exception as e:
+            self.write_log(f"[ERROR] Wi-Fi připojení selhalo: {e}")
 
     async def disconnect_all_bluetooth(self) -> None:
         """Disconnect all connected Bluetooth audio devices."""
@@ -1044,9 +1108,22 @@ class RPiDashboard(App):
             
         elif event.button.id == "btn_scan_bluetooth":
             asyncio.create_task(self.scan_bluetooth())
+        elif event.button.id == "btn_pair_bluetooth":
+            asyncio.create_task(self.run_bluetooth_action("pair"))
+        elif event.button.id == "btn_trust_bluetooth":
+            asyncio.create_task(self.run_bluetooth_action("trust"))
+        elif event.button.id == "btn_connect_bluetooth":
+            asyncio.create_task(self.run_bluetooth_action("connect"))
+        elif event.button.id == "btn_remove_bluetooth":
+            asyncio.create_task(self.run_bluetooth_action("remove"))
 
         elif event.button.id == "btn_disconnect_bluetooth":
             asyncio.create_task(self.disconnect_all_bluetooth())
+
+        elif event.button.id == "btn_scan_wifi":
+            asyncio.create_task(self.scan_wifi())
+        elif event.button.id == "btn_connect_wifi":
+            asyncio.create_task(self.connect_wifi())
 
         elif event.button.id == "btn_vol_down":
             self.write_log("[AUDIO] Snižuji hlasitost o 10%")
