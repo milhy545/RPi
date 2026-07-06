@@ -54,7 +54,7 @@ class SystemStats(Static):
                 self._prev_cpu_idle = idle
                 self._prev_cpu_total = total
                 return cpu_pct
-        except Exception:
+        except Exception as e:
             return 0.0
         return 0.0
 
@@ -71,19 +71,19 @@ class SystemStats(Static):
             if mem_total > 0:
                 used = mem_total - mem_available
                 return used / 1024 / 1024, mem_total / 1024 / 1024
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         return 0.45, 1.0
 
     def get_cpu_temp(self) -> float:
         try:
             with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
                 return int(f.read().strip()) / 1000.0
-        except Exception:
+        except Exception as e:
             try:
                 with open("/sys/class/thermal/thermal_zone1/temp", "r") as f:
                     return int(f.read().strip()) / 1000.0
-            except Exception:
+            except Exception as e:
                 return 45.0
 
     def get_local_ip(self) -> str:
@@ -91,7 +91,7 @@ class SystemStats(Static):
         try:
             s.connect(('10.254.254.254', 1))
             ip = s.getsockname()[0]
-        except Exception:
+        except Exception as e:
             ip = '127.0.0.1'
         finally:
             s.close()
@@ -271,14 +271,14 @@ class RPiDashboard(App):
         try:
             with open("/home/milhy777/dashboard.log", "a") as f:
                 f.write(full_message + "\n")
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         if hasattr(self, "mode_switcher"):
             self.mode_switcher.log_buffer.write(full_message)
         try:
             log_widget = self.query_one("#syslog", Log)
             log_widget.write_line(full_message)
-        except Exception:
+        except Exception as e:
             # Widget not ready yet
             pass
 
@@ -290,8 +290,8 @@ class RPiDashboard(App):
             if hasattr(self, "mode_switcher"):
                 for line in self.mode_switcher.log_buffer.get_lines():
                     log_widget.write_line(line)
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
 
     def pause_api_server(self) -> None:
         """Flag the API server to reject incoming requests during TUI suspension."""
@@ -351,7 +351,7 @@ class RPiDashboard(App):
             active_tab = self.query_one(TabbedContent).active
             if active_tab != "tab_settings":
                 return
-        except Exception:
+        except Exception as e:
             return
 
         current_time = time.time()
@@ -391,8 +391,8 @@ class RPiDashboard(App):
                 self.query_one("#txt_tailscale_info", Static).update(f"🔒 Tailscale IP: [bold green]{ts_ip}[/]")
             else:
                 self.query_one("#txt_tailscale_info", Static).update("🔒 Tailscale: Neaktivní / Není nainstalováno")
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
 
     async def update_audio_sinks(self) -> None:
         """Fetch and list available PulseAudio/PipeWire sinks."""
@@ -432,15 +432,15 @@ class RPiDashboard(App):
                 latency_data = webserver._load_audio_latency()
                 lat = latency_data.get("dlna_output_offset_ms", 0)
                 self.query_one("#input_dlna_latency", Input).value = str(lat)
-            except Exception:
+            except Exception as e:
                 pass
             try:
                 loopback_active = bool(webserver._loopback_module_id())
                 self.query_one("#switch_alexa_bt", Switch).value = loopback_active
-            except Exception:
+            except Exception as e:
                 pass
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
 
     async def update_bluetooth_devices(self) -> None:
         """Fetch and list paired Bluetooth devices."""
@@ -463,8 +463,8 @@ class RPiDashboard(App):
             ]
             if options:
                 bt_list.add_options(options)
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
 
     async def update_wifi_hotspot_info(self) -> None:
         """Read hotspot and raspotify settings and status."""
@@ -482,8 +482,8 @@ class RPiDashboard(App):
             
             raspotify_active = await self.run_sys_cmd("systemctl is-active raspotify")
             self.query_one("#switch_raspotify", Switch).value = (raspotify_active == "active")
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
 
     async def restart_padlna(self) -> None:
         """Restart the pa-dlna background streaming client."""
@@ -671,7 +671,7 @@ class RPiDashboard(App):
                 
             self.add_cors_headers(response)
             return response
-        except Exception:
+        except Exception as e:
             import traceback
             with open("/tmp/api_error.log", "a") as f:
                 f.write("OUTER Exception in api_middleware:\n")
@@ -734,7 +734,7 @@ class RPiDashboard(App):
             writer.close()
             await writer.wait_closed()
             return True
-        except Exception:
+        except Exception as e:
             return False
 
     async def handle_player_pause(self, request: web.Request) -> web.Response:
@@ -945,16 +945,16 @@ class RPiDashboard(App):
         try:
             with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f:
                 f.write("on")
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         # Blank console so DRM planes are not overridden by fbcon
         try:
             _sp.run(["sudo", "bash", "-c",
                      "echo 1 > /sys/class/vt/console/dkblnk 2>/dev/null;"
                      "cat /dev/zero > /dev/fb0 2>/dev/null"],
                     timeout=2, capture_output=True)
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         # MPV reads settings from /etc/mpv/mpv.conf (H.264-only, v4l2m2m HW decode)
         # use_suspend=False: DRM/KMS video output breaks when TUI suspends
         await self.mode_switcher.launch([
@@ -966,8 +966,8 @@ class RPiDashboard(App):
             _sp.run(["sudo", "bash", "-c",
                      "echo 0 > /sys/class/vt/console/dkblnk 2>/dev/null"],
                     timeout=2, capture_output=True)
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
@@ -1018,8 +1018,8 @@ class RPiDashboard(App):
                 for line in f:
                     if line.startswith("MemAvailable:"):
                         return int(line.split()[1]) // 1024
-        except Exception:
-            pass
+        except Exception as e:
+            self.write_log(f"[WARN] Exception: {e}")
         return 9999  # optimistic fallback
 
     async def launch_mode(self, mode_name: str, command: list[str], timeout: float = 0, use_suspend: bool = True) -> None:
@@ -1071,7 +1071,7 @@ class RPiDashboard(App):
             try:
                 url_input = self.query_one("#input_mpv_url", Input)
                 url = url_input.value.strip()
-            except Exception:
+            except Exception as e:
                 url = ""
             
             if not url:
@@ -1139,7 +1139,7 @@ class RPiDashboard(App):
             try:
                 val_str = self.query_one("#input_dlna_latency", Input).value.strip()
                 val = int(val_str)
-            except Exception:
+            except Exception as e:
                 self.write_log("[ERROR] Neplatná hodnota latence. Zadejte celé číslo.")
             else:
                 self.write_log(f"[AUDIO] Ukládám DLNA latenci: {val} ms")
