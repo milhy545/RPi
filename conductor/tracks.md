@@ -43,3 +43,9 @@
 - [x] **Track: friendly-webui-ports-hostnames** — Friendly WebUI ports and hostnames | [Plan](./tracks/friendly-webui-ports-hostnames_20260616/plan.md)
 - [x] **Track: http-https-fallback-banner** — HTTP fallback with HTTPS clipboard banner | [Plan](./tracks/http-https-fallback-banner_20260616/plan.md)
 - [x] **Track: remove-kodi-tab** — Remove Kodi tab from WebUI | [Plan](./tracks/remove-kodi-tab_20260616/plan.md)
+
+- [x] **Track: report_1782888036_feature** — Audio Matrix Patchbay (DLNA loopback support) | [Plan](./tracks/report_1782888036_feature/plan.md)
+
+- [ ] **Track: report_1782888573_feature** — Feature report | [Plan](./tracks/report_1782888573_feature/plan.md)
+
+- [ ] **Track: report_1782888498_bug** — Bug report | [Plan](./tracks/report_1782888498_bug/plan.md)

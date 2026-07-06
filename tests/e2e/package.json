@@ -1,0 +1,12 @@
+{
+  "name": "rpi-tv-e2e",
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for RPi Dashboard WebUI",
+  "type": "module",
+  "scripts": {
+    "test": "node playwright_test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0"
+  }
+}

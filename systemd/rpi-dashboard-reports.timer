@@ -1,0 +1,10 @@
+[Unit]
+Description=Run RPi Dashboard Reports Processor daily at 4:00 AM
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
