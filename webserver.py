@@ -1853,7 +1853,28 @@ if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/ht
 
 QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
 
+def _load_static_page():
+    """Try to load new static HTML page. Returns None if not available."""
+    try:
+        static_html = os.path.join(os.path.dirname(__file__), "rpi_dashboard", "static", "index.html")
+        if os.path.isfile(static_html):
+            with open(static_html, "r", encoding="utf-8") as f:
+                content = f.read()
+            # Replace template placeholders
+            content = content.replace("{{QUALITY_OPTIONS}}", QO)
+            return content
+    except Exception as e:
+        print(f"[WARN] Could not load static page: {e}", file=sys.stderr)
+    return None
+
+
 def page():
+    """Return WebUI HTML. Try new static files first, fallback to inline."""
+    # Try new static files
+    static_page = _load_static_page()
+    if static_page:
+        return static_page
+    # Fallback to old inline HTML
     return f"""<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="manifest" href="/manifest.json">
 <title>RPi-TV</title><style>{CSS}</style></head><body>
