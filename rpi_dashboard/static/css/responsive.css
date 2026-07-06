@@ -1,0 +1,342 @@
+/* Responsive Design for RPi-TV Dashboard */
+
+/* Desktop (default) - >1024px */
+/* Already handled in main.css */
+
+/* Tablet - 768px to 1024px */
+@media (max-width: 1024px) {
+    body {
+        width: 100%;
+        padding: 0.5rem;
+        font-size: 13px;
+    }
+
+    .media-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    .cec-grid {
+        max-width: 200px;
+    }
+
+    .vol-row {
+        max-width: 200px;
+    }
+
+    #terminal {
+        height: min(60vh, 600px);
+        min-height: 350px;
+    }
+}
+
+/* Mobile - <768px */
+@media (max-width: 768px) {
+    body {
+        width: 100%;
+        padding: 0.4rem;
+        font-size: 12px;
+        overflow-x: hidden;
+    }
+
+    /* Stack tabs vertically on very small screens */
+    .tabs {
+        flex-wrap: wrap;
+        gap: 0;
+    }
+
+    .tab {
+        flex: 1;
+        min-width: calc(33.33% - 4px);
+        padding: 0.4rem 0.5rem;
+        font-size: 0.75rem;
+        text-align: center;
+    }
+
+    /* Single column layout */
+    .media-grid {
+        grid-template-columns: 1fr;
+        gap: 0.4rem;
+    }
+
+    /* Compact sections */
+    .sec {
+        padding: 0.5rem;
+        margin: 0.3rem 0;
+    }
+
+    .sec h3 {
+        font-size: 0.75rem;
+    }
+
+    /* Stack rows vertically */
+    .row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .row button, .row input, .row select {
+        width: 100%;
+        margin: 0.1rem 0;
+    }
+
+    /* URL input */
+    .url-wrap {
+        min-width: 100%;
+    }
+
+    .url-wrap input {
+        padding-right: 2.5rem;
+    }
+
+    .url-paste {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    /* CEC grid - 3 columns */
+    .cec-grid {
+        max-width: 100%;
+        gap: 0.15rem;
+    }
+
+    .cec-grid button {
+        padding: 0.4rem;
+        font-size: 0.9rem;
+    }
+
+    /* Volume row */
+    .vol-row {
+        max-width: 100%;
+    }
+
+    .vol-row button {
+        flex: 1;
+        padding: 0.4rem;
+    }
+
+    /* Media head */
+    .media-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
+    }
+
+    .media-head .row {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    /* Player preview */
+    #player-preview img {
+        width: 80px;
+        max-width: 30vw;
+    }
+
+    /* Terminal */
+    #terminal {
+        height: min(50vh, 500px);
+        min-height: 300px;
+    }
+
+    /* Modal */
+    .modal-content {
+        max-width: 100%;
+        padding: 0.8rem;
+    }
+
+    /* Buttons */
+    button {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    /* Input fields */
+    input, select {
+        padding: 0.4rem;
+    }
+
+    /* Tips */
+    .tip-box {
+        position: fixed;
+        left: 0.5rem;
+        right: 0.5rem;
+        bottom: 0.5rem;
+        width: auto;
+        transform: none;
+    }
+
+    .tip-box::after {
+        display: none;
+    }
+
+    /* Toast notifications */
+    #toast {
+        bottom: 8px;
+        right: 8px;
+        left: 8px;
+        max-width: none;
+    }
+
+    /* Language switch */
+    #lang-switch {
+        gap: 0.2rem;
+    }
+
+    .lang-btn {
+        padding: 0.15rem 0.3rem;
+        font-size: 0.7rem;
+    }
+
+    /* Topbar */
+    #topbar {
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+
+    #app-title {
+        font-size: 1rem;
+    }
+
+    /* Player controls */
+    .row button[onclick*="seek"], 
+    .row button[onclick*="vol"] {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.4rem;
+    }
+
+    /* Range input */
+    input[type="range"] {
+        height: 8px;
+    }
+
+    /* Pre blocks */
+    pre {
+        font-size: 0.7rem;
+        padding: 0.4rem;
+        overflow-x: auto;
+    }
+
+    /* Apps grid */
+    #p-apps .sec > div[style*="grid"] {
+        grid-template-columns: 1fr;
+    }
+
+    #p-apps button {
+        padding: 0.8rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Very small screens - <480px */
+@media (max-width: 480px) {
+    .tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .tab {
+        min-width: 0;
+        font-size: 0.7rem;
+        padding: 0.3rem;
+    }
+
+    .tab[data-icon]::before {
+        display: block;
+        font-size: 1rem;
+        margin-bottom: 0.1rem;
+    }
+
+    .cec-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .vol-row {
+        flex-wrap: wrap;
+    }
+
+    .vol-row button {
+        min-width: calc(33.33% - 4px);
+    }
+
+    /* Hide some less important buttons on very small screens */
+    .row button[onclick*="mute"],
+    .row button[onclick*="rewind"],
+    .row button[onclick*="forward"] {
+        display: none;
+    }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    input, select {
+        min-height: 44px;
+    }
+
+    .tab {
+        min-height: 48px;
+    }
+
+    .cec-grid button {
+        min-height: 48px;
+    }
+
+    .vol-row button {
+        min-height: 48px;
+    }
+
+    /* Increase tap targets */
+    .url-paste {
+        width: 44px;
+        height: 44px;
+    }
+
+    /* Swipe indicator */
+    .tabs::after {
+        content: '';
+        display: block;
+        width: 40px;
+        height: 4px;
+        background: var(--text-secondary);
+        border-radius: 2px;
+        margin: 0.3rem auto 0;
+        opacity: 0.5;
+    }
+}
+
+/* Dark mode preference */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        /* Use dark theme by default */
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* Print styles */
+@media print {
+    .tabs, #topbar, #security-banner, #toast, .modal {
+        display: none !important;
+    }
+
+    .pnl {
+        display: block !important;
+        page-break-inside: avoid;
+    }
+
+    body {
+        background: white;
+        color: black;
+    }
+}

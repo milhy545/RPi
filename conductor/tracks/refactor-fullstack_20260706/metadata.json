@@ -1,0 +1,33 @@
+{
+  "track_id": "refactor-fullstack_20260706",
+  "type": "feature",
+  "status": "pending",
+  "created": "2026-07-06T19:15:00+02:00",
+  "updated": "2026-07-06T19:15:00+02:00",
+  "owner": "agent",
+  "priority": "high",
+  "description": "Full-Stack Refactoring: Backend modularization, WebUI responsive design, TUI modernization, open track integration",
+  "estimated_hours": "15-22",
+  "phases": 7,
+  "dependencies": [
+    "PipeWire/PulseAudio",
+    "BlueZ",
+    "NetworkManager",
+    "CEC adapter",
+    "mpv",
+    "Textual",
+    "Playwright"
+  ],
+  "related_tracks": [
+    "report_1782888573_feature",
+    "report_1782888498_bug"
+  ],
+  "tags": [
+    "refactoring",
+    "backend",
+    "frontend",
+    "tui",
+    "responsive",
+    "testing"
+  ]
+}

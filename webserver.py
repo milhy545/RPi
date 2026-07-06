@@ -2053,6 +2053,23 @@ class H(BaseHTTPRequestHandler):
         if path == "/modes":
             self.sj(200, {"ok": True, "modes": ["player","audio","devices","terminal"], "note": "Placeholder endpoint"})
             return
+
+        # Static file serving
+        if path.startswith("/static/"):
+            static_dir = os.path.join(os.path.dirname(__file__), "rpi_dashboard", "static")
+            file_path = os.path.join(static_dir, path[8:])  # Remove /static/
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1]
+                mime_types = {".css": "text/css", ".js": "application/javascript", ".html": "text/html", ".json": "application/json"}
+                mime = mime_types.get(ext, "application/octet-stream")
+                with open(file_path, "r") as f:
+                    content = f.read()
+                self.st(200, content, mime)
+                return
+            else:
+                self.send_error(404, "File not found")
+                return
+
         try:
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")

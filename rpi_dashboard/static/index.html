@@ -1,0 +1,321 @@
+<!doctype html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <title>RPi-TV</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+</head>
+<body>
+    <div id="topbar">
+        <h1 id="app-title">RPi-TV</h1>
+        <div style="display:flex;gap:.5rem;align-items:center">
+            <button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer">💬 Feedback</button>
+            <div id="lang-switch">
+                <button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button>
+                <button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button>
+            </div>
+        </div>
+    </div>
+    <div id="security-banner"></div>
+    <div id="toast"></div>
+    
+    <div class="tabs">
+        <button id="tab-player" class="tab active" data-t="player" data-i18n="player" data-icon="🎬" onclick="sw('player')">🎬 Player</button>
+        <button id="tab-apps" class="tab" data-t="apps" data-i18n="apps" data-icon="🚀" onclick="sw('apps')">🚀 Apps</button>
+        <button id="tab-cec" class="tab" data-t="cec" data-i18n="cec" data-icon="📺" onclick="sw('cec')">📺 CEC</button>
+        <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
+        <button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
+        <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
+    </div>
+
+    <!-- Player Panel -->
+    <div id="p-player" class="pnl active">
+        <div class="sec">
+            <h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
+            <div class="row">
+                <div class="url-wrap">
+                    <input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()">
+                    <button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button>
+                </div>
+                <select id="qual" style="width:auto;min-width:88px">{{QUALITY_OPTIONS}}</select>
+            </div>
+            <div id="player-preview"></div>
+            <div class="row" style="margin-top:.3rem">
+                <button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button>
+                <button onclick="pause()" data-i18n="pause" data-i18n-attr="aria-label" aria-label="Pause">⏸</button>
+                <button onclick="stop()" class="danger" data-i18n="stop" data-i18n-attr="aria-label" aria-label="Stop">⏹</button>
+                <button onclick="seek(-10)" data-i18n="rewind10" data-i18n-attr="aria-label" aria-label="Rewind 10 seconds">⏪10</button>
+                <button onclick="seek(10)" data-i18n="forward10" data-i18n-attr="aria-label" aria-label="Forward 10 seconds">10⏩</button>
+                <button onclick="vol(-10)" data-i18n="volumedown" data-i18n-attr="aria-label" aria-label="Volume down">🔉</button>
+                <button onclick="vol(10)" data-i18n="volumeup" data-i18n-attr="aria-label" aria-label="Volume up">🔊</button>
+                <button onclick="mute()" style="font-size:.85rem" data-i18n="mute" data-i18n-attr="aria-label" aria-label="Mute">🔇</button>
+            </div>
+            <div style="margin-top:.4rem">
+                <div style="display:flex;align-items:center;gap:.4rem">
+                    <span id="stime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
+                    <input type="range" id="sbar" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false">
+                    <span id="dtime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
+                </div>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="status">Status</h3>
+            <div id="st">—</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="quick" data-tip="sectionQuick">Quick</h3>
+            <div class="row">
+                <button onclick="qu('https://www.youtube.com/watch?v=dQw4w9WgXcQ')" style="font-size:.75rem">🎵 Rick Astley</button>
+                <button onclick="qu('https://www.youtube.com/watch?v=9bZkp7q19f0')" style="font-size:.75rem">🎵 Gangnam</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="ytAge" data-tip="sectionAgeCookies">YouTube Age / Cookies</h3>
+            <div class="media-meta" data-i18n="ytAgeDesc">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div>
+            <div class="row" style="margin-top:.35rem">
+                <input id="yt-age-url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube URL for age-check..." style="flex:1">
+                <button data-icon="🍪" data-i18n="cookieStatus" onclick="ytCookieStatus()">🍪 Cookie status</button>
+                <button data-icon="🔞" data-i18n="ageCheck" onclick="ytAgeCheck()">🔞 Age check</button>
+            </div>
+            <pre id="yt-cookie-status" data-i18n="clickCookieStatus">Click Cookie status</pre>
+        </div>
+    </div>
+
+    <!-- Apps Panel -->
+    <div id="p-apps" class="pnl">
+        <div class="sec">
+            <h3 data-i18n="appsLaunch" data-tip="sectionApps">Spustit aplikaci</h3>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:.5rem">
+                <button onclick="launchApp('steamlink')" style="padding:12px;font-size:1rem">🎮 Steam Link</button>
+                <button onclick="launchApp('gfn')" style="padding:12px;font-size:1rem">🎯 GeForce Now</button>
+                <button onclick="launchApp('mpv')" style="padding:12px;font-size:1rem" data-i18n="appsMpv">🎬 MPV Přehrávač</button>
+                <button onclick="launchApp('spotify')" style="padding:12px;font-size:1rem">🎵 Spotify</button>
+                <button onclick="launchApp('amazon')" style="padding:12px;font-size:1rem">🎶 Amazon Music</button>
+                <button onclick="stopApp()" style="padding:12px;font-size:1rem;color:#f85149;border:2px solid #f85149" data-i18n="appsStopReturn">⏹ ZASTAVIT & VRÁTIT SE</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="appsReturn" data-tip="sectionAppsReturn">Návrat do Dashboardu</h3>
+            <div style="font-size:.85em;color:#c9d1d9" data-i18n="appsReturnDesc">
+                • <b>Ctrl+C</b> — ukončí většinu aplikací<br>
+                • <b>Ctrl+Q</b> — ukončí Steam Link<br>
+                • <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>
+                • Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení
+            </div>
+        </div>
+    </div>
+
+    <!-- CEC Panel -->
+    <div id="p-cec" class="pnl">
+        <div class="sec">
+            <h3 data-i18n="cecPower" data-tip="sectionCecPower">Power</h3>
+            <div class="row">
+                <button onclick="cec('on 0')" data-i18n="cecOn" data-icon="🟢">🟢 On</button>
+                <button onclick="cec('standby 0')" class="danger" data-i18n="cecOff" data-icon="🔴">🔴 Off</button>
+                <button onclick="cecScan()" data-i18n="cecScan" data-icon="🔍">🔍 Scan</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="cecBridge" data-tip="sectionCecBridge">Remote→MPV Bridge</h3>
+            <div class="row">
+                <button id="brb" onclick="cecBr()" data-i18n="cecStart" data-icon="▶">▶ Start</button>
+                <span id="brs" style="font-size:.75em;color:#8b949e" data-i18n="disconnected">Disconnected</span>
+            </div>
+            <div style="font-size:.7em;color:#666" data-i18n="cecBridgeDesc">Play/Pause, Stop, Seek, Vol via TV remote</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="cecNav" data-tip="sectionCecNav">Nav</h3>
+            <div class="cec-grid">
+                <button onclick="cecKey('menu')" aria-label="TV Menu">📋</button>
+                <button onclick="cecKey('up')" aria-label="TV Up">▲</button>
+                <button onclick="cecKey('channels+')">CH+</button>
+                <button onclick="cecKey('left')" aria-label="TV Left">◀</button>
+                <button onclick="cecKey('select')" style="font-size:.7rem">OK</button>
+                <button onclick="cecKey('right')" aria-label="TV Right">▶</button>
+                <button onclick="cecKey('back')" aria-label="TV Back">◀◀</button>
+                <button onclick="cecKey('down')" aria-label="TV Down">▼</button>
+                <button onclick="cecKey('channels-')">CH-</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="cecVol" data-tip="sectionCecVol">Vol</h3>
+            <div class="vol-row">
+                <button onclick="cec('voldown')" aria-label="TV Volume down">🔉−</button>
+                <button onclick="cec('mute')" aria-label="TV Mute">🔇</button>
+                <button onclick="cec('volup')" aria-label="TV Volume up">🔊+</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="cecInput" data-tip="sectionCecInput">Input</h3>
+            <div class="row">
+                <button onclick="cecIn(1)">HDMI1</button>
+                <button onclick="cecIn(2)">HDMI2</button>
+                <button onclick="cecIn(3)">HDMI3</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="cecDevices" data-tip="sectionCecDevices">Devices</h3>
+            <div id="cdev" data-i18n="clickScan" style="font-size:.8em;color:#8b949e">Click Scan</div>
+        </div>
+    </div>
+
+    <!-- Audio Panel -->
+    <div id="p-audio" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="audioTitle" data-tip="sectionAudio">Audio & Media</h3>
+                    <div class="media-meta" data-i18n="audioDesc">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div>
+                </div>
+                <div class="row">
+                    <button onclick="taSwitch('bt')">🎧 BT</button>
+                    <button onclick="taSwitch('hdmi')">📺 HDMI</button>
+                    <button onclick="taSwitch('dlna')">📡 DLNA</button>
+                    <button data-i18n="refresh" data-icon="🔄" onclick="taRefresh()">🔄 Refresh</button>
+                </div>
+            </div>
+            <div class="media-meta"><span data-i18n="taDefault">Default sink:</span> <span id="ta-default">—</span></div>
+        </div>
+        <div class="media-grid">
+            <div>
+                <div class="sec">
+                    <h3 data-i18n="outputSinks" data-tip="sectionOutputSinks">Output Sinks</h3>
+                    <div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+                </div>
+            </div>
+            <div>
+                <div class="sec">
+                    <h3 data-i18n="inputSources" data-tip="sectionInputSources">Input Sources</h3>
+                    <div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+                </div>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="mixer" data-tip="sectionMixer">Mixer — Active Streams</h3>
+            <div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="audioRouting" data-tip="sectionAudioRouting">Audio Routing & Patchbay</h3>
+            <div id="ta-matrix" style="margin-bottom:1rem;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:0.5rem"></div>
+            <div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="dlnaLatency" data-tip="sectionDlnaLatency">DLNA Latency Compensation</h3>
+            <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+                <label style="font-size:.72rem;color:#8b949e" data-i18n="audioDelay">Audio delay (ms):</label>
+                <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px">
+                <button data-icon="💾" data-i18n="saveApply" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save + Apply</button>
+                <span class="media-meta">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio; negative advances audio/video sync.</span>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="diagnostics" data-tip="sectionDiagnostics">Diagnostics</h3>
+            <div id="ta-summary" class="media-meta" data-i18n="clickRefresh">Click Refresh</div>
+            <details style="margin-top:.5rem">
+                <summary class="media-meta" style="cursor:pointer" data-i18n="taRaw">Raw technical JSON</summary>
+                <pre id="ta-raw" data-i18n="clickRefresh">Click Refresh</pre>
+            </details>
+        </div>
+    </div>
+
+    <!-- Devices Panel -->
+    <div id="p-devices" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="devicesTitle" data-tip="sectionDevices">Devices</h3>
+                    <div class="media-meta" data-i18n="devicesDesc">Pair and connect hardware here. Speaker output routing and volume remain in Audio.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="devicesRefresh()">🔄 Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="media-grid">
+            <div class="sec">
+                <h3 data-i18n="btPair" data-tip="sectionBluetooth">Bluetooth Pairing</h3>
+                <div class="row">
+                    <button onclick="deviceBtScan()">🔍 Scan</button>
+                    <span id="dev-bt-status" class="media-meta">—</span>
+                </div>
+                <div id="dev-bt-list" data-i18n="clickScanRefresh" class="media-meta" style="margin-top:.4rem">Click Scan or Refresh</div>
+            </div>
+            <div class="sec">
+                <h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3>
+                <div class="row">
+                    <button onclick="wifiStatus()">📶 Status</button>
+                    <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
+                </div>
+                <div class="row" style="margin-top:.35rem">
+                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
+                </div>
+                <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="roles" data-tip="sectionRoles">Suggested Device Roles</h3>
+            <div class="media-meta" data-i18n="rolesDesc">• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.</div>
+        </div>
+    </div>
+
+    <!-- Terminal Panel -->
+    <div id="p-terminal" class="pnl">
+        <div class="sec">
+            <h3 data-i18n="hwStatsTitle">HW Stats & CPU Masks</h3>
+            <div class="row" style="margin-bottom:.35rem">
+                <button onclick="loadHwStats();loadSysStatus()" style="font-size:.75rem" data-i18n="hwUpdateBtn" data-icon="🔄">🔄 Update</button>
+                <button id="hw-live-btn" onclick="toggleHwLive()" style="font-size:.75rem" data-i18n="hwLiveBtn" data-icon="▶">▶ Live monitoring</button>
+            </div>
+            <div id="hw-stats" style="font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap" data-i18n="hwLoading">Loading HW stats...</div>
+            <div id="sys-status" style="margin-top:.5rem;font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap" data-i18n="sysLoading">Loading CPU masks...</div>
+        </div>
+        <div class="sec">
+            <h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
+            <div class="row" style="margin-bottom:.4rem">
+                <button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button>
+                <button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button>
+                <span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span>
+            </div>
+            <div id="terminal"></div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="restartTitle">Restart Actions</h3>
+            <div class="row">
+                <button onclick="restartMpv()" class="danger" style="font-size:.75rem" data-i18n="restartMpv" data-icon="🔄">🔄 Restart mpv</button>
+                <button onclick="restartDashboard()" style="font-size:.75rem" data-i18n="restartDashboard" data-icon="🔄">🔄 Restart Dashboard</button>
+                <button onclick="restartRpi()" class="danger" style="font-size:.75rem" data-i18n="restartRpi" data-icon="🔄">🔄 Restart RPi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeFeedback()">×</button>
+            <h3 data-i18n="feedbackTitle">💬 Submit Feedback</h3>
+            <div>
+                <label data-i18n="feedbackTypeLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Type:</label>
+                <select id="feedback-type" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem">
+                    <option value="bug" data-i18n="feedbackBug">Bug Report</option>
+                    <option value="feature" data-i18n="feedbackFeature">Feature Request</option>
+                </select>
+            </div>
+            <div style="margin-top:.4rem">
+                <label data-i18n="feedbackDescLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Description:</label>
+                <textarea id="feedback-desc" data-i18n-attr="placeholder" placeholder="Please describe the issue or your feature request..." style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem;resize:vertical;box-sizing:border-box"></textarea>
+            </div>
+            <button onclick="submitFeedback()" style="width:100%;margin-top:.4rem" data-i18n="feedbackSubmit">Submit</button>
+        </div>
+    </div>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

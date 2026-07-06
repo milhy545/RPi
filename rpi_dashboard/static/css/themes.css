@@ -1,0 +1,275 @@
+/* Theme System for RPi-TV Dashboard */
+
+:root {
+    /* Dark Theme (Default) */
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --text-primary: #c9d1d9;
+    --text-secondary: #8b949e;
+    --text-muted: #666;
+    --border-color: #30363d;
+    --accent-color: #58a6ff;
+    --accent-hover: #1a5276;
+    --success-color: #3fb950;
+    --success-bg: #0d2818;
+    --warning-color: #d29922;
+    --warning-bg: #2d2308;
+    --danger-color: #f85149;
+    --danger-bg: #3d1214;
+    --info-color: #58a6ff;
+    --info-bg: #0c2d6b;
+}
+
+[data-theme="light"] {
+    /* Light Theme */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #e1e4e8;
+    --text-primary: #24292e;
+    --text-secondary: #586069;
+    --text-muted: #6a737d;
+    --border-color: #e1e4e8;
+    --accent-color: #0366d6;
+    --accent-hover: #0550ae;
+    --success-color: #22863a;
+    --success-bg: #dcffe4;
+    --warning-color: #735c0f;
+    --warning-bg: #fff5b1;
+    --danger-color: #d73a49;
+    --danger-bg: #ffeef0;
+    --info-color: #0366d6;
+    --info-bg: #dbedff;
+}
+
+[data-accent="green"] {
+    --accent-color: #3fb950;
+    --accent-hover: #238636;
+}
+
+[data-accent="purple"] {
+    --accent-color: #a371f7;
+    --accent-hover: #8957e5;
+}
+
+[data-accent="orange"] {
+    --accent-color: #f0883e;
+    --accent-hover: #db6d28;
+}
+
+[data-accent="pink"] {
+    --accent-color: #f778ba;
+    --accent-hover: #db61a2;
+}
+
+/* Apply theme to body */
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Update all components to use CSS variables */
+input, button, select {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+button:hover {
+    background-color: var(--bg-secondary);
+    border-color: var(--accent-color);
+}
+
+button.on, button:active {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-color);
+}
+
+button.danger {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+a {
+    color: var(--accent-color);
+}
+
+.sec {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.sec h3 {
+    color: var(--text-secondary);
+}
+
+#topbar {
+    border-bottom-color: var(--border-color);
+}
+
+.lang-btn {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.lang-btn.active {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-color);
+    color: #fff;
+}
+
+.tab {
+    color: var(--text-secondary);
+    border-bottom-color: transparent;
+}
+
+.tab:hover {
+    color: var(--text-primary);
+}
+
+.tab.active {
+    color: var(--accent-color);
+    border-bottom-color: var(--accent-color);
+}
+
+.t.ok {
+    background-color: var(--success-bg);
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+
+.t.err {
+    background-color: var(--danger-bg);
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+.t.info {
+    background-color: var(--info-bg);
+    border-color: var(--info-color);
+    color: var(--info-color);
+}
+
+pre {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+#terminal {
+    border-color: var(--border-color);
+}
+
+.media-card {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+.media-card h4 {
+    color: var(--text-primary);
+}
+
+.media-meta {
+    color: var(--text-secondary);
+}
+
+.badge {
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.badge.ok {
+    border-color: var(--success-color);
+    color: var(--success-color);
+    background-color: var(--success-bg);
+}
+
+.badge.warn {
+    border-color: var(--warning-color);
+    color: var(--warning-color);
+    background-color: var(--warning-bg);
+}
+
+.badge.err {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+    background-color: var(--danger-bg);
+}
+
+.meter {
+    background-color: var(--bg-tertiary);
+}
+
+.meter span {
+    background-color: var(--accent-color);
+}
+
+.route-card {
+    border-left-color: var(--accent-color);
+}
+
+.route-card.on {
+    border-left-color: var(--success-color);
+}
+
+.route-card.off {
+    border-left-color: var(--text-secondary);
+}
+
+.tip-box {
+    background-color: var(--bg-secondary);
+    border-color: var(--accent-color);
+    color: var(--text-primary);
+}
+
+.tip-box::after {
+    border-top-color: var(--accent-color);
+}
+
+.modal {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.modal-content {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.modal h3 {
+    color: var(--text-primary);
+}
+
+.modal select, .modal textarea {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+#security-banner {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+#security-banner.warn {
+    border-color: var(--warning-color);
+    background-color: var(--warning-bg);
+}
+
+#security-banner.ok {
+    border-color: var(--success-color);
+    background-color: var(--success-bg);
+    color: var(--success-color);
+}
+
+#security-banner a {
+    color: var(--accent-color);
+}
+
+.url-paste {
+    background-color: var(--bg-tertiary);
+}
+
+.url-paste:hover {
+    background-color: var(--bg-secondary);
+}
