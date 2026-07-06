@@ -46,8 +46,8 @@
 
 - [x] **Track: report_1782888036_feature** — Audio Matrix Patchbay (DLNA loopback support) | [Plan](./tracks/report_1782888036_feature/plan.md)
 
-- [~] **Track: report_1782888573_feature** — Feature report (incorporated into refactor-fullstack) | [Plan](./tracks/report_1782888573_feature/plan.md)
+- [x] **Track: report_1782888573_feature** — Feature report (incorporated into refactor-fullstack_20260706) | [Plan](./tracks/report_1782888573_feature/plan.md)
 
-- [~] **Track: report_1782888498_bug** — Bug report (incorporated into refactor-fullstack) | [Plan](./tracks/report_1782888498_bug/plan.md)
+- [x] **Track: report_1782888498_bug** — Bug report (incorporated into refactor-fullstack_20260706) | [Plan](./tracks/report_1782888498_bug/plan.md)
 
-- [ ] **Track: refactor-fullstack_20260706** — Full-Stack Refactoring: Backend modularization + WebUI responsive + TUI modernization | [Plan](./tracks/refactor-fullstack_20260706/plan.md)
+- [x] **Track: refactor-fullstack_20260706** — Full-Stack Refactoring: Backend modularization + WebUI responsive + TUI modernization | [Plan](./tracks/refactor-fullstack_20260706/plan.md)
