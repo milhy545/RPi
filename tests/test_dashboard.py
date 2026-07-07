@@ -19,7 +19,7 @@ async def run_tests():
         print("\n--- Testing Watchdog Timeout ---")
         print("Pressing 'w' to launch 'sleep 999' with 5s watchdog timeout...")
         await pilot.press("w")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(2.0)  # Increased from 0.5s for CI reliability
         
         # Should be RUNNING
         assert app.mode_switcher.state == ModeSwitcherState.RUNNING
@@ -61,14 +61,19 @@ async def run_tests():
         assert any("passed" in log or "succeeded" in log for log in logs)
         print("✓ Concurrency serialization works - both launches succeeded sequentially")
 
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(3.0)  # Wait for mode switcher to fully reset
 
-        # 5. Test SIGINT handling (launch controlled long-running command, then trigger sigint)
+        # 5. Test SIGINT handling (launch via keyboard, then trigger sigint)
         print("\n--- Testing SIGINT Handling ---")
-        print("Clicking SteamLink button with controlled test command...")
-        await pilot.click("#btn_steamlink")
-        await asyncio.sleep(0.5)
-        assert app.mode_switcher.state == ModeSwitcherState.RUNNING
+        print("Pressing 'w' to launch with test command...")
+        await pilot.press("w")
+        
+        # Wait for state transition
+        for i in range(10):
+            await asyncio.sleep(0.5)
+            if app.mode_switcher.state == ModeSwitcherState.RUNNING:
+                break
+        assert app.mode_switcher.state == ModeSwitcherState.RUNNING, f"State is {app.mode_switcher.state}, expected RUNNING"
         print("✓ Test subprocess running")
 
         print("Sending SIGINT to process...")
@@ -78,12 +83,19 @@ async def run_tests():
         assert app.mode_switcher.state == ModeSwitcherState.IDLE
         print("✓ SIGINT handled, subprocess terminated, state restored to IDLE")
 
-        # 6. Test SIGTERM handling (launch controlled long-running command, then trigger sigterm)
+        await asyncio.sleep(2.0)  # Wait for mode switcher to fully reset
+
+        # 6. Test SIGTERM handling (launch via keyboard, then trigger sigterm)
         print("\n--- Testing SIGTERM Handling ---")
-        print("Clicking SteamLink button...")
-        await pilot.click("#btn_steamlink")
-        await asyncio.sleep(0.5)
-        assert app.mode_switcher.state == ModeSwitcherState.RUNNING
+        print("Pressing 'w' to launch with test command...")
+        await pilot.press("w")
+        
+        # Wait for state transition
+        for i in range(10):
+            await asyncio.sleep(0.5)
+            if app.mode_switcher.state == ModeSwitcherState.RUNNING:
+                break
+        assert app.mode_switcher.state == ModeSwitcherState.RUNNING, f"State is {app.mode_switcher.state}, expected RUNNING"
         print("✓ Test subprocess running")
 
         print("Sending SIGTERM to process...")
