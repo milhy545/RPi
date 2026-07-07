@@ -41,8 +41,8 @@ def test_system_stats_methods():
     assert hasattr(SystemStats, 'update_stats')
 
 
-def test_legacy_tui_settings_tab_has_usable_height():
-    """The TV entrypoint still uses tui.py, so its settings tab must render."""
+def test_live_tui_operational_tabs_have_usable_height():
+    """The TV entrypoint still uses tui.py, so operational tabs must render."""
 
     async def run_check():
         import tui
@@ -52,21 +52,43 @@ def test_legacy_tui_settings_tab_has_usable_height():
         app = tui.RPiDashboard()
         async with app.run_test(size=(120, 35)) as pilot:
             await pilot.pause(0.2)
-            app.query_one(TabbedContent).active = "tab_settings"
-            await pilot.pause(0.2)
+            tabs = app.query_one(TabbedContent)
 
-            settings = app.query_one("#settings-container")
-            assert settings.region.height >= 20
-
-            for selector in (
-                "#panel_audio",
-                "#panel_bluetooth",
-                "#panel_network",
-                "#panel_wifi",
+            for tab_id, selector in (
+                ("tab_audio", "#panel_audio"),
+                ("tab_devices", "#panel_bluetooth"),
+                ("tab_network", "#panel_network"),
+                ("tab_network", "#panel_wifi"),
             ):
+                tabs.active = tab_id
+                await pilot.pause(0.1)
                 panel = app.query_one(selector)
                 assert panel.region.height >= 8
-                assert panel.region.y >= settings.region.y
-                assert panel.region.y < settings.region.y + settings.region.height
+                assert panel.region.y >= 3
+
+    asyncio.run(run_check())
+
+
+def test_live_tui_uses_task_oriented_tabs():
+    async def run_check():
+        import tui
+        from textual.widgets import TabbedContent, TabPane
+
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            await pilot.pause(0.2)
+            tabs = app.query_one(TabbedContent)
+            pane_ids = [pane.id for pane in app.query(TabPane)]
+            assert pane_ids == [
+                "tab_player",
+                "tab_apps",
+                "tab_audio",
+                "tab_devices",
+                "tab_network",
+                "tab_system",
+                "tab_logs",
+            ]
+            assert tabs.active == "tab_player"
 
     asyncio.run(run_check())

@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label, Input
 from textual.reactive import reactive
 import time
@@ -199,60 +199,58 @@ class RPiDashboard(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         
-        with TabbedContent():
-            with TabPane("Ovládání & Telemetrie", id="tab_control"):
+        with TabbedContent(initial="tab_player"):
+            with TabPane("Player", id="tab_player"):
+                with Vertical(id="main-content"):
+                    yield Static("[bold]Player[/bold]", classes="settings-title")
+                    yield Input(placeholder="YouTube URL nebo přímý odkaz...", id="input_mpv_url", classes="mpv-url-input")
+                    yield Button("Spustit MPV", id="btn_mpv", variant="success")
+                    yield ModeStatus(id="mode_status")
+
+            with TabPane("Apps", id="tab_apps"):
+                with Vertical(id="sidebar"):
+                    yield Static("[bold]Apps[/bold]", classes="title")
+                    yield Button("Spustit SteamLink", id="btn_steamlink", variant="primary")
+                    yield Button("GeForce Now", id="btn_gfn", variant="default")
+                    yield Button("Spotify WebOS", id="btn_spotify", variant="warning")
+                    yield Button("Amazon Music", id="btn_amazon", variant="default")
+                    yield Button("Zastavit vše", id="btn_stop", variant="error")
+                    yield Button("Otevřít Terminál", id="btn_terminal", variant="default")
+
+            with TabPane("Audio", id="tab_audio"):
+                with Vertical(classes="settings-panel", id="panel_audio"):
+                    yield Static("[bold]Zvukový výstup (DLNA/BT/HDMI)[/bold]", classes="settings-title")
+                    yield OptionList(id="list_audio_sinks")
+                    with Horizontal():
+                        yield Button("Vol -10%", id="btn_vol_down")
+                        yield Button("Vol +10%", id="btn_vol_up")
+                    yield Label("DLNA Latence (ms):")
+                    yield Input(placeholder="0", id="input_dlna_latency")
+                    yield Button("Uložit latenci", id="btn_save_latency")
+                    with Horizontal():
+                        yield Label("Alexa AUX -> BT:")
+                        yield Switch(id="switch_alexa_bt", value=False)
+                    yield Button("Restartovat pa-dlna", id="btn_restart_padlna", variant="default")
+
+            with TabPane("Devices", id="tab_devices"):
+                with Vertical(classes="settings-panel", id="panel_bluetooth"):
+                    yield Static("[bold]Bluetooth zařízení[/bold]", classes="settings-title")
+                    yield OptionList(id="list_bluetooth_devices")
+                    with Horizontal():
+                        yield Button("Skenovat", id="btn_scan_bluetooth", variant="primary")
+                        yield Button("Spárovat", id="btn_pair_bluetooth", variant="success")
+                        yield Button("Důvěřovat", id="btn_trust_bluetooth", variant="warning")
+                    with Horizontal():
+                        yield Button("Připojit", id="btn_connect_bluetooth", variant="success")
+                        yield Button("Odpojit", id="btn_disconnect_bluetooth", variant="error")
+                        yield Button("Odebrat", id="btn_remove_bluetooth", variant="error")
+
+            with TabPane("Network", id="tab_network"):
                 with Horizontal():
-                    # Boční panel (Simulace přepínání módů)
-                    with Vertical(id="sidebar"):
-                        yield Static("[bold]Ovládání[/bold]\n", classes="title")
-                        yield Button("Spustit SteamLink", id="btn_steamlink", variant="primary")
-                        yield Button("GeForce Now", id="btn_gfn", variant="default")
-                        yield Input(placeholder="YouTube URL nebo přímý odkaz...", id="input_mpv_url", classes="mpv-url-input")
-                        yield Button("Spustit MPV", id="btn_mpv", variant="success")
-                        yield Button("Spotify WebOS", id="btn_spotify", variant="warning")
-                        yield Button("Amazon Music", id="btn_amazon", variant="default")
-                        yield Button("Zastavit vše", id="btn_stop", variant="error")
-                        yield Button("Otevřít Terminál", id="btn_terminal", variant="default")
-                        
-                    # Hlavní panel (Informace)
-                    with Vertical(id="main-content"):
-                        yield SystemStats()
-                        yield ModeStatus(id="mode_status")
-                        yield Log(id="syslog")
-            
-            with TabPane("Zařízení & Nastavení", id="tab_settings"):
-                with Container(id="settings-container"):
-                    with Vertical(classes="settings-panel", id="panel_audio"):
-                        yield Static("[bold]Zvukový výstup (DLNA/BT/HDMI)[/bold]", classes="settings-title")
-                        yield OptionList(id="list_audio_sinks")
-                        with Horizontal():
-                            yield Button("Vol -10%", id="btn_vol_down")
-                            yield Button("Vol +10%", id="btn_vol_up")
-                        yield Label("DLNA Latence (ms):")
-                        yield Input(placeholder="0", id="input_dlna_latency")
-                        yield Button("Uložit latenci", id="btn_save_latency")
-                        with Horizontal():
-                            yield Label("Alexa AUX -> BT:")
-                            yield Switch(id="switch_alexa_bt", value=False)
-                        yield Button("Restartovat pa-dlna", id="btn_restart_padlna", variant="default")
-                        
-                    with Vertical(classes="settings-panel", id="panel_bluetooth"):
-                        yield Static("[bold]Bluetooth zařízení[/bold]", classes="settings-title")
-                        yield OptionList(id="list_bluetooth_devices")
-                        with Horizontal():
-                            yield Button("Skenovat", id="btn_scan_bluetooth", variant="primary")
-                            yield Button("Spárovat", id="btn_pair_bluetooth", variant="success")
-                            yield Button("Důvěřovat", id="btn_trust_bluetooth", variant="warning")
-                        with Horizontal():
-                            yield Button("Připojit", id="btn_connect_bluetooth", variant="success")
-                            yield Button("Odpojit", id="btn_disconnect_bluetooth", variant="error")
-                            yield Button("Odebrat", id="btn_remove_bluetooth", variant="error")
-                            
                     with Vertical(classes="settings-panel", id="panel_network"):
                         yield Static("[bold]Síť a Tailscale[/bold]", classes="settings-title")
                         yield Static("Získávám síťové informace...", id="txt_network_info")
                         yield Static("Tailscale Status: --", id="txt_tailscale_info")
-                        
                     with Vertical(classes="settings-panel", id="panel_wifi"):
                         yield Static("[bold]Wi-Fi a Záchranný Hotspot[/bold]", classes="settings-title")
                         yield OptionList(id="list_wifi_networks")
@@ -268,6 +266,14 @@ class RPiDashboard(App):
                         yield Static("Spotify Connect (Raspotify):")
                         with Horizontal():
                             yield Switch(id="switch_raspotify", value=True)
+
+            with TabPane("System", id="tab_system"):
+                with Vertical(id="main-content"):
+                    yield Static("[bold]System[/bold]", classes="settings-title")
+                    yield SystemStats()
+
+            with TabPane("Logs", id="tab_logs"):
+                yield Log(id="syslog")
                             
         yield Footer()
 
@@ -357,7 +363,7 @@ class RPiDashboard(App):
         """Refresh all settings panel widgets with system configuration data (with TTL and tab check)."""
         try:
             active_tab = self.query_one(TabbedContent).active
-            if active_tab != "tab_settings":
+            if active_tab not in {"tab_audio", "tab_devices", "tab_network", "tab_system"}:
                 return
         except Exception as e:
             return
