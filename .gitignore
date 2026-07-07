@@ -30,6 +30,7 @@ yt-cookies.txt
 
 # Agent/editor local state
 .codex/
+.superpowers/
 .kilo/node_modules/
 .kilo/package-lock.json
 .kilo/package.json
