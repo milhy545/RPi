@@ -407,9 +407,6 @@ async function submitFeedback(){let t=$('#feedback-type').value,d=$('#feedback-d
 setInterval(()=>{st();updBr()},3000);playerEnter();addTips();applyLang();
 let sp=new URLSearchParams(window.location.search);let shared=sp.get('share_url')||sp.get('text');
 if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/http[s]?:\/\/[^\s]+/)[0];play();}
-"""
-
-QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
 
 // Theme System
 const ThemeManager = {

@@ -39,6 +39,16 @@ from .handlers import (
     handle_restart_rpi,
 )
 
+
+def legacy_webserver_endpoint(q: dict) -> dict:
+    """Marker for endpoints still implemented by webserver.py legacy branches."""
+    return {
+        "ok": False,
+        "legacy": True,
+        "error": "endpoint remains implemented in webserver.py",
+    }
+
+
 # Route registry: path -> handler function
 ROUTES: Dict[str, Callable] = {
     # Audio routes
@@ -48,6 +58,25 @@ ROUTES: Dict[str, Callable] = {
     "/audio/matrix": handle_audio_matrix,
     "/audio/matrix/link": handle_audio_matrix_link,
     "/audio/latency": handle_audio_latency,
+    "/audio/bt": legacy_webserver_endpoint,
+    "/audio/hdmi": legacy_webserver_endpoint,
+    "/audio/dlna": legacy_webserver_endpoint,
+    "/audio/mute": legacy_webserver_endpoint,
+    "/audio/route/alexa-bt": legacy_webserver_endpoint,
+    "/audio/route/alexa-retarget": legacy_webserver_endpoint,
+    "/audio/route/dlna-input/status": legacy_webserver_endpoint,
+    "/audio/route/dlna-input/start": legacy_webserver_endpoint,
+    "/audio/route/dlna-input/stop": legacy_webserver_endpoint,
+    "/audio/route/dlna-input/mode": legacy_webserver_endpoint,
+    "/audio/route/dlna-input/target": legacy_webserver_endpoint,
+    "/dlna/select": legacy_webserver_endpoint,
+    "/dlna/connect": legacy_webserver_endpoint,
+    "/dlna/disconnect": legacy_webserver_endpoint,
+    "/dlna/scan": legacy_webserver_endpoint,
+    "/dlna/renderer/status": legacy_webserver_endpoint,
+    "/dlna/renderer/start": legacy_webserver_endpoint,
+    "/dlna/renderer/stop": legacy_webserver_endpoint,
+    "/keepalive": legacy_webserver_endpoint,
     
     # Player routes
     "/mpv/play": handle_mpv_play,
@@ -55,9 +84,17 @@ ROUTES: Dict[str, Callable] = {
     "/mpv/status": handle_mpv_status,
     "/mpv/seek": handle_mpv_seek,
     "/mpv/volume": handle_mpv_volume,
+    "/mpv/toggle": legacy_webserver_endpoint,
+    "/mpv/seekabs": legacy_webserver_endpoint,
+    "/mpv/vol": legacy_webserver_endpoint,
+    "/mpv/memory": legacy_webserver_endpoint,
+    "/mpv/memory/clear": legacy_webserver_endpoint,
+    "/mpv/memory-save": legacy_webserver_endpoint,
     
     # Device routes
     "/devices/state": handle_devices_state,
+    "/devices": legacy_webserver_endpoint,
+    "/devices/bt/scan": legacy_webserver_endpoint,
     "/bt/scan": handle_bt_scan,
     "/bt/pair": handle_bt_pair,
     "/bt/trust": handle_bt_trust,
@@ -70,6 +107,12 @@ ROUTES: Dict[str, Callable] = {
     
     # CEC routes
     "/cec/scan": handle_cec_scan,
+    "/cec/send": legacy_webserver_endpoint,
+    "/cec/key": legacy_webserver_endpoint,
+    "/cec/in": legacy_webserver_endpoint,
+    "/cec/br/start": legacy_webserver_endpoint,
+    "/cec/br/stop": legacy_webserver_endpoint,
+    "/cec/br/st": legacy_webserver_endpoint,
     "/cec/power": handle_cec_power,
     "/cec/nav": handle_cec_nav,
     "/cec/vol": handle_cec_vol,
@@ -81,9 +124,18 @@ ROUTES: Dict[str, Callable] = {
     
     # System routes
     "/system/stats": handle_system_stats,
+    "/system/hw-stats": legacy_webserver_endpoint,
+    "/system/status": legacy_webserver_endpoint,
+    "/system/https-info": legacy_webserver_endpoint,
     "/restart/mpv": handle_restart_mpv,
     "/restart/dashboard": handle_restart_dashboard,
     "/restart/rpi": handle_restart_rpi,
+    "/system/restart-mpv": legacy_webserver_endpoint,
+    "/system/restart-dashboard": legacy_webserver_endpoint,
+    "/system/restart-rpi": legacy_webserver_endpoint,
+    "/youtube/cookies/status": legacy_webserver_endpoint,
+    "/youtube/age-check": legacy_webserver_endpoint,
+    "/media/preview": legacy_webserver_endpoint,
 }
 
 

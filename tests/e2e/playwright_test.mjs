@@ -33,6 +33,12 @@ function fail(name, err) {
 
 async function setup() {
   browser = await chromium.launch({ headless: true });
+}
+
+async function setupPage() {
+  if (page && !page.isClosed()) {
+    await page.close().catch(() => {});
+  }
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on('console', msg => {
     if (msg.type() === 'error') page._consoleErrors.push(msg.text());
@@ -40,10 +46,17 @@ async function setup() {
   page.on('pageerror', err => page._pageErrors.push(String(err)));
   page._consoleErrors = [];
   page._pageErrors = [];
+  await page.route('https://cdn.jsdelivr.net/**', route => route.abort());
 }
 
 async function teardown() {
   if (browser) await browser.close();
+}
+
+async function gotoApp(url = TARGET) {
+  const res = await page.goto(url, { waitUntil: 'commit', timeout: 30000 });
+  await page.waitForSelector('#url', { state: 'attached', timeout: 30000 });
+  return res;
 }
 
 // Helper: dismiss any native confirm() dialogs (resume prompts)
@@ -66,7 +79,7 @@ async function api(path) {
 // ─── TEST 1: WebUI loads without errors ───
 async function testWebUILoads() {
   console.log('\n🧪 Test 1: WebUI loads without console errors');
-  const res = await page.goto(TARGET, { waitUntil: 'networkidle', timeout: 30000 });
+  const res = await gotoApp();
   if (res.status() !== 200) {
     fail('WebUI HTTP status', `Expected 200, got ${res.status()}`);
     return false;
@@ -93,7 +106,7 @@ async function testVideoPlayback() {
   console.log('\n🧪 Test 2: Video playback (YouTube → mpv stream)');
 
   // Ensure we're on the Player tab
-  await page.goto(TARGET, { waitUntil: 'networkidle', timeout: 30000 });
+  await gotoApp();
   await page.click('#tab-player');
   await page.waitForTimeout(500);
 
@@ -202,7 +215,7 @@ async function testPWAShareIntent() {
   console.log('\n🧪 Test 3: PWA Share Intent (?share_url=...)');
   const shareUrl = 'https://youtube.com/watch?v=dQw4w9WgXcQ';
   const testUrl = `${TARGET}?share_url=${encodeURIComponent(shareUrl)}`;
-  await page.goto(testUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await gotoApp(testUrl);
 
   // Wait for JS to process the share_url param
   await page.waitForTimeout(1500);
@@ -233,7 +246,7 @@ async function testPWAShareIntent() {
 // ─── TEST 4: Mode buttons present in Apps tab ───
 async function testModeButtons() {
   console.log('\n🧪 Test 4: Mode buttons present in Apps tab');
-  await page.goto(TARGET, { waitUntil: 'networkidle', timeout: 30000 });
+  await gotoApp();
 
   await page.click('#tab-apps');
   await page.waitForTimeout(500);
@@ -264,7 +277,7 @@ async function testModeButtons() {
 // ─── TEST 5: Tab navigation ───
 async function testTabNavigation() {
   console.log('\n🧪 Test 5: Tab navigation');
-  await page.goto(TARGET, { waitUntil: 'networkidle', timeout: 30000 });
+  await gotoApp();
 
   const tabs = [
     { id: 'tab-player', panel: 'p-player' },
@@ -296,7 +309,7 @@ async function testTabNavigation() {
 // ─── TEST 6: PWA Manifest ───
 async function testManifest() {
   console.log('\n🧪 Test 6: PWA manifest.json');
-  const res = await page.goto(`${TARGET}/manifest.json`, { timeout: 10000 });
+  const res = await page.request.get(`${TARGET}/manifest.json`, { timeout: 10000 });
   if (res.status() !== 200) {
     fail('Manifest HTTP', `Status ${res.status()}`);
     return false;
@@ -336,8 +349,6 @@ async function testManifest() {
   console.log(`   Time: ${new Date().toISOString()}\n`);
 
   await setup();
-  setupConfirmHandler();
-
   const tests = [
     testWebUILoads,
     testVideoPlayback,   // ← the new important test
@@ -349,6 +360,8 @@ async function testManifest() {
 
   for (const fn of tests) {
     try {
+      await setupPage();
+      setupConfirmHandler();
       await fn();
     } catch (e) {
       fail(fn.name, e.message);

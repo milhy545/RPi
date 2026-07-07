@@ -18,7 +18,8 @@ from config import (
     MAX_SOCKET_BUFFER, SOCKET_RECV_SIZE,
     KODI_HOST, KODI_PORT, MPV_SOCKET, WS_PORT, PA_DLNA_PORT, AUDIO_STATE_CACHE_TTL
 )
-import ipaddress
+from rpi_dashboard.api import middleware as api_middleware
+from rpi_dashboard.api.routes import get_route
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -1991,24 +1992,16 @@ def _is_allowed_ip(client_ip: str) -> bool:
     """Return True if *client_ip* belongs to one of ALLOWED_SUBNETS.
     Uses ipaddress module for robust CIDR checking.
     """
-    try:
-        ip = ipaddress.ip_address(client_ip)
-    except ValueError:
-        return False
-    for net in ALLOWED_SUBNETS:
-        if ip in ipaddress.ip_network(net):
-            return True
-    return False
+    return api_middleware.is_allowed_ip(client_ip, ALLOWED_SUBNETS)
 
 
 def _check_rate_limit(client_ip: str) -> bool:
     """Check if request is rate limited. Returns True if allowed."""
-    now = time.monotonic()
-    last = _rate_limit_cache.get(client_ip, 0)
-    if now - last < RATE_LIMIT_SECONDS:
-        return False
-    _rate_limit_cache[client_ip] = now
-    return True
+    return api_middleware.check_rate_limit(
+        client_ip,
+        _rate_limit_cache,
+        window_seconds=RATE_LIMIT_SECONDS,
+    )
 
 
 _hw_stats_freq_cache = {"data": [None, None, None, None], "time": 0}
@@ -2018,20 +2011,12 @@ class H(BaseHTTPRequestHandler):
     server_version="RPi-TV/4.2"
     def _send_cors_headers(self):
         origin = self.headers.get("Origin")
-        if origin:
-            try:
-                parsed = urlparse(origin)
-                host = parsed.hostname
-                if host:
-                    if host == "localhost" or host.endswith(".local") or _is_allowed_ip(host):
-                        self.send_header("Access-Control-Allow-Origin", origin)
-                        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                        self.send_header("Vary", "Origin")
-                        return
-            except Exception as e:
-                print(f"[WARN] Exception in CORS origin parse: {e}", file=sys.stderr)
-        self.send_header("Access-Control-Allow-Origin", "http://localhost")
+        cors_origin = api_middleware.allowed_cors_origin(origin, ALLOWED_SUBNETS)
+        self.send_header("Access-Control-Allow-Origin", cors_origin)
+        if cors_origin == origin:
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Vary", "Origin")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -2489,7 +2474,11 @@ class H(BaseHTTPRequestHandler):
             elif path=="/system/reboot":
                 r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
                 self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
-            else: self.st(404,"nf","text/plain")
+            else:
+                handler = get_route(path)
+                if handler:
+                    return self.sj(200, handler(q))
+                self.st(404,"nf","text/plain")
         except Exception as e: self.sj(500,{"error":str(e)})
     def do_POST(self):
         # IP allowlist check for POST requests
