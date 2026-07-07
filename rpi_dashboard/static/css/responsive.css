@@ -186,6 +186,8 @@
     .lang-btn {
         padding: 0.15rem 0.3rem;
         font-size: 0.7rem;
+        min-width: 2.25rem;
+        min-height: 2.25rem;
     }
 
     /* Topbar */
