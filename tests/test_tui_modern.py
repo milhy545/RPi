@@ -174,3 +174,24 @@ def test_devices_tab_shows_bluetooth_status_rows(monkeypatch):
             assert any("[PAIRED] Xbox Wireless Controller" in prompt for prompt in prompts)
 
     asyncio.run(run_check())
+
+
+def test_wifi_empty_state_is_explanatory(monkeypatch):
+    async def run_check():
+        import tui
+        from textual.widgets import OptionList
+
+        async def fake_run_sys_cmd(self, cmd, timeout=5.0):
+            return ""
+
+        monkeypatch.setattr(tui.RPiDashboard, "run_sys_cmd", fake_run_sys_cmd)
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)):
+            await app.scan_wifi()
+            wifi_list = app.query_one("#list_wifi_networks", OptionList)
+            assert str(wifi_list.get_option_at_index(0).prompt) == (
+                "No Wi-Fi networks found. Run scan again or check adapter."
+            )
+
+    asyncio.run(run_check())

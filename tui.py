@@ -16,6 +16,8 @@ from rpi_dashboard.tui.formatting import human_audio_sink, human_bt_device
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
+NO_BT_DEVICES_LABEL = "No paired Bluetooth devices. Use Scan, then Pair."
+NO_WIFI_NETWORKS_LABEL = "No Wi-Fi networks found. Run scan again or check adapter."
 
 class SystemStats(Static):
     """Zobrazuje reálnou zátěž systému z /proc a /sys."""
@@ -552,7 +554,7 @@ class RPiDashboard(App):
                 bt_out = await self.run_sys_cmd("bluetoothctl devices")
                 
             if not bt_out:
-                bt_list.add_option("Žádná spárovaná zařízení")
+                bt_list.add_option(NO_BT_DEVICES_LABEL)
                 return
 
             connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
@@ -615,7 +617,7 @@ class RPiDashboard(App):
             if bt_list.highlighted is not None:
                 option = bt_list.get_option_at_index(bt_list.highlighted)
                 prompt = str(option.prompt)
-                if prompt == "Žádná spárovaná zařízení": return
+                if prompt == NO_BT_DEVICES_LABEL: return
                 mac = getattr(self, "_bt_mac_by_prompt", {}).get(prompt)
                 if not mac and "(" in prompt and ")" in prompt:
                     mac = prompt.split("(")[-1].strip(")")
@@ -642,7 +644,7 @@ class RPiDashboard(App):
                     seen.add(ssid)
                     wifi_list.add_option(ssid)
         if not wifi_list.option_count:
-             wifi_list.add_option("Žádné sítě")
+             wifi_list.add_option(NO_WIFI_NETWORKS_LABEL)
         self.write_log("[WIFI] Skenování dokončeno.")
 
     async def connect_wifi(self) -> None:
@@ -651,7 +653,7 @@ class RPiDashboard(App):
             if wifi_list.highlighted is not None:
                 option = wifi_list.get_option_at_index(wifi_list.highlighted)
                 ssid = str(option.prompt)
-                if ssid == "Žádné sítě": return
+                if ssid == NO_WIFI_NETWORKS_LABEL: return
                 pwd_input = self.query_one("#input_wifi_password", Input)
                 pwd = pwd_input.value.strip()
                 self.write_log(f"[WIFI] Připojuji k {ssid}...")
