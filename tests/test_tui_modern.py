@@ -92,3 +92,22 @@ def test_live_tui_uses_task_oriented_tabs():
             assert tabs.active == "tab_player"
 
     asyncio.run(run_check())
+
+
+def test_live_tui_has_ascii_status_bar():
+    async def run_check():
+        import tui
+        from textual.widgets import Static
+
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            await pilot.pause(0.5)
+            status = app.query_one("#top_status", Static)
+            rendered = str(status.render())
+            assert "MODE:" in rendered
+            assert "CPU:" in rendered
+            assert "RAM:" in rendered
+            assert all(ord(ch) < 128 for ch in rendered)
+
+    asyncio.run(run_check())
