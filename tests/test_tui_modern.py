@@ -1,6 +1,5 @@
 """Test modern TUI module."""
 
-import pytest
 
 
 def test_import_modern_tui():

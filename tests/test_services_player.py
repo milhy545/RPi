@@ -1,6 +1,5 @@
 """Tests for player service module."""
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 

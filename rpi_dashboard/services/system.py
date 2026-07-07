@@ -5,8 +5,7 @@ Handles system stats, restart, and hardware monitoring.
 
 import os
 import subprocess
-import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 def _run(cmd, t=5):

@@ -1,26 +1,44 @@
-# AGENTS.md - RPi Dashboard
+# Repository Guidelines
 
-## 🚀 Remote Execution (Critical)
-- **Primary Host:** `ssh RPi`
-- **Persistence:** Use tmux session `remote_kilo`.
-- **Interaction:** `ssh RPi "tmux send-keys -t remote_kilo 'command' C-m"`
-- **Output Check:** `ssh RPi "tmux capture-pane -p -t remote_kilo"`
+## Operating Context
 
-## 🛠️ Key Commands
-- **Dependencies:** `uv sync`
-- **TUI Dashboard:** `uv run python tui.py`
-- **WebUI/API:** `uv run python webserver_8099.py`
-- **Verification:** `tools/verify-done.sh` (MANDATORY before claiming task is done)
-- **Testing:** `pytest`
+This repository is the RPi-TV Dashboard application. The home directory (`~`) is the Raspberry Pi host operations space; application development belongs here in `~/rpi-dashboard`. Inspect state first, preserve user data, prefer reversible changes, and verify runtime behavior.
 
-## 🏗️ Architecture Map
-- `tui.py`: Textual-based interactive dashboard.
-- `webserver_8099.py`: Web interface & API (including WebSocket terminal).
-- `mode_switcher.py`: Foreground application state supervisor.
-- `keys2mpv.py`: Multimedia keyboard → mpv command daemon.
-- `conductor/`: Product specifications, workflow guidelines, and development tracks.
+## Project Structure & Module Organization
 
-## ⚠️ Operational Gotchas
-- **RAM Constraint:** Core TUI must remain ≤ 20 MB.
-- **Deploy Pipeline:** Development on Milhy-PC → Validation in QEMU (ARM) → Deploy to real RPi.
-- **Verification Rule:** If `tools/verify-done.sh` exits with code 1, the task is strictly NOT complete.
+- `webserver.py` is still the main WebUI/API entrypoint and compatibility surface.
+- `rpi_dashboard/api/` contains the newer route registry and request handlers.
+- `rpi_dashboard/services/` contains extracted audio, player, devices, CEC, terminal, and system logic.
+- `rpi_dashboard/static/` contains extracted WebUI HTML, CSS, and JavaScript.
+- `rpi_dashboard/tui/modern.py` contains the modern Textual dashboard work.
+- `tests/` contains pytest coverage; `tests/e2e/` contains the Playwright smoke suite.
+- `conductor/` contains product context, workflow rules, tracks, CI receipts, and reports.
+
+Do not edit generated artifacts, caches, reports, or runtime state unless the task explicitly requires cleanup.
+
+## Build, Test, and Development Commands
+
+- `uv sync` installs Python dependencies.
+- `uv run python tui.py` starts the TUI dashboard.
+- `uv run python webserver.py` starts the WebUI/API server.
+- `uv run pytest` runs the Python test suite.
+- `uv run ruff check .` runs lint checks.
+- `uv run mypy .` runs static typing checks.
+- `cd tests/e2e && npm test` runs the Playwright WebUI smoke tests.
+- `tools/verify-done.sh` is mandatory before claiming completion; exit `1` means not complete.
+
+## Coding Style & Naming Conventions
+
+Use Python 3.12 style with type hints on public functions where practical. Keep service logic in `rpi_dashboard/services/`, HTTP mapping in `rpi_dashboard/api/`, and compatibility glue in `webserver.py`. Use snake_case for Python symbols and kebab-case for shell scripts. Keep code, docs, commands, and commits in English.
+
+## Testing Guidelines
+
+Add focused pytest tests near changed behavior. Mock `pactl`, `bluetoothctl`, `nmcli`, `cec-client`, and `mpv` unless doing hardware validation. For visible WebUI changes, run or update Playwright smoke tests. For RPi service changes, verify logs, process state, resources, and affected UI/API behavior.
+
+## Commit & Pull Request Guidelines
+
+Use short, imperative commit subjects with prefixes such as `fix(webui):`, `feat(audio):`, `test(dashboard):`, and `chore(conductor):`. Pull requests should include intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware notes. Never commit secrets, `.env` files, reports, caches, or machine-specific state.
+
+## Agent-Specific Rules
+
+Before editing, run `git status --short` and work with existing changes. Treat `conductor/ci/SAFETY-RULES.md` and `tools/verify-done.sh` as authoritative. If `verify-done.sh` fails, report the exact blocker instead of saying the project is done.

@@ -3,7 +3,7 @@
 Maps URL paths to handler functions.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Callable, Dict, Optional
 from .handlers import (
     handle_audio_state,
     handle_audio_default_sink,

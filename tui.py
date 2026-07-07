@@ -71,8 +71,8 @@ class SystemStats(Static):
             if mem_total > 0:
                 used = mem_total - mem_available
                 return used / 1024 / 1024, mem_total / 1024 / 1024
-        except Exception as e:
-            self.write_log(f"[WARN] Exception: {e}")
+        except Exception:
+            pass
         return 0.45, 1.0
 
     def get_cpu_temp(self) -> float:

@@ -4,8 +4,7 @@ Handles WebSocket terminal and tmux integration.
 """
 
 import subprocess
-import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 def _run(cmd, t=5):

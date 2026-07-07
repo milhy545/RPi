@@ -476,8 +476,8 @@ def audio_matrix_link(out_n: str, in_n: str, state: str) -> Dict[str, Any]:
 
     cmd = ["pw-link", out_n, in_n] if state == "1" else ["pw-link", "-d", out_n, in_n]
     try:
-        r = subprocess.run(cmd, capture_output=True, timeout=1.5)
-        out_str = (r.stdout + r.stderr).decode('utf-8', 'ignore').strip()
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
+        out_str = (r.stdout + r.stderr).strip()
         ok = (r.returncode == 0) or ("File exists" in out_str and state == "1")
         return {"ok": ok, "out": out_str[:200]}
     except subprocess.TimeoutExpired:
@@ -647,7 +647,7 @@ def diagnose_bt_audio_stutter() -> Dict[str, Any]:
     - Wi-Fi/BT frequency overlap
     - A2DP profile configuration
     """
-    diagnostics = {
+    diagnostics: Dict[str, Any] = {
         "pipewire_quantum": None,
         "pipewire_rate": None,
         "wifi_frequency": None,

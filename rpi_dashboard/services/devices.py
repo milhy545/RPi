@@ -5,7 +5,7 @@ Handles Bluetooth, WiFi, and device management.
 
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 def _run(cmd, t=5):

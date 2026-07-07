@@ -4,8 +4,7 @@ Handles HDMI-CEC commands for TV control.
 """
 
 import subprocess
-import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 def _run(cmd, t=5):

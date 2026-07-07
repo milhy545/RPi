@@ -3,7 +3,7 @@
 Implements request handlers for all API endpoints.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from ..services import audio, player, devices, cec, system, terminal
 
 

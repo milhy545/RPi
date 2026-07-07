@@ -9,19 +9,15 @@ Features:
 """
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Horizontal, ScrollableContainer
 from textual.widgets import (
     Header, Footer, Static, Log, Button, TabbedContent, TabPane,
-    OptionList, Switch, Label, Input, DataTable, ProgressBar
+    Input
 )
-from textual.reactive import reactive
 from textual.binding import Binding
 from textual import work
 import time
-import os
-import socket
 import asyncio
-import subprocess
 from datetime import datetime
 
 
@@ -218,6 +214,7 @@ class SystemStats(Static):
                 self._prev_cpu_idle = idle
                 self._prev_cpu_total = total
                 return cpu_pct
+            return 0.0
         except Exception:
             return 0.0
     
@@ -248,10 +245,10 @@ class SystemStats(Static):
         days = int(uptime // 86400)
         hours = int((uptime % 86400) // 3600)
         
-        self.query_one("#cpu-value").update(f"{cpu:.1f}%")
-        self.query_one("#ram-value").update(f"{ram_used:.1f}/{ram_total:.1f} MB")
-        self.query_one("#temp-value").update(f"{temp:.1f}°C")
-        self.query_one("#uptime-value").update(f"{days}d {hours}h")
+        self.query_one("#cpu-value", Static).update(f"{cpu:.1f}%")
+        self.query_one("#ram-value", Static).update(f"{ram_used:.1f}/{ram_total:.1f} MB")
+        self.query_one("#temp-value", Static).update(f"{temp:.1f}°C")
+        self.query_one("#uptime-value", Static).update(f"{days}d {hours}h")
 
 
 class DeviceList(Static):
@@ -290,11 +287,11 @@ class DeviceList(Static):
             
             self.update_device_list(devices)
         except Exception as e:
-            self.query_one("#bt-devices-list").update(f"Error: {e}")
+            self.query_one("#bt-devices-list", Static).update(f"Error: {e}")
     
     def update_device_list(self, devices: list) -> None:
         """Update the device list display."""
-        list_widget = self.query_one("#bt-devices-list")
+        list_widget = self.query_one("#bt-devices-list", Static)
         if not devices:
             list_widget.update("No devices found")
             return
@@ -303,7 +300,7 @@ class DeviceList(Static):
         for dev in devices[:10]:  # Limit to 10 devices
             content.append(f"[bold]{dev['name']}[/bold]")
             content.append(f"  [dim]{dev['mac']}[/dim]")
-            content.append(f"  [button]Pair[/button] [button]Connect[/button]")
+            content.append("  [button]Pair[/button] [button]Connect[/button]")
             content.append("")
         
         list_widget.update("\n".join(content))
@@ -377,7 +374,7 @@ class ModernDashboard(App):
     def write_log(self, message: str) -> None:
         """Write message to log panel."""
         try:
-            log = self.query_one("#log-panel")
+            log = self.query_one("#log-panel", Log)
             log.write_line(message)
         except Exception:
             pass
@@ -385,8 +382,7 @@ class ModernDashboard(App):
     def action_refresh(self) -> None:
         """Refresh all panels."""
         self.write_log("[ACTION] Refreshing...")
-        # Trigger refresh events
-        self.post_message_no_wait(self.RefreshEvent())
+        self.on_refresh_event()
     
     def action_switch_tab(self, tab_id: str) -> None:
         """Switch to a specific tab."""
@@ -394,9 +390,6 @@ class ModernDashboard(App):
             self.query_one(TabbedContent).active = tab_id
         except Exception:
             pass
-    
-    class RefreshEvent:
-        pass
     
     def on_refresh_event(self) -> None:
         """Handle refresh event."""

@@ -1,8 +1,6 @@
 """Tests for system service module."""
 
-import pytest
 from unittest.mock import patch, MagicMock
-import os
 
 
 def test_get_cpu_usage():

@@ -46,7 +46,7 @@ def process_reports():
             plan_path = os.path.join(track_dir, "plan.md")
             with open(plan_path, "w", encoding="utf-8") as f:
                 f.write(f"# Implementation Plan - {track_name}\n\n")
-                f.write(f"## Goal\nInvestigate and resolve the user report.\n\n")
+                f.write("## Goal\nInvestigate and resolve the user report.\n\n")
                 f.write(f"Description: {desc}\n\n")
                 f.write("## Tasks\n")
                 f.write("| # | Description | Owner | Status |\n")

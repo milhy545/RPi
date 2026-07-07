@@ -1,6 +1,5 @@
 """Test that all service modules can be imported."""
 
-import pytest
 
 
 def test_import_audio():
