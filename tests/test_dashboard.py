@@ -1,7 +1,21 @@
 import asyncio
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from tui import RPiDashboard
 from mode_switcher import ModeSwitcherState
+
+async def wait_for_log(app: RPiDashboard, needles: tuple[str, ...], timeout: float = 8.0) -> bool:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        logs = app.mode_switcher.log_buffer.get_lines()
+        if any(any(needle in log for needle in needles) for log in logs):
+            return True
+        await asyncio.sleep(0.2)
+    return False
 
 async def run_tests():
     print("=== STARTING MODE SWITCHER TEST SUITE ===")
@@ -50,8 +64,7 @@ async def run_tests():
         print("\n--- Testing Concurrency Serialization ---")
         print("Pressing 'g' to trigger concurrent launch requests...")
         await pilot.press("g")
-        # Wait for both sleeps to complete (serialized: ~4s total)
-        await asyncio.sleep(5.0)
+        assert await wait_for_log(app, ("Concurrency serialization test passed",), timeout=9.0)
         
         logs = app.mode_switcher.log_buffer.get_lines()
         success_logs = [log for log in logs if "succeeded" in log or "passed" in log or "finished" in log]
