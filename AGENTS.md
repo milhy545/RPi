@@ -35,6 +35,16 @@ Use Python 3.12 style with type hints on public functions where practical. Keep 
 
 Add focused pytest tests near changed behavior. Mock `pactl`, `bluetoothctl`, `nmcli`, `cec-client`, and `mpv` unless doing hardware validation. For visible WebUI changes, run or update Playwright smoke tests. For RPi service changes, verify logs, process state, resources, and affected UI/API behavior.
 
+## Current Refactor Handoff
+
+As of 2026-07-07, the WebUI refactor is functionally complete and verified with remote Playwright from Milhy-PC, because local Chromium overloads this 1 GB Raspberry Pi. Use Milhy-PC for any browser-based checks.
+
+The production TV TUI still starts through `tui.py` via `dashboard@milhy777.service`; `rpi_dashboard/tui/modern.py` is only a prototype and is not the live TV entrypoint. A major TUI issue was fixed today: the "Zařízení & Nastavení" tab rendered as effectively empty because `TabbedContent`, `TabPane`, and `#settings-container` did not consume available height. The fix is covered by `tests/test_tui_modern.py::test_legacy_tui_settings_tab_has_usable_height`.
+
+Runtime state after the fix: `dashboard@milhy777.service` was restarted, the TUI is visible on `tty1`, and the service listens on port `8090`. Verified commands were `uv run ruff check tui.py tests/test_tui_modern.py`, `uv run mypy .`, and `uv run python -m pytest -q` (`122 passed`).
+
+Remaining TUI work for the next session: complete the visual/UX modernization on the real `tui.py` path, improve the Devices/Settings controls beyond the layout fix, verify every active TUI control on the TV, and decide whether to merge or replace the unused `rpi_dashboard/tui/modern.py` prototype.
+
 ## Commit & Pull Request Guidelines
 
 Use short, imperative commit subjects with prefixes such as `fix(webui):`, `feat(audio):`, `test(dashboard):`, and `chore(conductor):`. Pull requests should include intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware notes. Never commit secrets, `.env` files, reports, caches, or machine-specific state.

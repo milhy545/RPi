@@ -131,6 +131,12 @@ class RPiDashboard(App):
     Screen {
         background: $surface-darken-1;
     }
+    TabbedContent {
+        height: 1fr;
+    }
+    TabPane {
+        height: 1fr;
+    }
     #sidebar {
         width: 30;
         dock: left;
@@ -175,7 +181,7 @@ class RPiDashboard(App):
         grid-size: 2 2;
         grid-gutter: 1;
         padding: 1;
-        height: 100%;
+        height: 1fr;
     }
     .settings-panel {
         background: $surface;
