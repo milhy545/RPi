@@ -144,3 +144,33 @@ def test_audio_tab_uses_human_sink_labels(monkeypatch):
             assert any("Bluetooth Audio" in prompt for prompt in prompts)
 
     asyncio.run(run_check())
+
+
+def test_devices_tab_shows_bluetooth_status_rows(monkeypatch):
+    async def run_check():
+        import tui
+        from textual.widgets import OptionList, TabbedContent
+
+        async def fake_run_sys_cmd(self, cmd, timeout=5.0):
+            if cmd == "bluetoothctl devices Paired":
+                return (
+                    "Device 24:4B:03:92:0B:8C [Samsung] Soundbar J-Series\n"
+                    "Device 5C:BA:37:01:74:E9 Xbox Wireless Controller"
+                )
+            if cmd == "bluetoothctl devices Connected":
+                return "Device 24:4B:03:92:0B:8C [Samsung] Soundbar J-Series"
+            return ""
+
+        monkeypatch.setattr(tui.RPiDashboard, "run_sys_cmd", fake_run_sys_cmd)
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            app.query_one(TabbedContent).active = "tab_devices"
+            await app.update_bluetooth_devices()
+            await pilot.pause(0.1)
+            bt_list = app.query_one("#list_bluetooth_devices", OptionList)
+            prompts = [str(bt_list.get_option_at_index(i).prompt) for i in range(bt_list.option_count)]
+            assert any("[CONNECTED] [Samsung] Soundbar J-Series" in prompt for prompt in prompts)
+            assert any("[PAIRED] Xbox Wireless Controller" in prompt for prompt in prompts)
+
+    asyncio.run(run_check())

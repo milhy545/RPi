@@ -12,7 +12,7 @@ from datetime import datetime
 from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
-from rpi_dashboard.tui.formatting import human_audio_sink
+from rpi_dashboard.tui.formatting import human_audio_sink, human_bt_device
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -545,6 +545,7 @@ class RPiDashboard(App):
         try:
             bt_list = self.query_one("#list_bluetooth_devices", OptionList)
             bt_list.clear_options()
+            self._bt_mac_by_prompt = {}
             
             bt_out = await self.run_sys_cmd("bluetoothctl devices Paired")
             if not bt_out:
@@ -553,14 +554,25 @@ class RPiDashboard(App):
             if not bt_out:
                 bt_list.add_option("Žádná spárovaná zařízení")
                 return
-                
-            options = [
-                f"{p[2]} ({p[1]})"
-                for line in bt_out.splitlines()
-                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
-            ]
-            if options:
-                bt_list.add_options(options)
+
+            connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
+            connected_macs = {
+                parts[1]
+                for line in connected_out.splitlines()
+                if line.startswith("Device ") and len(parts := line.split(None, 2)) >= 2
+            }
+
+            for line in bt_out.splitlines():
+                if not line.startswith("Device "):
+                    continue
+                parts = line.split(None, 2)
+                if len(parts) < 2:
+                    continue
+                mac = parts[1]
+                item = human_bt_device(line, connected=mac in connected_macs)
+                label = f"{item.status} {item.primary} - {item.detail}"
+                bt_list.add_option(label)
+                self._bt_mac_by_prompt[label] = item.detail
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
 
@@ -604,8 +616,10 @@ class RPiDashboard(App):
                 option = bt_list.get_option_at_index(bt_list.highlighted)
                 prompt = str(option.prompt)
                 if prompt == "Žádná spárovaná zařízení": return
-                if "(" in prompt and ")" in prompt:
+                mac = getattr(self, "_bt_mac_by_prompt", {}).get(prompt)
+                if not mac and "(" in prompt and ")" in prompt:
                     mac = prompt.split("(")[-1].strip(")")
+                if mac:
                     self.write_log(f"[BLUETOOTH] {action.capitalize()} pro {mac}...")
                     out = await self.run_sys_cmd(f"bluetoothctl {action} {shlex.quote(mac)}")
                     self.write_log(f"[BLUETOOTH] Výsledek: {out.strip()}")
