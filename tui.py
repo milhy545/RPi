@@ -4,6 +4,7 @@ from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, 
 from textual.reactive import reactive
 import time
 import os
+import sys
 import socket
 import asyncio
 import shlex
@@ -269,10 +270,11 @@ class RPiDashboard(App):
         timestamp = datetime.now().strftime("%H:%M:%S")
         full_message = f"[{timestamp}] {message}"
         try:
+            os.makedirs("/home/milhy777", exist_ok=True)
             with open("/home/milhy777/dashboard.log", "a") as f:
                 f.write(full_message + "\n")
         except Exception as e:
-            self.write_log(f"[WARN] Exception: {e}")
+            print(f"[WARN] Failed to write dashboard log: {e}", file=sys.stderr)
         if hasattr(self, "mode_switcher"):
             self.mode_switcher.log_buffer.write(full_message)
         try:
