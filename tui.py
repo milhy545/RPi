@@ -12,6 +12,7 @@ from datetime import datetime
 from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
+from rpi_dashboard.tui.formatting import human_audio_sink
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -504,6 +505,7 @@ class RPiDashboard(App):
         try:
             sinks_list = self.query_one("#list_audio_sinks", OptionList)
             sinks_list.clear_options()
+            self._audio_sink_by_prompt = {}
             
             # Get default sink name
             default_sink = await self.run_sys_cmd("pactl get-default-sink")
@@ -511,26 +513,17 @@ class RPiDashboard(App):
             # Get list of sinks
             sinks_out = await self.run_sys_cmd("pactl list short sinks")
             if not sinks_out:
-                # Mock if pactl not available
-                sinks_list.add_option("alsa_output.platform-3f902000.hdmi.hdmi-stereo (HDMI)")
+                sinks_list.add_option("[ERROR] No audio outputs reported by pactl")
                 return
                 
             for line in sinks_out.split("\n"):
                 parts = line.split()
                 if len(parts) >= 2:
                     sink_id = parts[1]
-                    friendly_name = sink_id
-                    if "hdmi" in sink_id:
-                        friendly_name = f"🔊 TV Audio (HDMI) - {sink_id}"
-                    elif "bluez_sink" in sink_id:
-                        friendly_name = f"🎧 Bezdrátový reproduktor (Bluetooth) - {sink_id}"
-                    elif "LG_TV" in sink_id or "Windows_Digital_Media_Renderer" in sink_id:
-                        friendly_name = f"📺 Dálkové DLNA (pa-dlna) - {sink_id}"
-                        
-                    if sink_id == default_sink:
-                        sinks_list.add_option(f"✓ {friendly_name}")
-                    else:
-                        sinks_list.add_option(friendly_name)
+                    item = human_audio_sink(sink_id, default=sink_id == default_sink)
+                    label = f"{item.status} {item.primary} - {item.detail}".strip()
+                    sinks_list.add_option(label)
+                    self._audio_sink_by_prompt[label] = sink_id
             # Load and populate DLNA latency and Alexa loopback switch
             import webserver
             try:
@@ -696,8 +689,8 @@ class RPiDashboard(App):
         """Handle selection of default audio sink in OptionList."""
         if event.option_list.id == "list_audio_sinks":
             selected_text = str(event.option.prompt)
-            if " - " in selected_text:
-                sink_id = selected_text.split(" - ")[-1].strip()
+            sink_id = getattr(self, "_audio_sink_by_prompt", {}).get(selected_text)
+            if sink_id:
                 self.write_log(f"[AUDIO] Nastavuji výchozí zvukový výstup na: {sink_id}")
                 asyncio.create_task(self.set_audio_sink(sink_id))
 

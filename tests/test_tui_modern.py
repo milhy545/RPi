@@ -111,3 +111,36 @@ def test_live_tui_has_ascii_status_bar():
             assert all(ord(ch) < 128 for ch in rendered)
 
     asyncio.run(run_check())
+
+
+def test_audio_tab_uses_human_sink_labels(monkeypatch):
+    async def run_check():
+        import tui
+        from textual.widgets import OptionList, TabbedContent
+
+        async def fake_run_sys_cmd(self, cmd, timeout=5.0):
+            if cmd == "pactl get-default-sink":
+                return "alsa_output.platform-3f902000.hdmi.hdmi-stereo"
+            if cmd == "pactl list short sinks":
+                return (
+                    "0\talsa_output.platform-3f902000.hdmi.hdmi-stereo\tPipeWire\n"
+                    "1\tbluez_sink.24_4B_03_92_0B_8C.a2dp_sink\tPipeWire"
+                )
+            return ""
+
+        monkeypatch.setattr(tui.RPiDashboard, "run_sys_cmd", fake_run_sys_cmd)
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            app.query_one(TabbedContent).active = "tab_audio"
+            await app.update_audio_sinks()
+            await pilot.pause(0.1)
+            sink_list = app.query_one("#list_audio_sinks", OptionList)
+            prompts = [
+                str(sink_list.get_option_at_index(i).prompt)
+                for i in range(sink_list.option_count)
+            ]
+            assert any("TV HDMI" in prompt and "[ACTIVE]" in prompt for prompt in prompts)
+            assert any("Bluetooth Audio" in prompt for prompt in prompts)
+
+    asyncio.run(run_check())
