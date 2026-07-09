@@ -51,3 +51,4 @@
 - [x] **Track: report_1782888498_bug** — Bug report (incorporated into refactor-fullstack_20260706) | [Plan](./tracks/report_1782888498_bug/plan.md)
 
 - [x] **Track: refactor-fullstack_20260706** — Full-Stack Refactoring: Backend modularization + WebUI responsive + TUI modernization | [Plan](./tracks/refactor-fullstack_20260706/plan.md)
+- [ ] **Track: bluetooth-xbox-controller_20260709** — Shared Bluetooth pairing UI and Xbox controller / Steam Link support | [Plan](./tracks/bluetooth-xbox-controller_20260709/plan.md)

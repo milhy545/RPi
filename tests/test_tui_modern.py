@@ -56,7 +56,8 @@ def test_live_tui_operational_tabs_have_usable_height():
 
             for tab_id, selector in (
                 ("tab_audio", "#panel_audio"),
-                ("tab_devices", "#panel_bluetooth"),
+                ("tab_bluetooth", "#panel_bluetooth"),
+                ("tab_devices", "#panel_devices"),
                 ("tab_network", "#panel_network"),
                 ("tab_network", "#panel_wifi"),
             ):
@@ -84,6 +85,7 @@ def test_live_tui_uses_task_oriented_tabs():
                 "tab_player",
                 "tab_apps",
                 "tab_audio",
+                "tab_bluetooth",
                 "tab_devices",
                 "tab_network",
                 "tab_system",
@@ -128,6 +130,7 @@ def test_live_tui_defaults_to_czech_and_switches_to_english():
             assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube nebo prima URL..."
             tabs = app.query_one(TabbedContent)
             assert str(tabs.get_tab("tab_player").label) == "Prehravac"
+            assert str(tabs.get_tab("tab_bluetooth").label) == "Bluetooth"
             assert str(tabs.get_tab("tab_devices").label) == "Zarizeni"
             assert str(tabs.get_tab("tab_network").label) == "Sit"
 
@@ -137,6 +140,7 @@ def test_live_tui_defaults_to_czech_and_switches_to_english():
             assert str(app.query_one("#btn_mpv", Button).label) == "Start MPV"
             assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube or direct URL..."
             assert str(tabs.get_tab("tab_player").label) == "Player"
+            assert str(tabs.get_tab("tab_bluetooth").label) == "Bluetooth"
             assert str(tabs.get_tab("tab_devices").label) == "Devices"
             assert str(tabs.get_tab("tab_network").label) == "Network"
 
@@ -217,26 +221,28 @@ def test_audio_tab_uses_human_sink_labels(monkeypatch):
     asyncio.run(run_check())
 
 
-def test_devices_tab_shows_bluetooth_status_rows(monkeypatch):
+def test_bluetooth_tab_shows_bluetooth_status_rows(monkeypatch):
     async def run_check():
         import tui
         from textual.widgets import OptionList, TabbedContent
 
-        async def fake_run_sys_cmd(self, cmd, timeout=5.0):
-            if cmd == "bluetoothctl devices Paired":
-                return (
-                    "Device 24:4B:03:92:0B:8C [Samsung] Soundbar J-Series\n"
-                    "Device 5C:BA:37:01:74:E9 Xbox Wireless Controller"
-                )
-            if cmd == "bluetoothctl devices Connected":
-                return "Device 24:4B:03:92:0B:8C [Samsung] Soundbar J-Series"
-            return ""
+        def fake_devices_state():
+            return {
+                "ok": True,
+                "bluetooth": {
+                    "devices": [
+                        {"mac": "24:4B:03:92:0B:8C", "name": "[Samsung] Soundbar J-Series", "kind": "speaker", "paired": True, "connected": True, "trusted": True},
+                        {"mac": "5C:BA:37:01:74:E9", "name": "Xbox Wireless Controller", "kind": "xbox_controller", "paired": True, "connected": False, "trusted": True},
+                    ],
+                    "controller": {"ready": False, "connected": [], "modules": {}, "ertm": {}, "input_devices": [], "steamlink": {"available": False}},
+                },
+            }
 
-        monkeypatch.setattr(tui.RPiDashboard, "run_sys_cmd", fake_run_sys_cmd)
+        monkeypatch.setattr(tui.devices_service, "devices_state", fake_devices_state)
         tui.API_PORT = 0
         app = tui.RPiDashboard()
         async with app.run_test(size=(120, 35)) as pilot:
-            app.query_one(TabbedContent).active = "tab_devices"
+            app.query_one(TabbedContent).active = "tab_bluetooth"
             await app.update_bluetooth_devices()
             await pilot.pause(0.1)
             bt_list = app.query_one("#list_bluetooth_devices", OptionList)

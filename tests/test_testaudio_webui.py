@@ -93,6 +93,10 @@ def main() -> int:
         "Devices tab exists", 'data-t="devices"' in html and 'id="p-devices"' in html
     )
     failures += check(
+        "Bluetooth tab exists",
+        'data-t="bluetooth"' in html and 'id="p-bluetooth"' in html,
+    )
+    failures += check(
         "outputs/inputs layout markers exist",
         "Output Sinks" in html and "Input Sources" in html,
     )

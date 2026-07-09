@@ -20,6 +20,7 @@ from config import (
 )
 from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route
+from rpi_dashboard.services import devices as devices_service
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -1191,49 +1192,23 @@ def audio_route_alexa_bt(action):
 
 # ── Devices, Wi-Fi, and YouTube diagnostics ───────────────────────────
 def _bt_kind(name):
-    n=(name or "").lower()
-    if "xbox" in n or "wireless controller" in n or "gamepad" in n:
-        return "xbox_controller"
-    if any(x in n for x in ("soundbar", "speaker", "headphone", "buds", "audio")):
-        return "speaker"
-    return "unknown"
+    return devices_service._bt_device_kind(name)
 
 def _bt_paired_devices():
-    out=[]
-    r=_run(["bluetoothctl","devices","Paired"], t=5)
-    for line in r.stdout.splitlines():
-        p=line.split()
-        if len(p)>=3 and p[0]=="Device":
-            mac=p[1]; name=" ".join(p[2:])
-            info=_run(["bluetoothctl","info",mac], t=5).stdout
-            connected="Connected: yes" in info
-            trusted="Trusted: yes" in info
-            paired="Paired: yes" in info or True
-            out.append({"mac":mac,"name":name,"kind":_bt_kind(name),"paired":paired,"connected":connected,"trusted":trusted})
-    return out
+    return devices_service._bt_paired_devices()
 
 def _bt_scanned_devices():
-    r=_run(["bluetoothctl","devices"], t=5)
-    out=[]
-    known={d["mac"] for d in _bt_paired_devices()}
-    for line in r.stdout.splitlines():
-        p=line.split()
-        if len(p)>=3 and p[0]=="Device":
-            mac=p[1]; name=" ".join(p[2:])
-            if mac in known: continue
-            out.append({"mac":mac,"name":name,"kind":_bt_kind(name),"paired":False,"connected":False,"trusted":False})
-    return out
+    return devices_service._bt_scanned_devices()
 
 def devices_state():
     audio=audio_state()
-    return {"ok":True,"bluetooth":{"paired":_bt_paired_devices()},"audio_devices":audio.get("devices",{}),"default_sink":audio.get("default_sink")}
+    state=devices_service.devices_state()
+    state["audio_devices"]=audio.get("devices",{})
+    state["default_sink"]=audio.get("default_sink")
+    return state
 
 def bluetooth_scan_devices(seconds=5):
-    seconds=max(2,min(12,int(seconds or 5)))
-    subprocess.Popen(["bluetoothctl","scan","on"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    time.sleep(seconds)
-    _run(["bluetoothctl","scan","off"], t=3)
-    return {"ok":True,"devices":_bt_scanned_devices(),"paired":_bt_paired_devices()}
+    return devices_service.bluetooth_scan_devices(seconds)
 
 def _wifi_nmcli_available():
     return subprocess.run(["bash","-lc","command -v nmcli >/dev/null"],capture_output=True).returncode==0
@@ -2274,12 +2249,10 @@ class H(BaseHTTPRequestHandler):
                             bt.append(f"Paired: {name} ({parts[1]})")
                 self.sj(200,{"bt":bt,"dlna":dlna,"hdmi":hdmi})
             elif path=="/bt/scan":
-                # Start scan in background, return immediately
-                subprocess.Popen(["bluetoothctl","scan","on"],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-                import time as _time; _time.sleep(5)
-                subprocess.run(["bluetoothctl","scan","off"],capture_output=True,text=True,timeout=3)
-                devs=subprocess.run(["bluetoothctl","devices"],capture_output=True,text=True,timeout=3)
-                self.sj(200,{"result":devs.stdout.strip()[:800] or "No devices"})
+                seconds=(q.get("seconds")or["5"])[0]
+                self.sj(200,devices_service.bluetooth_scan_devices(seconds))
+            elif path=="/bt/controller":
+                self.sj(200,{"ok":True,"controller":devices_service.bluetooth_controller_status()})
             elif path=="/dlna/scan":
                 try:
                     r=subprocess.run(["gssdp-discover","-n","5","-t","urn:schemas-upnp-org:device:MediaRenderer:1"],capture_output=True,text=True,timeout=10)
@@ -2316,36 +2289,34 @@ class H(BaseHTTPRequestHandler):
             elif path=="/bt/trust":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                r=subprocess.run(["bluetoothctl","trust",mac],capture_output=True,text=True,timeout=5)
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+                self.sj(200,devices_service.bluetooth_trust(mac))
             elif path=="/bt/pair":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                r=subprocess.run(["bluetoothctl","pair",mac],capture_output=True,text=True,timeout=15)
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+                self.sj(200,devices_service.bluetooth_pair(mac))
             elif path=="/bt/connect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                r=subprocess.run(["bluetoothctl","connect",mac],capture_output=True,text=True,timeout=10)
-                out=(r.stdout+r.stderr).strip()[:300]
+                result=devices_service.bluetooth_connect(mac)
                 bt_sink=None
                 for _ in range(10):
                     bt_sink=next((s["name"] for s in _pactl_lines("sinks") if s["name"].startswith("bluez_")),None)
                     if bt_sink: break
                     time.sleep(1)
                 if bt_sink: _keepalive_start(bt_sink)
-                self.sj(200,{"result":out,"bt_sink":bt_sink,"keepalive":_keepalive_status()})
+                result.update({"bt_sink":bt_sink,"keepalive":_keepalive_status()})
+                self.sj(200,result)
             elif path=="/bt/disconnect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                r=subprocess.run(["bluetoothctl","disconnect",mac],capture_output=True,text=True,timeout=5)
+                result=devices_service.bluetooth_disconnect(mac)
                 _keepalive_stop()
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300],"keepalive":_keepalive_status()})
+                result.update({"keepalive":_keepalive_status()})
+                self.sj(200,result)
             elif path=="/bt/remove":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                r=subprocess.run(["bluetoothctl","remove",mac],capture_output=True,text=True,timeout=5)
-                self.sj(200,{"result":(r.stdout+r.stderr).strip()[:300]})
+                self.sj(200,devices_service.bluetooth_remove(mac))
             elif path=="/system/hw-stats":
                 def _cpu_sample():
                     out=[]

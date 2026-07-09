@@ -284,6 +284,7 @@ async function testTabNavigation() {
     { id: 'tab-apps', panel: 'p-apps' },
     { id: 'tab-cec', panel: 'p-cec' },
     { id: 'tab-audio', panel: 'p-audio' },
+    { id: 'tab-bluetooth', panel: 'p-bluetooth' },
     { id: 'tab-devices', panel: 'p-devices' },
     { id: 'tab-terminal', panel: 'p-terminal' },
   ];

@@ -12,7 +12,8 @@ from datetime import datetime
 from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
-from rpi_dashboard.tui.formatting import human_audio_sink, human_bt_device
+from rpi_dashboard.services import devices as devices_service
+from rpi_dashboard.tui.formatting import human_audio_sink
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -23,6 +24,7 @@ I18N = {
         "player": "Prehravac",
         "apps": "Aplikace",
         "audio": "Audio",
+        "bluetooth": "Bluetooth",
         "devices": "Zarizeni",
         "network": "Sit",
         "system": "System",
@@ -40,6 +42,11 @@ I18N = {
         "save_latency": "Ulozit latenci",
         "restart_padlna": "Restart pa-dlna",
         "bt_title": "Bluetooth zarizeni",
+        "bt_controller_title": "Xbox / ovladace",
+        "bt_controller_ready": "Pripraveno",
+        "bt_controller_not_ready": "Neni pripraveno",
+        "devices_title": "Zarizeni",
+        "devices_info": "Wi-Fi, hotspot a stav hardwaru jsou v Sit/System. Bluetooth ma vlastni zalozku.",
         "scan": "Skenovat",
         "pair": "Parovat",
         "trust": "Duverovat",
@@ -69,6 +76,7 @@ I18N = {
         "player": "Player",
         "apps": "Apps",
         "audio": "Audio",
+        "bluetooth": "Bluetooth",
         "devices": "Devices",
         "network": "Network",
         "system": "System",
@@ -86,6 +94,11 @@ I18N = {
         "save_latency": "Save latency",
         "restart_padlna": "Restart pa-dlna",
         "bt_title": "Bluetooth devices",
+        "bt_controller_title": "Xbox / controllers",
+        "bt_controller_ready": "Ready",
+        "bt_controller_not_ready": "Not ready",
+        "devices_title": "Devices",
+        "devices_info": "Wi-Fi, hotspot, and hardware status live in Network/System. Bluetooth has its own tab.",
         "scan": "Scan",
         "pair": "Pair",
         "trust": "Trust",
@@ -453,7 +466,7 @@ class RPiDashboard(App):
                         yield Switch(id="switch_alexa_bt", value=False)
                     yield Button(self.tr("restart_padlna"), id="btn_restart_padlna", variant="default")
 
-            with TabPane(self.tr("devices"), id="tab_devices"):
+            with TabPane(self.tr("bluetooth"), id="tab_bluetooth"):
                 with Vertical(classes="settings-panel", id="panel_bluetooth"):
                     yield Static("", id="title_bluetooth", classes="settings-title")
                     yield OptionList(id="list_bluetooth_devices")
@@ -465,6 +478,12 @@ class RPiDashboard(App):
                         yield Button(self.tr("connect"), id="btn_connect_bluetooth", variant="success")
                         yield Button(self.tr("disconnect"), id="btn_disconnect_bluetooth", variant="error")
                         yield Button(self.tr("remove"), id="btn_remove_bluetooth", variant="error")
+                    yield Static("", id="txt_bluetooth_controller")
+
+            with TabPane(self.tr("devices"), id="tab_devices"):
+                with Vertical(classes="settings-panel", id="panel_devices"):
+                    yield Static("", id="title_devices", classes="settings-title")
+                    yield Static("Wi-Fi, hotspot, and hardware status live in Network/System. Bluetooth has its own tab.", id="txt_devices_info")
 
             with TabPane(self.tr("network"), id="tab_network"):
                 with Horizontal():
@@ -552,6 +571,7 @@ class RPiDashboard(App):
             ("tab_player", "player"),
             ("tab_apps", "apps"),
             ("tab_audio", "audio"),
+            ("tab_bluetooth", "bluetooth"),
             ("tab_devices", "devices"),
             ("tab_network", "network"),
             ("tab_system", "system"),
@@ -563,6 +583,8 @@ class RPiDashboard(App):
         self.set_static_text("#title_apps", f"[bold]{self.tr('apps')}[/bold]")
         self.set_static_text("#title_audio", f"[bold]{self.tr('audio_title')}[/bold]")
         self.set_static_text("#title_bluetooth", f"[bold]{self.tr('bt_title')}[/bold]")
+        self.set_static_text("#title_devices", f"[bold]{self.tr('devices_title')}[/bold]")
+        self.set_static_text("#txt_devices_info", self.tr("devices_info"))
         self.set_static_text("#title_network", f"[bold]{self.tr('network_title')}[/bold]")
         self.set_static_text("#title_wifi", f"[bold]{self.tr('wifi_title')}[/bold]")
         self.set_static_text("#title_system", f"[bold]{self.tr('system')}[/bold]")
@@ -682,7 +704,7 @@ class RPiDashboard(App):
         """Refresh all settings panel widgets with system configuration data (with TTL and tab check)."""
         try:
             active_tab = self.query_one(TabbedContent).active
-            if active_tab not in {"tab_audio", "tab_devices", "tab_network", "tab_system"}:
+            if active_tab not in {"tab_audio", "tab_bluetooth", "tab_devices", "tab_network", "tab_system"}:
                 return
         except Exception as e:
             return
@@ -773,35 +795,42 @@ class RPiDashboard(App):
             bt_list = self.query_one("#list_bluetooth_devices", OptionList)
             bt_list.clear_options()
             self._bt_mac_by_prompt = {}
-            
-            bt_out = await self.run_sys_cmd("bluetoothctl devices Paired")
-            if not bt_out:
-                bt_out = await self.run_sys_cmd("bluetoothctl devices")
-                
-            if not bt_out:
+            state = await asyncio.to_thread(devices_service.devices_state)
+            bluetooth = state.get("bluetooth", {})
+            devices = bluetooth.get("devices") or bluetooth.get("paired") or []
+
+            if not devices:
                 bt_list.add_option(self.empty_bt_label())
+                self.render_bluetooth_controller(bluetooth.get("controller"))
                 return
 
-            connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
-            connected_macs = {
-                parts[1]
-                for line in connected_out.splitlines()
-                if line.startswith("Device ") and len(parts := line.split(None, 2)) >= 2
-            }
-
-            for line in bt_out.splitlines():
-                if not line.startswith("Device "):
-                    continue
-                parts = line.split(None, 2)
-                if len(parts) < 2:
-                    continue
-                mac = parts[1]
-                item = human_bt_device(line, connected=mac in connected_macs)
-                label = f"{item.status} {item.primary} - {item.detail}"
+            for device in devices:
+                status = "[CONNECTED]" if device.get("connected") else ("[PAIRED]" if device.get("paired") else "[FOUND]")
+                role = device.get("kind") or device.get("type") or "unknown"
+                label = f"{status} {device.get('name', 'Unknown')} - {role} - {device.get('mac', '')}"
                 bt_list.add_option(label)
-                self._bt_mac_by_prompt[label] = item.detail
+                self._bt_mac_by_prompt[label] = device.get("mac", "")
+            self.render_bluetooth_controller(bluetooth.get("controller"))
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
+
+    def render_bluetooth_controller(self, controller: dict | None) -> None:
+        if not controller:
+            self.set_static_text("#txt_bluetooth_controller", "")
+            return
+        ready = self.tr("bt_controller_ready") if controller.get("ready") else self.tr("bt_controller_not_ready")
+        modules = controller.get("modules") or {}
+        driver = "xpadneo" if modules.get("xpadneo") else ("uhid" if modules.get("uhid") else ("xpad" if modules.get("xpad") else "missing"))
+        ertm = controller.get("ertm") or {}
+        ertm_value = "yes" if ertm.get("disabled") is True else ("no" if ertm.get("disabled") is False else "unknown")
+        inputs = controller.get("input_devices") or []
+        steamlink = (controller.get("steamlink") or {}).get("available")
+        text = (
+            f"[bold]{self.tr('bt_controller_title')}[/bold]: {ready}\n"
+            f"Connected: {len(controller.get('connected') or [])} | ERTM disabled: {ertm_value} | Driver: {driver}\n"
+            f"Input: {', '.join(inputs) if inputs else 'none'} | Steam Link: {'available' if steamlink else 'missing'}"
+        )
+        self.set_static_text("#txt_bluetooth_controller", text)
 
     async def update_wifi_hotspot_info(self) -> None:
         """Read hotspot and raspotify settings and status."""
@@ -834,7 +863,9 @@ class RPiDashboard(App):
     async def scan_bluetooth(self) -> None:
         """Scan for Bluetooth devices in background."""
         self.write_log("[BLUETOOTH] Starting discovery for 5s...")
-        await self.run_sys_cmd("bluetoothctl --timeout 5 scan on")
+        result = await asyncio.to_thread(devices_service.bluetooth_scan_devices, 5)
+        if not result.get("ok"):
+            self.write_log(f"[BLUETOOTH] Scan failed: {result.get('error', 'unknown error')}")
         self.write_log("[BLUETOOTH] Discovery complete.")
         await self.update_bluetooth_devices()
 
@@ -850,8 +881,9 @@ class RPiDashboard(App):
                     mac = prompt.split("(")[-1].strip(")")
                 if mac:
                     self.write_log(f"[BLUETOOTH] {action.capitalize()} for {mac}...")
-                    out = await self.run_sys_cmd(f"bluetoothctl {action} {shlex.quote(mac)}")
-                    self.write_log(f"[BLUETOOTH] Result: {out.strip()}")
+                    runner = getattr(devices_service, f"bluetooth_{action}")
+                    result = await asyncio.to_thread(runner, mac)
+                    self.write_log(f"[BLUETOOTH] Result: {result.get('result') or result.get('error') or result.get('output')}")
                     if action in ["connect", "disconnect"]:
                         await self.update_audio_sinks()
                     await self.update_bluetooth_devices()
@@ -897,12 +929,12 @@ class RPiDashboard(App):
     async def disconnect_all_bluetooth(self) -> None:
         """Disconnect all connected Bluetooth audio devices."""
         self.write_log("[BLUETOOTH] Disconnecting all Bluetooth devices...")
-        devices = await self.run_sys_cmd("bluetoothctl devices Connected")
-        for line in devices.split("\n"):
-            parts = line.split()
-            if len(parts) >= 2:
-                mac = parts[1]
-                await self.run_sys_cmd(f"bluetoothctl disconnect {shlex.quote(mac)}")
+        state = await asyncio.to_thread(devices_service.devices_state)
+        connected_devices = [d for d in state.get("bluetooth", {}).get("paired", []) if d.get("connected")]
+        for d in connected_devices:
+            mac = d.get("mac")
+            if mac:
+                await asyncio.to_thread(devices_service.bluetooth_disconnect, mac)
         self.write_log("[BLUETOOTH] Disconnect complete.")
         await self.update_bluetooth_devices()
 
@@ -1158,18 +1190,15 @@ class RPiDashboard(App):
     async def handle_bluetooth_get_devices(self, request: web.Request) -> web.Response:
         """Route to list paired and connected Bluetooth devices."""
         try:
-            paired_out = await self.run_sys_cmd("bluetoothctl devices Paired")
-            connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
+            state = await asyncio.to_thread(devices_service.devices_state)
+            bluetooth = state.get("bluetooth", {})
+            devices = bluetooth.get("paired", [])
             
             paired = [
-                f"{p[2]} ({p[1]})"
-                for line in paired_out.splitlines()
-                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
+                f"{d['name']} ({d['mac']})" for d in devices if d.get("paired")
             ]
             connected = [
-                f"{p[2]} ({p[1]})"
-                for line in connected_out.splitlines()
-                if line.startswith("Device ") and len(p := line.split(None, 2)) == 3
+                f"{d['name']} ({d['mac']})" for d in devices if d.get("connected")
             ]
             
             return web.json_response({"status": "ok", "paired": paired, "connected": connected})
@@ -1181,16 +1210,16 @@ class RPiDashboard(App):
         try:
             data = await request.json()
             mac = data.get("mac")
-            action = data.get("action", "connect") # connect, disconnect, pair, remove
+            action = data.get("action", "connect") # connect, disconnect, pair, remove, trust
             if not mac:
                 return web.json_response({"status": "error", "message": "Missing 'mac' address"}, status=400)
             
-            if action not in ["connect", "disconnect", "pair", "remove"]:
+            if action not in ["connect", "disconnect", "pair", "remove", "trust"]:
                 return web.json_response({"status": "error", "message": "Invalid action"}, status=400)
                 
-            cmd = f"bluetoothctl {action} {shlex.quote(mac)}"
-            res = await self.run_sys_cmd(cmd)
-            return web.json_response({"status": "ok", "message": f"Action {action} dispatched", "output": res})
+            runner = getattr(devices_service, f"bluetooth_{action}")
+            res = await asyncio.to_thread(runner, mac)
+            return web.json_response({"status": "ok", "message": f"Action {action} dispatched", "output": res.get("output", "")})
         except Exception as e:
             return web.json_response({"status": "error", "message": str(e)}, status=400)
 

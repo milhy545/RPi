@@ -34,6 +34,7 @@ WEBUI_GET_ENDPOINTS = {
     "/audio/state",
     "/audio/volume",
     "/bt/connect",
+    "/bt/controller",
     "/bt/disconnect",
     "/bt/pair",
     "/bt/remove",

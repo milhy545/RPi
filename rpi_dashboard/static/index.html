@@ -27,6 +27,7 @@
         <button id="tab-apps" class="tab" data-t="apps" data-i18n="apps" data-icon="🚀" onclick="sw('apps')">🚀 Apps</button>
         <button id="tab-cec" class="tab" data-t="cec" data-i18n="cec" data-icon="📺" onclick="sw('cec')">📺 CEC</button>
         <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
+        <button id="tab-bluetooth" class="tab" data-t="bluetooth" data-i18n="bluetooth" data-icon="🎮" onclick="sw('bluetooth');bluetoothRefresh()">🎮 Bluetooth</button>
         <button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
         <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
     </div>
@@ -221,6 +222,31 @@
         </div>
     </div>
 
+    <!-- Bluetooth Panel -->
+    <div id="p-bluetooth" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="bluetoothTitle" data-tip="sectionBluetooth">Bluetooth</h3>
+                    <div class="media-meta" data-i18n="bluetoothDesc">Pair speakers, controllers, and input devices here. Audio routing remains in Audio.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="bluetoothRefresh()">🔄 Refresh</button>
+                    <button data-i18n="scan" data-icon="🔍" onclick="bluetoothScan()">🔍 Scan</button>
+                </div>
+            </div>
+            <div id="bt-status" class="media-meta">—</div>
+            <div id="bt-list" data-i18n="clickScanRefresh" class="media-meta" style="margin-top:.4rem">Click Scan or Refresh</div>
+        </div>
+        <div class="media-grid">
+            <div class="sec">
+                <h3 data-i18n="btControllerTitle">Xbox / Controller Readiness</h3>
+                <div class="media-meta" data-i18n="btControllerDesc">Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.</div>
+                <div id="bt-controller" class="media-meta" style="margin-top:.4rem">—</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Devices Panel -->
     <div id="p-devices" class="pnl">
         <div class="sec">
@@ -235,14 +261,6 @@
             </div>
         </div>
         <div class="media-grid">
-            <div class="sec">
-                <h3 data-i18n="btPair" data-tip="sectionBluetooth">Bluetooth Pairing</h3>
-                <div class="row">
-                    <button onclick="deviceBtScan()">🔍 Scan</button>
-                    <span id="dev-bt-status" class="media-meta">—</span>
-                </div>
-                <div id="dev-bt-list" data-i18n="clickScanRefresh" class="media-meta" style="margin-top:.4rem">Click Scan or Refresh</div>
-            </div>
             <div class="sec">
                 <h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3>
                 <div class="row">

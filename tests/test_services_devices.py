@@ -18,6 +18,14 @@ def test_bt_device_type_gamepad():
     assert _bt_device_type("Gamepad Pro") == "gamepad"
 
 
+def test_bt_device_kind_xbox_controller():
+    """Test UI role detection for Xbox controllers."""
+    from rpi_dashboard.services.devices import _bt_device_kind
+    assert _bt_device_kind("Xbox Wireless Controller") == "xbox_controller"
+    assert _bt_device_kind("8BitDo Gamepad") == "gamepad"
+    assert _bt_device_kind("JBL Soundbar") == "speaker"
+
+
 def test_bt_device_type_input():
     """Test Bluetooth device type detection for input."""
     from rpi_dashboard.services.devices import _bt_device_type
@@ -80,3 +88,47 @@ def test_devices_state():
                 result = devices_state()
                 assert "bluetooth" in result
                 assert "wifi" in result
+                assert result["ok"] is True
+
+
+def test_bluetooth_devices_normalizes_state():
+    """Test Bluetooth paired/scanned normalization."""
+    from rpi_dashboard.services.devices import bluetooth_devices
+
+    def fake_run(cmd, t=5):
+        if cmd == ["bluetoothctl", "devices", "Paired"]:
+            return MagicMock(returncode=0, stdout="Device AA:BB Xbox Wireless Controller\n")
+        if cmd == ["bluetoothctl", "devices", "Scanned"]:
+            return MagicMock(returncode=0, stdout="Device CC:DD JBL Soundbar\n")
+        if cmd == ["bluetoothctl", "info", "AA:BB"]:
+            return MagicMock(returncode=0, stdout="Paired: yes\nConnected: yes\nTrusted: yes\n")
+        if cmd == ["bluetoothctl", "info", "CC:DD"]:
+            return MagicMock(returncode=0, stdout="Paired: no\nConnected: no\nTrusted: no\n")
+        return MagicMock(returncode=0, stdout="")
+
+    with patch("rpi_dashboard.services.devices._run", side_effect=fake_run):
+        result = bluetooth_devices()
+        assert result[0]["kind"] == "xbox_controller"
+        assert result[0]["connected"] is True
+        assert result[1]["kind"] == "speaker"
+        assert result[1]["paired"] is False
+
+
+def test_bluetooth_controller_status_reports_ready():
+    """Test Xbox/Steam Link readiness summary."""
+    from rpi_dashboard.services.devices import bluetooth_controller_status
+
+    devices = [{
+        "mac": "AA:BB",
+        "name": "Xbox Wireless Controller",
+        "kind": "xbox_controller",
+        "type": "gamepad",
+        "connected": True,
+    }]
+    with patch("rpi_dashboard.services.devices.shutil.which", return_value="/usr/bin/steamlink"):
+        with patch("rpi_dashboard.services.devices._loaded_modules", return_value=["uhid"]):
+            with patch("rpi_dashboard.services.devices._input_device_names", return_value=["Xbox Wireless Controller"]):
+                result = bluetooth_controller_status(devices)
+                assert result["ready"] is True
+                assert result["steamlink"]["available"] is True
+                assert result["modules"]["uhid"] is True

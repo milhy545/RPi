@@ -129,6 +129,11 @@ def handle_bt_scan(q: Dict[str, Any]) -> Dict[str, Any]:
     return devices.bluetooth_scan_devices(sec)
 
 
+def handle_bt_controller_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get Bluetooth controller readiness."""
+    return {"ok": True, "controller": devices.bluetooth_controller_status()}
+
+
 def handle_bt_pair(q: Dict[str, Any]) -> Dict[str, Any]:
     """Pair Bluetooth device."""
     mac = _get(q, "mac")
