@@ -16,11 +16,113 @@ from rpi_dashboard.tui.formatting import human_audio_sink, human_bt_device
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
-NO_BT_DEVICES_LABEL = "No paired Bluetooth devices. Use Scan, then Pair."
-NO_WIFI_NETWORKS_LABEL = "No Wi-Fi networks found. Run scan again or check adapter."
+
+I18N = {
+    "cz": {
+        "language": "Jazyk",
+        "player": "Prehravac",
+        "apps": "Aplikace",
+        "audio": "Audio",
+        "devices": "Zarizeni",
+        "network": "Sit",
+        "system": "System",
+        "logs": "Logy",
+        "input_url": "YouTube nebo prima URL...",
+        "start_mpv": "Spustit MPV",
+        "start_steam": "Spustit Steam Link",
+        "stop_all": "Zastavit vse",
+        "open_terminal": "Otevrit terminal",
+        "player_return": "Navrat: ukonci prehravani nebo pouzij Zastavit vse z Aplikaci/WebUI.",
+        "apps_return": "Terminal: Ctrl-b, potom d. Aplikace: ukonci aplikaci nebo Zastavit vse.",
+        "mode_current": "Aktualni rezim",
+        "audio_title": "Zvukovy vystup (DLNA/BT/HDMI)",
+        "dlna_latency": "DLNA latence (ms):",
+        "save_latency": "Ulozit latenci",
+        "restart_padlna": "Restart pa-dlna",
+        "bt_title": "Bluetooth zarizeni",
+        "scan": "Skenovat",
+        "pair": "Parovat",
+        "trust": "Duverovat",
+        "connect": "Pripojit",
+        "disconnect": "Odpojit",
+        "remove": "Odebrat",
+        "network_title": "Sit a Tailscale",
+        "network_loading": "Nacitam sitove informace...",
+        "wifi_title": "Wi-Fi a zachranny hotspot",
+        "scan_wifi": "Skenovat Wi-Fi",
+        "wifi_password": "Heslo (nepovinne pro otevrene site)",
+        "connect_wifi": "Pripojit vybranou sit",
+        "hotspot_hidden": "Hotspot SSID: RPi-service (skryta)",
+        "hotspot_clients": "Pripojeni klienti: --",
+        "rescue_hotspot": "Zachranny hotspot: ",
+        "no_bt": "Zadna sparovana Bluetooth zarizeni. Pouzij Skenovat, potom Parovat.",
+        "no_wifi": "Zadne Wi-Fi site nenalezeny. Spust sken znovu nebo zkontroluj adapter.",
+        "tailscale_inactive": "Tailscale: neaktivni nebo nenainstalovano",
+        "loaded": "[SYSTEM] J.A.R.V.I.S. Dumb TV Interface nacteno.",
+        "listening": "[NETWORK] Nasloucham na portu {port}...",
+        "waiting": "[DAEMON] Cekam na prikazy z lokalni site.",
+        "terminal_help": "[HELP] Navrat do dashboardu z terminalu: stiskni Ctrl-b, potom d.",
+        "app_help": "[HELP] Navrat do dashboardu: ukonci aplikaci, nebo pouzij Zastavit vse v TUI/WebUI.",
+    },
+    "en": {
+        "language": "Language",
+        "player": "Player",
+        "apps": "Apps",
+        "audio": "Audio",
+        "devices": "Devices",
+        "network": "Network",
+        "system": "System",
+        "logs": "Logs",
+        "input_url": "YouTube or direct URL...",
+        "start_mpv": "Start MPV",
+        "start_steam": "Start Steam Link",
+        "stop_all": "Stop all",
+        "open_terminal": "Open Terminal",
+        "player_return": "Return: quit playback or use Stop all from Apps/WebUI.",
+        "apps_return": "Terminal return: Ctrl-b, then d. Apps return: quit app or Stop all.",
+        "mode_current": "Current mode",
+        "audio_title": "Audio output (DLNA/BT/HDMI)",
+        "dlna_latency": "DLNA latency (ms):",
+        "save_latency": "Save latency",
+        "restart_padlna": "Restart pa-dlna",
+        "bt_title": "Bluetooth devices",
+        "scan": "Scan",
+        "pair": "Pair",
+        "trust": "Trust",
+        "connect": "Connect",
+        "disconnect": "Disconnect",
+        "remove": "Remove",
+        "network_title": "Network and Tailscale",
+        "network_loading": "Loading network information...",
+        "wifi_title": "Wi-Fi and rescue hotspot",
+        "scan_wifi": "Scan Wi-Fi",
+        "wifi_password": "Password (optional for open networks)",
+        "connect_wifi": "Connect selected network",
+        "hotspot_hidden": "Hotspot SSID: RPi-service (hidden)",
+        "hotspot_clients": "Connected clients: --",
+        "rescue_hotspot": "Rescue hotspot: ",
+        "no_bt": "No paired Bluetooth devices. Use Scan, then Pair.",
+        "no_wifi": "No Wi-Fi networks found. Run scan again or check adapter.",
+        "tailscale_inactive": "Tailscale: inactive or not installed",
+        "loaded": "[SYSTEM] J.A.R.V.I.S. Dumb TV Interface loaded.",
+        "listening": "[NETWORK] Listening on port {port}...",
+        "waiting": "[DAEMON] Waiting for local network commands.",
+        "terminal_help": "[HELP] Return to dashboard from terminal: press Ctrl-b, then d.",
+        "app_help": "[HELP] Return to dashboard: quit the app, or use Stop all from the TUI/WebUI if it remains active.",
+    },
+}
+
+
+def normalize_lang(lang: str | None) -> str:
+    return "en" if (lang or "").lower() == "en" else "cz"
+
+
+def t(lang: str, key: str) -> str:
+    lang = normalize_lang(lang)
+    return I18N[lang].get(key, I18N["cz"].get(key, key))
 
 class SystemStats(Static):
-    """Zobrazuje reálnou zátěž systému z /proc a /sys."""
+    """Show live system load from /proc and /sys."""
     def on_mount(self) -> None:
         self._settings_cache = {
             "network": 0.0,
@@ -30,7 +132,7 @@ class SystemStats(Static):
         }
         self._settings_cache_ttl = 10.0
 
-        # Inicializace stavových proměnných pro výpočet CPU delta
+        # State used to compute CPU deltas.
         self._prev_cpu_idle = 0
         self._prev_cpu_total = 0
         self.update_stats()
@@ -53,7 +155,7 @@ class SystemStats(Static):
                     else:
                         cpu_pct = 0.0
                 else:
-                    # První měření
+                    # First measurement.
                     cpu_pct = 0.0
                 self._prev_cpu_idle = idle
                 self._prev_cpu_total = total
@@ -91,14 +193,13 @@ class SystemStats(Static):
                 return 45.0
 
     def get_local_ip(self) -> str:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(('10.254.254.254', 1))
             ip = s.getsockname()[0]
-        except Exception as e:
-            ip = '127.0.0.1'
-        finally:
             s.close()
+        except Exception:
+            ip = '127.0.0.1'
         return ip
 
     def update_stats(self) -> None:
@@ -113,10 +214,10 @@ class SystemStats(Static):
             ram_str = f"{ram_used:.1f}GB/{ram_total:.1f}GB"
             
         self.update(
-            f"🔥 CPU: {cpu:.1f}% | "
-            f"🐏 RAM: {ram_str} | "
-            f"🌡️ Temp: {temp:.1f}°C | "
-            f"🌐 IP: {ip}"
+            f"CPU: {cpu:.1f}% | "
+            f"RAM: {ram_str} | "
+            f"TEMP: {temp:.1f}C | "
+            f"IP: {ip}"
         )
 
 
@@ -175,14 +276,13 @@ class TopStatus(Static):
             return 45.0
 
     def get_local_ip(self) -> str:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(('10.254.254.254', 1))
             ip = s.getsockname()[0]
+            s.close()
         except Exception:
             ip = '127.0.0.1'
-        finally:
-            s.close()
         return ip
 
     def update_status(self) -> None:
@@ -194,7 +294,7 @@ class TopStatus(Static):
         app = getattr(self, "app", None)
         if app is not None and hasattr(app, "mode_switcher"):
             try:
-                mode = app.mode_switcher.state.value
+                mode = app.mode_switcher.state.name
             except Exception:
                 mode = "IDLE"
         self.update(
@@ -204,16 +304,20 @@ class TopStatus(Static):
         )
 
 class ModeStatus(Static):
-    """Zobrazuje aktuální režim RPi."""
+    """Show the current RPi mode."""
     current_mode = reactive("IDLE (Dashboard)")
 
     def render(self) -> str:
-        return f"📡 Aktuální Mód: [bold green]{self.current_mode}[/]"
+        app = getattr(self, "app", None)
+        lang = getattr(app, "language", "cz")
+        return f"{t(lang, 'mode_current')}: [bold green]{self.current_mode}[/]"
 
 
 
 class RPiDashboard(App):
     """Hacker-style TUI Dashboard pro RPi."""
+    language = reactive(normalize_lang(os.getenv("RPIDASHBOARD_LANG", "cz")))
+
     CSS = """
     Screen {
         background: $surface-darken-1;
@@ -223,6 +327,20 @@ class RPiDashboard(App):
         padding: 0 1;
         background: $panel;
         color: $text;
+    }
+    #language_switch {
+        height: 3;
+        padding: 0 1;
+        background: $panel;
+        content-align: center middle;
+    }
+    #language_label {
+        width: 1fr;
+        content-align: left middle;
+    }
+    .lang-button {
+        width: 8;
+        margin: 0 1 0 0;
     }
     TabbedContent {
         height: 1fr;
@@ -289,84 +407,93 @@ class RPiDashboard(App):
     }
     """
 
+    def tr(self, key: str) -> str:
+        return t(self.language, key)
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield TopStatus(id="top_status")
+        with Horizontal(id="language_switch"):
+            yield Static("", id="language_label")
+            yield Button("CZ", id="btn_lang_cz", classes="lang-button")
+            yield Button("EN", id="btn_lang_en", classes="lang-button")
         
         with TabbedContent(initial="tab_player"):
-            with TabPane("Player", id="tab_player"):
+            with TabPane(self.tr("player"), id="tab_player"):
                 with Vertical(id="main-content"):
-                    yield Static("[bold]Player[/bold]", classes="settings-title")
-                    yield Input(placeholder="YouTube URL nebo přímý odkaz...", id="input_mpv_url", classes="mpv-url-input")
-                    yield Button("Spustit MPV", id="btn_mpv", variant="success")
+                    yield Static("", id="title_player", classes="settings-title")
+                    yield Input(placeholder=self.tr("input_url"), id="input_mpv_url", classes="mpv-url-input")
+                    yield Button(self.tr("start_mpv"), id="btn_mpv", variant="success")
+                    yield Static("", id="hint_player_return")
                     yield ModeStatus(id="mode_status")
 
-            with TabPane("Apps", id="tab_apps"):
+            with TabPane(self.tr("apps"), id="tab_apps"):
                 with Vertical(id="sidebar"):
-                    yield Static("[bold]Apps[/bold]", classes="title")
-                    yield Button("Spustit SteamLink", id="btn_steamlink", variant="primary")
+                    yield Static("", id="title_apps", classes="title")
+                    yield Button(self.tr("start_steam"), id="btn_steamlink", variant="primary")
                     yield Button("GeForce Now", id="btn_gfn", variant="default")
                     yield Button("Spotify WebOS", id="btn_spotify", variant="warning")
                     yield Button("Amazon Music", id="btn_amazon", variant="default")
-                    yield Button("Zastavit vše", id="btn_stop", variant="error")
-                    yield Button("Otevřít Terminál", id="btn_terminal", variant="default")
+                    yield Button(self.tr("stop_all"), id="btn_stop", variant="error")
+                    yield Button(self.tr("open_terminal"), id="btn_terminal", variant="default")
+                    yield Static("", id="hint_apps_return")
 
-            with TabPane("Audio", id="tab_audio"):
+            with TabPane(self.tr("audio"), id="tab_audio"):
                 with Vertical(classes="settings-panel", id="panel_audio"):
-                    yield Static("[bold]Zvukový výstup (DLNA/BT/HDMI)[/bold]", classes="settings-title")
+                    yield Static("", id="title_audio", classes="settings-title")
                     yield OptionList(id="list_audio_sinks")
                     with Horizontal():
                         yield Button("Vol -10%", id="btn_vol_down")
                         yield Button("Vol +10%", id="btn_vol_up")
-                    yield Label("DLNA Latence (ms):")
+                    yield Label("", id="label_dlna_latency")
                     yield Input(placeholder="0", id="input_dlna_latency")
-                    yield Button("Uložit latenci", id="btn_save_latency")
+                    yield Button(self.tr("save_latency"), id="btn_save_latency")
                     with Horizontal():
                         yield Label("Alexa AUX -> BT:")
                         yield Switch(id="switch_alexa_bt", value=False)
-                    yield Button("Restartovat pa-dlna", id="btn_restart_padlna", variant="default")
+                    yield Button(self.tr("restart_padlna"), id="btn_restart_padlna", variant="default")
 
-            with TabPane("Devices", id="tab_devices"):
+            with TabPane(self.tr("devices"), id="tab_devices"):
                 with Vertical(classes="settings-panel", id="panel_bluetooth"):
-                    yield Static("[bold]Bluetooth zařízení[/bold]", classes="settings-title")
+                    yield Static("", id="title_bluetooth", classes="settings-title")
                     yield OptionList(id="list_bluetooth_devices")
                     with Horizontal():
-                        yield Button("Skenovat", id="btn_scan_bluetooth", variant="primary")
-                        yield Button("Spárovat", id="btn_pair_bluetooth", variant="success")
-                        yield Button("Důvěřovat", id="btn_trust_bluetooth", variant="warning")
+                        yield Button(self.tr("scan"), id="btn_scan_bluetooth", variant="primary")
+                        yield Button(self.tr("pair"), id="btn_pair_bluetooth", variant="success")
+                        yield Button(self.tr("trust"), id="btn_trust_bluetooth", variant="warning")
                     with Horizontal():
-                        yield Button("Připojit", id="btn_connect_bluetooth", variant="success")
-                        yield Button("Odpojit", id="btn_disconnect_bluetooth", variant="error")
-                        yield Button("Odebrat", id="btn_remove_bluetooth", variant="error")
+                        yield Button(self.tr("connect"), id="btn_connect_bluetooth", variant="success")
+                        yield Button(self.tr("disconnect"), id="btn_disconnect_bluetooth", variant="error")
+                        yield Button(self.tr("remove"), id="btn_remove_bluetooth", variant="error")
 
-            with TabPane("Network", id="tab_network"):
+            with TabPane(self.tr("network"), id="tab_network"):
                 with Horizontal():
                     with Vertical(classes="settings-panel", id="panel_network"):
-                        yield Static("[bold]Síť a Tailscale[/bold]", classes="settings-title")
-                        yield Static("Získávám síťové informace...", id="txt_network_info")
+                        yield Static("", id="title_network", classes="settings-title")
+                        yield Static("", id="txt_network_info")
                         yield Static("Tailscale Status: --", id="txt_tailscale_info")
                     with Vertical(classes="settings-panel", id="panel_wifi"):
-                        yield Static("[bold]Wi-Fi a Záchranný Hotspot[/bold]", classes="settings-title")
+                        yield Static("", id="title_wifi", classes="settings-title")
                         yield OptionList(id="list_wifi_networks")
                         with Horizontal():
-                            yield Button("Skenovat Wi-Fi", id="btn_scan_wifi", variant="primary")
-                        yield Input(placeholder="Heslo (nepovinné pro otevřené)", id="input_wifi_password", password=True)
-                        yield Button("Připojit k vybrané síti", id="btn_connect_wifi", variant="success")
-                        yield Static("Hotspot SSID: RPi-service (Skrytá)", id="txt_hotspot_ssid")
-                        yield Static("Připojení klienti: --", id="txt_hotspot_clients")
+                            yield Button(self.tr("scan_wifi"), id="btn_scan_wifi", variant="primary")
+                        yield Input(placeholder=self.tr("wifi_password"), id="input_wifi_password", password=True)
+                        yield Button(self.tr("connect_wifi"), id="btn_connect_wifi", variant="success")
+                        yield Static("", id="txt_hotspot_ssid")
+                        yield Static("", id="txt_hotspot_clients")
                         with Horizontal():
-                            yield Label("Záchranný Hotspot: ")
+                            yield Label("", id="label_rescue_hotspot")
                             yield Switch(id="switch_hotspot", value=True)
                         yield Static("Spotify Connect (Raspotify):")
                         with Horizontal():
                             yield Switch(id="switch_raspotify", value=True)
 
-            with TabPane("System", id="tab_system"):
+            with TabPane(self.tr("system"), id="tab_system"):
                 with Vertical(id="main-content"):
-                    yield Static("[bold]System[/bold]", classes="settings-title")
+                    yield Static("", id="title_system", classes="settings-title")
                     yield SystemStats()
 
-            with TabPane("Logs", id="tab_logs"):
+            with TabPane(self.tr("logs"), id="tab_logs"):
                 yield Log(id="syslog")
                             
         yield Footer()
@@ -389,6 +516,85 @@ class RPiDashboard(App):
         except Exception as e:
             # Widget not ready yet
             pass
+
+    def set_button_label(self, selector: str, label: str) -> None:
+        self.query_one(selector, Button).label = label
+
+    def set_static_text(self, selector: str, text: str) -> None:
+        self.query_one(selector, Static).update(text)
+
+    def set_label_text(self, selector: str, text: str) -> None:
+        self.query_one(selector, Label).update(text)
+
+    def set_input_placeholder(self, selector: str, text: str) -> None:
+        self.query_one(selector, Input).placeholder = text
+
+    def empty_bt_label(self) -> str:
+        return self.tr("no_bt")
+
+    def empty_wifi_label(self) -> str:
+        return self.tr("no_wifi")
+
+    def apply_language(self) -> None:
+        """Refresh visible labels after the CZ/EN switch changes."""
+        lang_name = "Cestina" if self.language == "cz" else "English"
+        self.set_static_text("#language_label", f"{self.tr('language')}: [bold]{lang_name}[/]")
+
+        self.set_button_label("#btn_lang_cz", "CZ ON" if self.language == "cz" else "CZ")
+        self.set_button_label("#btn_lang_en", "EN ON" if self.language == "en" else "EN")
+
+        self.set_static_text("#title_player", f"[bold]{self.tr('player')}[/bold]")
+        self.set_static_text("#title_apps", f"[bold]{self.tr('apps')}[/bold]")
+        self.set_static_text("#title_audio", f"[bold]{self.tr('audio_title')}[/bold]")
+        self.set_static_text("#title_bluetooth", f"[bold]{self.tr('bt_title')}[/bold]")
+        self.set_static_text("#title_network", f"[bold]{self.tr('network_title')}[/bold]")
+        self.set_static_text("#title_wifi", f"[bold]{self.tr('wifi_title')}[/bold]")
+        self.set_static_text("#title_system", f"[bold]{self.tr('system')}[/bold]")
+
+        self.set_input_placeholder("#input_mpv_url", self.tr("input_url"))
+        self.set_input_placeholder("#input_wifi_password", self.tr("wifi_password"))
+
+        self.set_button_label("#btn_mpv", self.tr("start_mpv"))
+        self.set_button_label("#btn_steamlink", self.tr("start_steam"))
+        self.set_button_label("#btn_stop", self.tr("stop_all"))
+        self.set_button_label("#btn_terminal", self.tr("open_terminal"))
+        self.set_button_label("#btn_save_latency", self.tr("save_latency"))
+        self.set_button_label("#btn_restart_padlna", self.tr("restart_padlna"))
+        self.set_button_label("#btn_scan_bluetooth", self.tr("scan"))
+        self.set_button_label("#btn_pair_bluetooth", self.tr("pair"))
+        self.set_button_label("#btn_trust_bluetooth", self.tr("trust"))
+        self.set_button_label("#btn_connect_bluetooth", self.tr("connect"))
+        self.set_button_label("#btn_disconnect_bluetooth", self.tr("disconnect"))
+        self.set_button_label("#btn_remove_bluetooth", self.tr("remove"))
+        self.set_button_label("#btn_scan_wifi", self.tr("scan_wifi"))
+        self.set_button_label("#btn_connect_wifi", self.tr("connect_wifi"))
+
+        self.set_label_text("#label_dlna_latency", self.tr("dlna_latency"))
+        self.set_label_text("#label_rescue_hotspot", self.tr("rescue_hotspot"))
+
+        self.set_static_text("#hint_player_return", self.tr("player_return"))
+        self.set_static_text("#hint_apps_return", self.tr("apps_return"))
+        self.set_static_text("#txt_network_info", self.tr("network_loading"))
+        self.set_static_text("#txt_hotspot_ssid", self.tr("hotspot_hidden"))
+        self.set_static_text("#txt_hotspot_clients", self.tr("hotspot_clients"))
+
+        self.query_one("#mode_status", ModeStatus).refresh()
+
+        bt_list = self.query_one("#list_bluetooth_devices", OptionList)
+        if bt_list.option_count == 1 and str(bt_list.get_option_at_index(0).prompt) in {
+            t("cz", "no_bt"),
+            t("en", "no_bt"),
+        }:
+            bt_list.clear_options()
+            bt_list.add_option(self.empty_bt_label())
+
+        wifi_list = self.query_one("#list_wifi_networks", OptionList)
+        if wifi_list.option_count == 1 and str(wifi_list.get_option_at_index(0).prompt) in {
+            t("cz", "no_wifi"),
+            t("en", "no_wifi"),
+        }:
+            wifi_list.clear_options()
+            wifi_list.add_option(self.empty_wifi_label())
 
     def replay_log_buffer(self) -> None:
         """Replay LogBuffer history into the Log widget (e.g. after resume)."""
@@ -420,12 +626,15 @@ class RPiDashboard(App):
         }
         self._settings_cache_ttl = 10.0
         self.mode_switcher = ModeSwitcher(self)
+        self.apply_language()
         
-        self.write_log("[SYSTEM] J.A.R.V.I.S. Dumb TV Interface načteno.")
-        self.write_log(f"[NETWORK] Naslouchám na portu {API_PORT}...")
-        self.write_log("[DAEMON] Čekám na příkazy z lokální sítě.")
+        self.write_log(self.tr("loaded"))
+        self.write_log(self.tr("listening").format(port=API_PORT))
+        self.write_log(self.tr("waiting"))
         
-        self.api_task = asyncio.create_task(self.start_api_server())
+        self.api_task = None
+        if API_PORT > 0:
+            self.api_task = asyncio.create_task(self.start_api_server())
         
         # Periodic settings panel updates (every TUI_SETTINGS_INTERVAL seconds)
         self.set_interval(TUI_SETTINGS_INTERVAL, self.update_settings_data)
@@ -491,14 +700,14 @@ class RPiDashboard(App):
             # Get other interfaces via ip -br addr
             ip_info = await self.run_sys_cmd("ip -br addr | grep -v 'lo' | awk '{print $1 \": \" $3}'")
             ip_str = ip_info.replace("\n", " | ") if ip_info else f"eth0/wlan0: {local_ip}"
-            self.query_one("#txt_network_info", Static).update(f"🌐 IPs: {ip_str}")
+            self.query_one("#txt_network_info", Static).update(f"IPs: {ip_str}")
             
             # 2. Tailscale Status
             ts_ip = await self.run_sys_cmd("tailscale ip -4")
             if ts_ip:
-                self.query_one("#txt_tailscale_info", Static).update(f"🔒 Tailscale IP: [bold green]{ts_ip}[/]")
+                self.query_one("#txt_tailscale_info", Static).update(f"Tailscale IP: [bold green]{ts_ip}[/]")
             else:
-                self.query_one("#txt_tailscale_info", Static).update("🔒 Tailscale: Neaktivní / Není nainstalováno")
+                self.query_one("#txt_tailscale_info", Static).update(self.tr("tailscale_inactive"))
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
 
@@ -554,7 +763,7 @@ class RPiDashboard(App):
                 bt_out = await self.run_sys_cmd("bluetoothctl devices")
                 
             if not bt_out:
-                bt_list.add_option(NO_BT_DEVICES_LABEL)
+                bt_list.add_option(self.empty_bt_label())
                 return
 
             connected_out = await self.run_sys_cmd("bluetoothctl devices Connected")
@@ -583,11 +792,13 @@ class RPiDashboard(App):
         try:
             ssid_out = await self.run_sys_cmd("grep -m1 '^ssid=' /etc/hostapd/rpi-service.conf | cut -d'=' -f2")
             ssid = ssid_out if ssid_out else "RPi-service"
-            self.query_one("#txt_hotspot_ssid", Static).update(f"📶 Hotspot SSID: [bold]{ssid}[/] (Skrytá)")
+            hidden = "skryta" if self.language == "cz" else "hidden"
+            self.query_one("#txt_hotspot_ssid", Static).update(f"Hotspot SSID: [bold]{ssid}[/] ({hidden})")
             
             leases = await self.run_sys_cmd("cat /var/lib/misc/dnsmasq.leases 2>/dev/null | wc -l")
             client_count = leases if leases else "0"
-            self.query_one("#txt_hotspot_clients", Static).update(f"👥 Připojení klienti: [bold]{client_count}[/]")
+            clients = "Pripojeni klienti" if self.language == "cz" else "Connected clients"
+            self.query_one("#txt_hotspot_clients", Static).update(f"{clients}: [bold]{client_count}[/]")
             
             hotspot_active = await self.run_sys_cmd("systemctl is-active hostapd")
             self.query_one("#switch_hotspot", Switch).value = (hotspot_active == "active")
@@ -599,16 +810,16 @@ class RPiDashboard(App):
 
     async def restart_padlna(self) -> None:
         """Restart the pa-dlna background streaming client."""
-        self.write_log("[SYSTEM] Restartuji pa-dlna službu...")
+        self.write_log("[SYSTEM] Restarting pa-dlna service...")
         await self.run_sys_cmd("systemctl --user restart pa-dlna || pkill -f pa-dlna")
-        self.write_log("[SYSTEM] Služba pa-dlna restartována.")
+        self.write_log("[SYSTEM] pa-dlna service restarted.")
         await self.update_audio_sinks()
 
     async def scan_bluetooth(self) -> None:
         """Scan for Bluetooth devices in background."""
-        self.write_log("[BLUETOOTH] Spouštím vyhledávání (5s)...")
+        self.write_log("[BLUETOOTH] Starting discovery for 5s...")
         await self.run_sys_cmd("bluetoothctl --timeout 5 scan on")
-        self.write_log("[BLUETOOTH] Vyhledávání dokončeno.")
+        self.write_log("[BLUETOOTH] Discovery complete.")
         await self.update_bluetooth_devices()
 
     async def run_bluetooth_action(self, action: str) -> None:
@@ -617,22 +828,22 @@ class RPiDashboard(App):
             if bt_list.highlighted is not None:
                 option = bt_list.get_option_at_index(bt_list.highlighted)
                 prompt = str(option.prompt)
-                if prompt == NO_BT_DEVICES_LABEL: return
+                if prompt in {t("cz", "no_bt"), t("en", "no_bt")}: return
                 mac = getattr(self, "_bt_mac_by_prompt", {}).get(prompt)
                 if not mac and "(" in prompt and ")" in prompt:
                     mac = prompt.split("(")[-1].strip(")")
                 if mac:
-                    self.write_log(f"[BLUETOOTH] {action.capitalize()} pro {mac}...")
+                    self.write_log(f"[BLUETOOTH] {action.capitalize()} for {mac}...")
                     out = await self.run_sys_cmd(f"bluetoothctl {action} {shlex.quote(mac)}")
-                    self.write_log(f"[BLUETOOTH] Výsledek: {out.strip()}")
+                    self.write_log(f"[BLUETOOTH] Result: {out.strip()}")
                     if action in ["connect", "disconnect"]:
                         await self.update_audio_sinks()
                     await self.update_bluetooth_devices()
         except Exception as e:
-            self.write_log(f"[ERROR] Bluetooth {action} selhalo: {e}")
+            self.write_log(f"[ERROR] Bluetooth {action} failed: {e}")
 
     async def scan_wifi(self) -> None:
-        self.write_log("[WIFI] Skenuji dostupné sítě...")
+        self.write_log("[WIFI] Scanning available networks...")
         out = await self.run_sys_cmd("nmcli -t -f SSID dev wifi")
         wifi_list = self.query_one("#list_wifi_networks", OptionList)
         wifi_list.clear_options()
@@ -644,8 +855,8 @@ class RPiDashboard(App):
                     seen.add(ssid)
                     wifi_list.add_option(ssid)
         if not wifi_list.option_count:
-             wifi_list.add_option(NO_WIFI_NETWORKS_LABEL)
-        self.write_log("[WIFI] Skenování dokončeno.")
+             wifi_list.add_option(self.empty_wifi_label())
+        self.write_log("[WIFI] Scan complete.")
 
     async def connect_wifi(self) -> None:
         try:
@@ -653,10 +864,10 @@ class RPiDashboard(App):
             if wifi_list.highlighted is not None:
                 option = wifi_list.get_option_at_index(wifi_list.highlighted)
                 ssid = str(option.prompt)
-                if ssid == NO_WIFI_NETWORKS_LABEL: return
+                if ssid in {t("cz", "no_wifi"), t("en", "no_wifi")}: return
                 pwd_input = self.query_one("#input_wifi_password", Input)
                 pwd = pwd_input.value.strip()
-                self.write_log(f"[WIFI] Připojuji k {ssid}...")
+                self.write_log(f"[WIFI] Connecting to {ssid}...")
                 if pwd:
                     cmd = f"nmcli dev wifi connect {shlex.quote(ssid)} password {shlex.quote(pwd)}"
                 else:
@@ -665,18 +876,18 @@ class RPiDashboard(App):
                 self.write_log(f"[WIFI] {out.strip()}")
                 pwd_input.value = ""
         except Exception as e:
-            self.write_log(f"[ERROR] Wi-Fi připojení selhalo: {e}")
+            self.write_log(f"[ERROR] Wi-Fi connection failed: {e}")
 
     async def disconnect_all_bluetooth(self) -> None:
         """Disconnect all connected Bluetooth audio devices."""
-        self.write_log("[BLUETOOTH] Odpojuji všechna Bluetooth zařízení...")
+        self.write_log("[BLUETOOTH] Disconnecting all Bluetooth devices...")
         devices = await self.run_sys_cmd("bluetoothctl devices Connected")
         for line in devices.split("\n"):
             parts = line.split()
             if len(parts) >= 2:
                 mac = parts[1]
                 await self.run_sys_cmd(f"bluetoothctl disconnect {shlex.quote(mac)}")
-        self.write_log("[BLUETOOTH] Odpojení dokončeno.")
+        self.write_log("[BLUETOOTH] Disconnect complete.")
         await self.update_bluetooth_devices()
 
     async def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -685,15 +896,15 @@ class RPiDashboard(App):
             return
         if event.switch.id == "switch_hotspot":
             action = "start" if event.value else "stop"
-            self.write_log(f"[SYSTEM] Nastavuji záchranný hotspot: {action}")
+            self.write_log(f"[SYSTEM] Setting rescue hotspot: {action}")
             await self.run_sys_cmd(f"sudo -n systemctl {action} hostapd dnsmasq")
         elif event.switch.id == "switch_raspotify":
             action = "start" if event.value else "stop"
-            self.write_log(f"[SYSTEM] Nastavuji Spotify Connect (raspotify): {action}")
+            self.write_log(f"[SYSTEM] Setting Spotify Connect (raspotify): {action}")
             await self.run_sys_cmd(f"sudo -n systemctl {action} raspotify")
         elif event.switch.id == "switch_alexa_bt":
             action = "start" if event.value else "stop"
-            self.write_log(f"[AUDIO] Nastavuji Alexa AUX -> BT loopback: {action}")
+            self.write_log(f"[AUDIO] Setting Alexa AUX -> BT loopback: {action}")
             import webserver
             try:
                 res = webserver.audio_route_alexa_bt(action)
@@ -707,7 +918,7 @@ class RPiDashboard(App):
             selected_text = str(event.option.prompt)
             sink_id = getattr(self, "_audio_sink_by_prompt", {}).get(selected_text)
             if sink_id:
-                self.write_log(f"[AUDIO] Nastavuji výchozí zvukový výstup na: {sink_id}")
+                self.write_log(f"[AUDIO] Setting default audio output to: {sink_id}")
                 asyncio.create_task(self.set_audio_sink(sink_id))
 
     async def set_audio_sink(self, sink_id: str) -> None:
@@ -1050,7 +1261,7 @@ class RPiDashboard(App):
         RPi 3B+ uses /etc/mpv/mpv.conf for H.264-only format selection and HW decode settings.
         """
         mode_status = self.query_one("#mode_status", ModeStatus)
-        mode_status.current_mode = "MPV (Přehrávač)"
+        mode_status.current_mode = "MPV (Player)"
         self.write_log(f"[NETWORK] Playing cast URL: {url}")
         
         from mode_switcher import MPV_TIMEOUT
@@ -1121,7 +1332,7 @@ class RPiDashboard(App):
     MIN_FREE_RAM_MB = {
         "STEAM LINK":             100,
         "GEFORCE NOW (Moonlight)": 150,
-        "MPV (Přehrávač)":         150,
+        "MPV (Player)":            150,
         "SPOTIFY (WPE WebKit)":    200,
         "AMAZON MUSIC (Chromium)": 350,
     }
@@ -1144,7 +1355,7 @@ class RPiDashboard(App):
             self.write_log(f"[REFUSED] {mode_name} needs {needed}MB free, only {free}MB available.")
             mode_status = self.query_one("#mode_status", ModeStatus)
             original = mode_status.current_mode
-            mode_status.current_mode = f"REFUSED: málo RAM ({free}MB/{needed}MB)"
+            mode_status.current_mode = f"REFUSED: low RAM ({free}MB/{needed}MB)"
             await asyncio.sleep(3)
             mode_status.current_mode = original
             return
@@ -1152,6 +1363,10 @@ class RPiDashboard(App):
         mode_status = self.query_one("#mode_status", ModeStatus)
         mode_status.current_mode = mode_name
         self.write_log(f"[SYSTEM] Activating mode: {mode_name}")
+        if mode_name == "TERMINAL (tmux)":
+            self.write_log(self.tr("terminal_help"))
+        else:
+            self.write_log(self.tr("app_help"))
         
         await self.mode_switcher.launch(command, timeout=timeout, use_suspend=use_suspend)
         
@@ -1162,6 +1377,16 @@ class RPiDashboard(App):
         """Reset inactivity on button presses and handle mode changes via ModeSwitcher."""
         import shutil
         
+        if event.button.id == "btn_lang_cz":
+            self.language = "cz"
+            self.apply_language()
+            return
+
+        if event.button.id == "btn_lang_en":
+            self.language = "en"
+            self.apply_language()
+            return
+
         if event.button.id == "btn_steamlink":
             test_command = os.getenv("RPIDASHBOARD_TEST_COMMAND")
             cmd = shlex.split(test_command) if test_command else ["steamlink"]
@@ -1240,12 +1465,12 @@ class RPiDashboard(App):
             asyncio.create_task(self.connect_wifi())
 
         elif event.button.id == "btn_vol_down":
-            self.write_log("[AUDIO] Snižuji hlasitost o 10%")
+            self.write_log("[AUDIO] Decreasing volume by 10%")
             asyncio.create_task(self.run_sys_cmd("pactl set-sink-volume @DEFAULT_SINK@ -10%"))
             asyncio.create_task(self.update_audio_sinks())
 
         elif event.button.id == "btn_vol_up":
-            self.write_log("[AUDIO] Zvyšuji hlasitost o 10%")
+            self.write_log("[AUDIO] Increasing volume by 10%")
             asyncio.create_task(self.run_sys_cmd("pactl set-sink-volume @DEFAULT_SINK@ +10%"))
             asyncio.create_task(self.update_audio_sinks())
 
@@ -1254,15 +1479,15 @@ class RPiDashboard(App):
                 val_str = self.query_one("#input_dlna_latency", Input).value.strip()
                 val = int(val_str)
             except Exception as e:
-                self.write_log("[ERROR] Neplatná hodnota latence. Zadejte celé číslo.")
+                self.write_log("[ERROR] Invalid latency value. Enter an integer.")
             else:
-                self.write_log(f"[AUDIO] Ukládám DLNA latenci: {val} ms")
+                self.write_log(f"[AUDIO] Saving DLNA latency: {val} ms")
                 import webserver
                 try:
                     res = webserver.audio_set_latency("dlna_output_offset_ms", val)
-                    self.write_log(f"[AUDIO] Latence uložena: {res}")
+                    self.write_log(f"[AUDIO] Latency saved: {res}")
                 except Exception as e:
-                    self.write_log(f"[ERROR] Uložení latence selhalo: {e}")
+                    self.write_log(f"[ERROR] Saving latency failed: {e}")
 
         elif event.button.id == "btn_terminal":
             cmd = ["tmux", "new-session", "-A", "-s", "RPi"]

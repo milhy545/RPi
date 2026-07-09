@@ -106,9 +106,73 @@ def test_live_tui_has_ascii_status_bar():
             status = app.query_one("#top_status", Static)
             rendered = str(status.render())
             assert "MODE:" in rendered
+            assert "MODE: IDLE" in rendered
             assert "CPU:" in rendered
             assert "RAM:" in rendered
             assert all(ord(ch) < 128 for ch in rendered)
+
+    asyncio.run(run_check())
+
+
+def test_live_tui_defaults_to_czech_and_switches_to_english():
+    async def run_check():
+        import tui
+        from textual.widgets import Button, Input, Static
+
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            await pilot.pause(0.2)
+            assert str(app.query_one("#language_label", Static).render()).startswith("Jazyk:")
+            assert str(app.query_one("#btn_mpv", Button).label) == "Spustit MPV"
+            assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube nebo prima URL..."
+
+            await pilot.click("#btn_lang_en")
+            await pilot.pause(0.1)
+            assert str(app.query_one("#language_label", Static).render()).startswith("Language:")
+            assert str(app.query_one("#btn_mpv", Button).label) == "Start MPV"
+            assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube or direct URL..."
+
+    asyncio.run(run_check())
+
+
+def test_system_stats_render_is_ascii():
+    import tui
+
+    stats = tui.SystemStats()
+    stats.get_cpu_usage = lambda: 1.2
+    stats.get_ram_usage = lambda: (0.4, 0.7)
+    stats.get_cpu_temp = lambda: 42.0
+    stats.get_local_ip = lambda: "127.0.0.1"
+    stats.update_stats()
+    rendered = str(stats.render())
+    assert "CPU:" in rendered
+    assert "TEMP:" in rendered
+    assert all(ord(ch) < 128 for ch in rendered)
+
+
+def test_live_tui_shows_return_hints():
+    async def run_check():
+        import tui
+        from textual.widgets import Static, TabbedContent
+
+        tui.API_PORT = 0
+        app = tui.RPiDashboard()
+        async with app.run_test(size=(120, 35)) as pilot:
+            await pilot.pause(0.2)
+            player_hint = str(app.query_one("#hint_player_return", Static).render())
+            assert "Zastavit vse" in player_hint
+
+            app.query_one(TabbedContent).active = "tab_apps"
+            await pilot.pause(0.1)
+            apps_hint = str(app.query_one("#hint_apps_return", Static).render())
+            assert "Ctrl-b" in apps_hint
+            assert "potom d" in apps_hint
+
+            await pilot.click("#btn_lang_en")
+            await pilot.pause(0.1)
+            apps_hint_en = str(app.query_one("#hint_apps_return", Static).render())
+            assert "then d" in apps_hint_en
 
     asyncio.run(run_check())
 
@@ -190,6 +254,11 @@ def test_wifi_empty_state_is_explanatory(monkeypatch):
         async with app.run_test(size=(120, 35)):
             await app.scan_wifi()
             wifi_list = app.query_one("#list_wifi_networks", OptionList)
+            assert str(wifi_list.get_option_at_index(0).prompt) == (
+                "Zadne Wi-Fi site nenalezeny. Spust sken znovu nebo zkontroluj adapter."
+            )
+            app.language = "en"
+            app.apply_language()
             assert str(wifi_list.get_option_at_index(0).prompt) == (
                 "No Wi-Fi networks found. Run scan again or check adapter."
             )

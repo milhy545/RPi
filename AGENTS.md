@@ -43,7 +43,9 @@ The production TV TUI still starts through `tui.py` via `dashboard@milhy777.serv
 
 Runtime state after the fix: `dashboard@milhy777.service` was restarted, the TUI is visible on `tty1`, and the service listens on port `8090`. Verified commands were `uv run ruff check tui.py tests/test_tui_modern.py`, `uv run mypy .`, and `uv run python -m pytest -q` (`122 passed`).
 
-Remaining TUI work for the next session: complete the visual/UX modernization on the real `tui.py` path, improve the Devices/Settings controls beyond the layout fix, verify every active TUI control on the TV, and decide whether to merge or replace the unused `rpi_dashboard/tui/modern.py` prototype.
+Current TUI state as of 2026-07-09: the live `tui.py` path now has task-oriented tabs, a persistent status bar, readable Audio/Bluetooth/Wi-Fi empty states, human audio/Bluetooth labels, and a visible CZ/EN language switch. The default language mirrors WebUI (`cz`), but TUI Czech strings intentionally omit diacritics because the physical TV console/tty buffer renders UTF-8 Czech characters incorrectly. Verified live through `dashboard@milhy777.service` on `tty1`; `/dev/vcs1` showed `Jazyk: Cestina`, `CZ ON`, `EN`, and readable tab labels.
+
+Remaining TUI work for the next session: continue the visual/UX modernization on the real `tui.py` path, verify every active TUI control on the TV, and decide whether to merge or replace the unused `rpi_dashboard/tui/modern.py` prototype.
 
 ## Commit & Pull Request Guidelines
 
