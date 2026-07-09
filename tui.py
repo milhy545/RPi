@@ -529,6 +529,11 @@ class RPiDashboard(App):
     def set_input_placeholder(self, selector: str, text: str) -> None:
         self.query_one(selector, Input).placeholder = text
 
+    def set_tab_label(self, tab_id: str, label: str) -> None:
+        tab = self.query_one(TabbedContent).get_tab(tab_id)
+        if tab is not None:
+            tab.label = label
+
     def empty_bt_label(self) -> str:
         return self.tr("no_bt")
 
@@ -542,6 +547,17 @@ class RPiDashboard(App):
 
         self.set_button_label("#btn_lang_cz", "CZ ON" if self.language == "cz" else "CZ")
         self.set_button_label("#btn_lang_en", "EN ON" if self.language == "en" else "EN")
+
+        for tab_id, key in (
+            ("tab_player", "player"),
+            ("tab_apps", "apps"),
+            ("tab_audio", "audio"),
+            ("tab_devices", "devices"),
+            ("tab_network", "network"),
+            ("tab_system", "system"),
+            ("tab_logs", "logs"),
+        ):
+            self.set_tab_label(tab_id, self.tr(key))
 
         self.set_static_text("#title_player", f"[bold]{self.tr('player')}[/bold]")
         self.set_static_text("#title_apps", f"[bold]{self.tr('apps')}[/bold]")

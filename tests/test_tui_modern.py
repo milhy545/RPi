@@ -117,7 +117,7 @@ def test_live_tui_has_ascii_status_bar():
 def test_live_tui_defaults_to_czech_and_switches_to_english():
     async def run_check():
         import tui
-        from textual.widgets import Button, Input, Static
+        from textual.widgets import Button, Input, Static, TabbedContent
 
         tui.API_PORT = 0
         app = tui.RPiDashboard()
@@ -126,12 +126,19 @@ def test_live_tui_defaults_to_czech_and_switches_to_english():
             assert str(app.query_one("#language_label", Static).render()).startswith("Jazyk:")
             assert str(app.query_one("#btn_mpv", Button).label) == "Spustit MPV"
             assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube nebo prima URL..."
+            tabs = app.query_one(TabbedContent)
+            assert str(tabs.get_tab("tab_player").label) == "Prehravac"
+            assert str(tabs.get_tab("tab_devices").label) == "Zarizeni"
+            assert str(tabs.get_tab("tab_network").label) == "Sit"
 
             await pilot.click("#btn_lang_en")
             await pilot.pause(0.1)
             assert str(app.query_one("#language_label", Static).render()).startswith("Language:")
             assert str(app.query_one("#btn_mpv", Button).label) == "Start MPV"
             assert app.query_one("#input_mpv_url", Input).placeholder == "YouTube or direct URL..."
+            assert str(tabs.get_tab("tab_player").label) == "Player"
+            assert str(tabs.get_tab("tab_devices").label) == "Devices"
+            assert str(tabs.get_tab("tab_network").label) == "Network"
 
     asyncio.run(run_check())
 
