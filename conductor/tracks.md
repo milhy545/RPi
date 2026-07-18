@@ -52,3 +52,4 @@
 
 - [x] **Track: refactor-fullstack_20260706** — Full-Stack Refactoring: Backend modularization + WebUI responsive + TUI modernization | [Plan](./tracks/refactor-fullstack_20260706/plan.md)
 - [ ] **Track: bluetooth-xbox-controller_20260709** — Shared Bluetooth pairing UI and Xbox controller / Steam Link support | [Plan](./tracks/bluetooth-xbox-controller_20260709/plan.md)
+- [ ] **Track: bluetooth-control-center-refactor_20260718** — Multi-adapter BlueZ Bluetooth control center with stable identity, WebUI/TUI parity, hotplug, diagnostics, soundbar, and Xbox/Steam Link readiness | [Plan](./tracks/bluetooth-control-center-refactor_20260718/plan.md)
