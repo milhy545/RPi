@@ -6,11 +6,18 @@ from datetime import datetime
 from datetime import timezone
 from typing import Any
 
-from dbus_fast import BusType
-from dbus_fast import Message
-from dbus_fast import MessageType
-from dbus_fast import Variant
-from dbus_fast.aio import MessageBus
+try:
+    from dbus_fast import BusType
+    from dbus_fast import Message
+    from dbus_fast import MessageType
+    from dbus_fast import Variant
+    from dbus_fast.aio import MessageBus
+except ModuleNotFoundError:
+    BusType = None  # type: ignore[assignment,misc]
+    Message = None  # type: ignore[assignment,misc]
+    MessageBus = None  # type: ignore[assignment,misc]
+    MessageType = None  # type: ignore[assignment,misc]
+    Variant = Any  # type: ignore[assignment,misc]
 
 from .models import Adapter
 from .models import BackendHealth
@@ -220,7 +227,7 @@ class BlueZDbusBackend:
         path: str,
         interface: str,
         prop: str,
-        value: Variant,
+        value: Any,
         *,
         adapter_id: str | None = None,
         device_key: str | None = None,
@@ -338,6 +345,8 @@ class BlueZDbusBackend:
         )
 
     async def _connect(self) -> MessageBus:
+        if MessageBus is None or BusType is None:
+            raise RuntimeError("dbus-fast is not installed")
         if self._bus is None or not self._bus.connected:
             self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
         return self._bus

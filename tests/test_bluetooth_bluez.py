@@ -1,6 +1,9 @@
 """Tests for BlueZ D-Bus state mapping."""
 
-from dbus_fast import Variant
+import pytest
+
+dbus_fast = pytest.importorskip("dbus_fast")
+Variant = dbus_fast.Variant
 
 from rpi_dashboard.services.bluetooth.bluez import ADAPTER1
 from rpi_dashboard.services.bluetooth.bluez import BATTERY1
