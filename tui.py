@@ -469,6 +469,7 @@ class RPiDashboard(App):
             with TabPane(self.tr("bluetooth"), id="tab_bluetooth"):
                 with Vertical(classes="settings-panel", id="panel_bluetooth"):
                     yield Static("", id="title_bluetooth", classes="settings-title")
+                    yield Static("", id="txt_bluetooth_adapters")
                     yield OptionList(id="list_bluetooth_devices")
                     with Horizontal():
                         yield Button(self.tr("scan"), id="btn_scan_bluetooth", variant="primary")
@@ -478,7 +479,9 @@ class RPiDashboard(App):
                         yield Button(self.tr("connect"), id="btn_connect_bluetooth", variant="success")
                         yield Button(self.tr("disconnect"), id="btn_disconnect_bluetooth", variant="error")
                         yield Button(self.tr("remove"), id="btn_remove_bluetooth", variant="error")
+                    yield Static("", id="txt_bluetooth_soundbar")
                     yield Static("", id="txt_bluetooth_controller")
+                    yield Static("", id="txt_bluetooth_events")
 
             with TabPane(self.tr("devices"), id="tab_devices"):
                 with Vertical(classes="settings-panel", id="panel_devices"):
@@ -795,24 +798,94 @@ class RPiDashboard(App):
             bt_list = self.query_one("#list_bluetooth_devices", OptionList)
             bt_list.clear_options()
             self._bt_mac_by_prompt = {}
+            self._bt_target_by_prompt = {}
             state = await asyncio.to_thread(devices_service.devices_state)
             bluetooth = state.get("bluetooth", {})
-            devices = bluetooth.get("devices") or bluetooth.get("paired") or []
+            v2 = bluetooth.get("v2") or {}
+            devices = v2.get("devices") or bluetooth.get("devices") or bluetooth.get("paired") or []
+            adapters = v2.get("adapters") or []
+
+            self.render_bluetooth_adapters(v2)
 
             if not devices:
                 bt_list.add_option(self.empty_bt_label())
-                self.render_bluetooth_controller(bluetooth.get("controller"))
+                self.render_bluetooth_soundbar(v2)
+                self.render_bluetooth_controller((v2.get("diagnostics") or {}).get("controllers") or bluetooth.get("controller"))
+                self.render_bluetooth_events(v2)
                 return
 
+            adapter_names = {
+                adapter.get("id"): adapter.get("alias") or adapter.get("name") or adapter.get("id")
+                for adapter in adapters
+            }
             for device in devices:
                 status = "[CONNECTED]" if device.get("connected") else ("[PAIRED]" if device.get("paired") else "[FOUND]")
                 role = device.get("kind") or device.get("type") or "unknown"
-                label = f"{status} {device.get('name', 'Unknown')} - {role} - {device.get('mac', '')}"
+                adapter_id = device.get("adapter_id") or ""
+                adapter_label = adapter_names.get(adapter_id, adapter_id or "adapter?")
+                mac = device.get("address") or device.get("mac", "")
+                key = device.get("key") or device.get("device_key") or ""
+                services = device.get("services_resolved")
+                services_text = "svc:yes" if services is True else ("svc:no" if services is False else "svc:?")
+                if adapter_id:
+                    label = (
+                        f"{status} {adapter_label} -> {device.get('name', 'Unknown')} "
+                        f"- {role} - {services_text} - {mac}"
+                    )
+                else:
+                    label = f"{status} {device.get('name', 'Unknown')} - {role} - {mac}"
                 bt_list.add_option(label)
-                self._bt_mac_by_prompt[label] = device.get("mac", "")
-            self.render_bluetooth_controller(bluetooth.get("controller"))
+                self._bt_mac_by_prompt[label] = mac
+                self._bt_target_by_prompt[label] = {
+                    "adapter_id": adapter_id,
+                    "device_key": key,
+                    "mac": mac,
+                }
+            self.render_bluetooth_soundbar(v2)
+            self.render_bluetooth_controller((v2.get("diagnostics") or {}).get("controllers") or bluetooth.get("controller"))
+            self.render_bluetooth_events(v2)
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
+
+    def render_bluetooth_adapters(self, state: dict | None) -> None:
+        if not state:
+            self.set_static_text("#txt_bluetooth_adapters", "")
+            return
+        backend = state.get("backend") or {}
+        adapters = state.get("adapters") or []
+        lines = [
+            f"Backend: {backend.get('name', 'unknown')}"
+            f"{' degraded' if backend.get('degraded') else ''}"
+        ]
+        if not adapters:
+            lines.append("Adapters: none present")
+        for adapter in adapters[:3]:
+            power = "on" if adapter.get("powered") else "off"
+            scan = "scan" if adapter.get("discovering") else "idle"
+            present = "present" if adapter.get("present") else "absent"
+            role = adapter.get("role") or "-"
+            lines.append(
+                f"{adapter.get('alias') or adapter.get('name') or adapter.get('id')}: "
+                f"{present}, power:{power}, {scan}, hci{adapter.get('index', '?')}, "
+                f"role:{role}, addr:{adapter.get('address', '?')}"
+            )
+        self.set_static_text("#txt_bluetooth_adapters", "\n".join(lines))
+
+    def render_bluetooth_soundbar(self, state: dict | None) -> None:
+        readiness = ((state or {}).get("diagnostics") or {}).get("soundbar")
+        if not readiness:
+            self.set_static_text("#txt_bluetooth_soundbar", "")
+            return
+        steps = readiness.get("steps") or []
+        parts = []
+        for step in steps[:8]:
+            value = step.get("state")
+            status = "OK" if value is True else ("BLOCK" if value is False else "UNK")
+            parts.append(f"{status}:{step.get('id')}")
+        self.set_static_text(
+            "#txt_bluetooth_soundbar",
+            "[bold]Soundbar[/bold]: " + (" -> ".join(parts) if parts else "unknown"),
+        )
 
     def render_bluetooth_controller(self, controller: dict | None) -> None:
         if not controller:
@@ -825,12 +898,27 @@ class RPiDashboard(App):
         ertm_value = "yes" if ertm.get("disabled") is True else ("no" if ertm.get("disabled") is False else "unknown")
         inputs = controller.get("input_devices") or []
         steamlink = (controller.get("steamlink") or {}).get("available")
+        blockers = controller.get("blockers") or []
+        controller_count = len(controller.get("controllers") or controller.get("connected") or [])
         text = (
             f"[bold]{self.tr('bt_controller_title')}[/bold]: {ready}\n"
-            f"Connected: {len(controller.get('connected') or [])} | ERTM disabled: {ertm_value} | Driver: {driver}\n"
-            f"Input: {', '.join(inputs) if inputs else 'none'} | Steam Link: {'available' if steamlink else 'missing'}"
+            f"Controllers: {controller_count} | ERTM disabled: {ertm_value} | Driver: {driver}\n"
+            f"Input: {', '.join(inputs) if inputs else 'unknown'} | Steam Link: {'available' if steamlink is True else ('missing' if steamlink is False else 'unknown')}"
         )
+        if blockers:
+            text += "\nBlockers: " + "; ".join(blockers[:3])
         self.set_static_text("#txt_bluetooth_controller", text)
+
+    def render_bluetooth_events(self, state: dict | None) -> None:
+        if not state:
+            self.set_static_text("#txt_bluetooth_events", "")
+            return
+        rows = []
+        for operation in (state.get("operations") or [])[-3:]:
+            rows.append(f"OP {operation.get('type')} {operation.get('state')}")
+        for event in (state.get("events") or [])[-3:]:
+            rows.append(f"{event.get('type')}: {event.get('message')}")
+        self.set_static_text("#txt_bluetooth_events", "\n".join(rows))
 
     async def update_wifi_hotspot_info(self) -> None:
         """Read hotspot and raspotify settings and status."""
@@ -876,13 +964,26 @@ class RPiDashboard(App):
                 option = bt_list.get_option_at_index(bt_list.highlighted)
                 prompt = str(option.prompt)
                 if prompt in {t("cz", "no_bt"), t("en", "no_bt")}: return
-                mac = getattr(self, "_bt_mac_by_prompt", {}).get(prompt)
+                target = getattr(self, "_bt_target_by_prompt", {}).get(prompt, {})
+                mac = target.get("mac") or getattr(self, "_bt_mac_by_prompt", {}).get(prompt)
                 if not mac and "(" in prompt and ")" in prompt:
                     mac = prompt.split("(")[-1].strip(")")
                 if mac:
                     self.write_log(f"[BLUETOOTH] {action.capitalize()} for {mac}...")
-                    runner = getattr(devices_service, f"bluetooth_{action}")
-                    result = await asyncio.to_thread(runner, mac)
+                    adapter_id = target.get("adapter_id")
+                    device_key = target.get("device_key")
+                    if adapter_id and device_key:
+                        from rpi_dashboard.services.bluetooth import service as bt_service
+                        result = await asyncio.to_thread(
+                            bt_service.device_action,
+                            action,
+                            adapter_id=adapter_id,
+                            device_key=device_key,
+                            mac=mac,
+                        )
+                    else:
+                        runner = getattr(devices_service, f"bluetooth_{action}")
+                        result = await asyncio.to_thread(runner, mac)
                     self.write_log(f"[BLUETOOTH] Result: {result.get('result') or result.get('error') or result.get('output')}")
                     if action in ["connect", "disconnect"]:
                         await self.update_audio_sinks()

@@ -9,6 +9,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List
 
+from .bluetooth import service as bluetooth_service
+
 
 def _run(cmd, t=5):
     """Run a command with timeout."""
@@ -17,19 +19,23 @@ def _run(cmd, t=5):
 
 def devices_state() -> Dict[str, Any]:
     """Get current devices state."""
-    bt_devices = bluetooth_devices()
-    bt_paired = [d for d in bt_devices if d["paired"]]
-    bt_scanned = [d for d in bt_devices if not d["paired"]]
-    wifi = wifi_status()
-
-    return {
-        "ok": True,
-        "bluetooth": {
+    try:
+        bluetooth = bluetooth_service.devices_compat_state()
+    except Exception:
+        bt_devices = bluetooth_devices()
+        bt_paired = [d for d in bt_devices if d["paired"]]
+        bt_scanned = [d for d in bt_devices if not d["paired"]]
+        bluetooth = {
             "devices": bt_devices,
             "paired": bt_paired,
             "scanned": bt_scanned,
             "controller": bluetooth_controller_status(bt_devices),
-        },
+        }
+    wifi = wifi_status()
+
+    return {
+        "ok": True,
+        "bluetooth": bluetooth,
         "wifi": wifi,
     }
 

@@ -1,9 +1,9 @@
 {
   "track_id": "bluetooth-control-center-refactor_20260718",
   "type": "refactor",
-  "status": "planned",
+  "status": "done",
   "created": "2026-07-18T11:00:00+01:00",
-  "updated": "2026-07-18T11:00:00+01:00",
+  "updated": "2026-07-18T20:58:00+01:00",
   "owner": "codex",
   "priority": "high",
   "description": "Refactor Bluetooth management into a shared multi-adapter BlueZ control center with WebUI/TUI parity, stable adapter identity, diagnostics, hotplug handling, soundbar readiness, and Xbox/Steam Link readiness.",
@@ -14,7 +14,8 @@
     "system D-Bus",
     "PipeWire/PulseAudio compatibility via pactl",
     "Textual",
-    "aiohttp"
+    "aiohttp",
+    "dbus-fast"
   ],
   "related_tracks": [
     "bluetooth-xbox-controller_20260709",

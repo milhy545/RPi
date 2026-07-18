@@ -5,6 +5,7 @@ Implements request handlers for all API endpoints.
 
 from typing import Any, Dict
 from ..services import audio, player, devices, cec, system, terminal
+from ..services.bluetooth import service as bluetooth_service
 
 
 def _get(q: dict, name: str, default: str = "") -> str:
@@ -121,6 +122,9 @@ def handle_devices_state(q: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_bt_scan(q: Dict[str, Any]) -> Dict[str, Any]:
     """Scan Bluetooth devices."""
+    adapter_id = _get(q, "adapter_id")
+    if adapter_id:
+        return bluetooth_service.start_discovery(adapter_id)
     seconds = _get(q, "seconds", "5")
     try:
         sec = int(seconds)
@@ -134,44 +138,95 @@ def handle_bt_controller_status(q: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": True, "controller": devices.bluetooth_controller_status()}
 
 
+def handle_bt_state(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get adapter-aware Bluetooth state."""
+    return bluetooth_service.bluetooth_state()
+
+
+def handle_bt_discovery(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Start or stop adapter-aware discovery."""
+    adapter_id = _get(q, "adapter_id")
+    action = _get(q, "action", "start")
+    if action == "start":
+        return bluetooth_service.start_discovery(adapter_id or None)
+    if action == "stop":
+        return bluetooth_service.stop_discovery(adapter_id or None)
+    return {"ok": False, "error": "action must be start or stop", "code": "unsupported"}
+
+
+def handle_bt_adapter_power(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set adapter power."""
+    adapter_id = _get(q, "adapter_id")
+    powered = _get(q, "powered", "1").lower() not in {"0", "false", "off", "no"}
+    return bluetooth_service.set_adapter_power(adapter_id or None, powered)
+
+
+def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Run an adapter-aware Bluetooth device action."""
+    action = _get(q, "action")
+    if not action:
+        return {"ok": False, "error": "action required", "code": "unsupported"}
+    return bluetooth_service.device_action(
+        action,
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=_get(q, "mac") or None,
+    )
+
+
 def handle_bt_pair(q: Dict[str, Any]) -> Dict[str, Any]:
     """Pair Bluetooth device."""
     mac = _get(q, "mac")
-    if not mac:
-        return {"ok": False, "error": "mac required"}
-    return devices.bluetooth_pair(mac)
+    return bluetooth_service.device_action(
+        "pair",
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=mac or None,
+    )
 
 
 def handle_bt_trust(q: Dict[str, Any]) -> Dict[str, Any]:
     """Trust Bluetooth device."""
     mac = _get(q, "mac")
-    if not mac:
-        return {"ok": False, "error": "mac required"}
-    return devices.bluetooth_trust(mac)
+    return bluetooth_service.device_action(
+        "trust",
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=mac or None,
+    )
 
 
 def handle_bt_connect(q: Dict[str, Any]) -> Dict[str, Any]:
     """Connect Bluetooth device."""
     mac = _get(q, "mac")
-    if not mac:
-        return {"ok": False, "error": "mac required"}
-    return devices.bluetooth_connect(mac)
+    return bluetooth_service.device_action(
+        "connect",
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=mac or None,
+    )
 
 
 def handle_bt_disconnect(q: Dict[str, Any]) -> Dict[str, Any]:
     """Disconnect Bluetooth device."""
     mac = _get(q, "mac")
-    if not mac:
-        return {"ok": False, "error": "mac required"}
-    return devices.bluetooth_disconnect(mac)
+    return bluetooth_service.device_action(
+        "disconnect",
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=mac or None,
+    )
 
 
 def handle_bt_remove(q: Dict[str, Any]) -> Dict[str, Any]:
     """Remove Bluetooth device."""
     mac = _get(q, "mac")
-    if not mac:
-        return {"ok": False, "error": "mac required"}
-    return devices.bluetooth_remove(mac)
+    return bluetooth_service.device_action(
+        "remove",
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=mac or None,
+    )
 
 
 def handle_wifi_status(q: Dict[str, Any]) -> Dict[str, Any]:
