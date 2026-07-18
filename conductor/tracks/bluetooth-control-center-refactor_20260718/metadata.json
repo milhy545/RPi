@@ -8,7 +8,7 @@
   "priority": "high",
   "description": "Refactor Bluetooth management into a shared multi-adapter BlueZ control center with WebUI/TUI parity, stable adapter identity, diagnostics, hotplug handling, soundbar readiness, and Xbox/Steam Link readiness.",
   "estimated_hours": "18-30",
-  "phases": 8,
+  "phases": 10,
   "dependencies": [
     "BlueZ",
     "system D-Bus",
