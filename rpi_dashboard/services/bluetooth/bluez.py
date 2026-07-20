@@ -32,6 +32,7 @@ from .models import adapter_id_from_address
 from .models import classify_device
 from .models import make_device_key
 from .models import normalize_address
+from .protocol import BluetoothBackend
 
 BLUEZ = "org.bluez"
 OBJECT_MANAGER = "org.freedesktop.DBus.ObjectManager"
@@ -45,7 +46,7 @@ SAMSUNG_SOUNDBAR_MAC = "24:4B:03:92:0B:8C"
 class BlueZDbusBackend:
     """Async BlueZ backend using the system bus and standard interfaces."""
 
-    def __init__(self, fallback: Any | None = None) -> None:
+    def __init__(self, fallback: BluetoothBackend | None = None) -> None:
         self.fallback = fallback
         self._bus: MessageBus | None = None
         self._last_state: BluetoothState | None = None
@@ -74,6 +75,8 @@ class BlueZDbusBackend:
         target = await self._adapter_target(adapter_id)
         if isinstance(target, BluetoothError):
             return self._operation("set_power", adapter_id=adapter_id, state="failed", error=target)
+        if self._adapter_requires_fallback(target):
+            return await self._fallback_backend().set_adapter_power(adapter_id, powered)
         path = target.bluez_path
         return await self._call_properties_set(
             "set_power",
@@ -101,6 +104,8 @@ class BlueZDbusBackend:
         target = await self._device_target(adapter_id, device_key)
         if isinstance(target, BluetoothError):
             return self._operation("trust", adapter_id=adapter_id, device_key=device_key, state="failed", error=target)
+        if target.use_fallback:
+            return await self._fallback_backend().trust(adapter_id, device_key)
         return await self._call_properties_set(
             "trust",
             target.bluez_path,
@@ -116,6 +121,8 @@ class BlueZDbusBackend:
         target = await self._device_target(adapter_id, device_key)
         if isinstance(target, BluetoothError):
             return self._operation("untrust", adapter_id=adapter_id, device_key=device_key, state="failed", error=target)
+        if target.use_fallback:
+            return await self._fallback_backend().untrust(adapter_id, device_key)
         return await self._call_properties_set(
             "untrust",
             target.bluez_path,
@@ -139,6 +146,8 @@ class BlueZDbusBackend:
         target = await self._device_target(adapter_id, device_key)
         if isinstance(target, BluetoothError):
             return self._operation("remove", adapter_id=adapter_id, device_key=device_key, state="failed", error=target)
+        if target.use_fallback:
+            return await self._fallback_backend().remove(adapter_id, device_key)
         return await self._call_method(
             "remove",
             target.adapter_path,
@@ -188,6 +197,8 @@ class BlueZDbusBackend:
         target = await self._adapter_target(adapter_id)
         if isinstance(target, BluetoothError):
             return self._operation(operation_type, adapter_id=adapter_id, state="failed", error=target)
+        if self._adapter_requires_fallback(target):
+            return await getattr(self._fallback_backend(), operation_type)(adapter_id)
         return await self._call_method(
             operation_type,
             target.bluez_path,
@@ -212,6 +223,8 @@ class BlueZDbusBackend:
                 state="failed",
                 error=target,
             )
+        if target.use_fallback:
+            return await getattr(self._fallback_backend(), operation_type)(adapter_id, device_key)
         return await self._call_method(
             operation_type,
             target.bluez_path,
@@ -342,7 +355,23 @@ class BlueZDbusBackend:
         return _DeviceTarget(
             bluez_path=device.bluez_path,
             adapter_path=adapter.bluez_path,
+            use_fallback=self._adapter_requires_fallback(adapter) or not device.bluez_path.startswith("/org/bluez/"),
         )
+
+    def _adapter_requires_fallback(self, adapter: Adapter) -> bool:
+        """Return true when state came from a non-D-Bus fallback adapter."""
+        return bool(
+            self.fallback is not None
+            and (
+                adapter.backend != "bluez-dbus"
+                or not adapter.bluez_path.startswith("/org/bluez/")
+            )
+        )
+
+    def _fallback_backend(self) -> BluetoothBackend:
+        if self.fallback is None:
+            raise RuntimeError("Fallback backend is not configured")
+        return self.fallback
 
     async def _connect(self) -> MessageBus:
         if MessageBus is None or BusType is None:
@@ -376,9 +405,10 @@ class BlueZDbusBackend:
 
 
 class _DeviceTarget:
-    def __init__(self, *, bluez_path: str, adapter_path: str) -> None:
+    def __init__(self, *, bluez_path: str, adapter_path: str, use_fallback: bool = False) -> None:
         self.bluez_path = bluez_path
         self.adapter_path = adapter_path
+        self.use_fallback = use_fallback
 
 
 def _adapters_from_managed(managed: dict[str, Any]) -> list[Adapter]:

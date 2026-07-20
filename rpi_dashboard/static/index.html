@@ -224,37 +224,120 @@
 
     <!-- Bluetooth Panel -->
     <div id="p-bluetooth" class="pnl">
-        <div class="sec">
-            <div class="media-head">
-                <div>
-                    <h3 data-i18n="bluetoothTitle" data-tip="sectionBluetooth">Bluetooth</h3>
-                    <div class="media-meta" data-i18n="bluetoothDesc">Pair speakers, controllers, and input devices here. Audio routing remains in Audio.</div>
+        <div id="bt-app" class="bt-app mode-advanced bt-theme-dark">
+            <nav class="bt-topnav" aria-label="Bluetooth control center">
+                <div class="bt-brand">
+                    <div class="bt-brand-icon">π</div>
+                    <div>
+                        <h2>RPi Control Center</h2>
+                        <span data-bt-i18n-cs="Správce Připojení" data-bt-i18n-en="Connection Manager">Správce Připojení</span>
+                    </div>
                 </div>
-                <div class="row">
-                    <button data-i18n="refresh" data-icon="🔄" onclick="bluetoothRefresh()">🔄 Refresh</button>
-                    <button data-i18n="scan" data-icon="🔍" onclick="bluetoothScan()">🔍 Scan</button>
+                <div class="bt-top-status">
+                    <div class="bt-hci-pill"><span></span><b id="bt-hci-state">HCI loading</b></div>
+                    <div class="bt-legend-top">
+                        <span><i class="bt-line-cyan"></i><b data-bt-i18n-cs="Tok Audia" data-bt-i18n-en="Audio Flow">Tok Audia</b></span>
+                        <span><i class="bt-line-green"></i><b>Data/IoT</b></span>
+                        <span><i class="bt-line-dim"></i><b data-bt-i18n-cs="Odpojeno / Slabé" data-bt-i18n-en="Offline / Weak">Odpojeno / Slabé</b></span>
+                    </div>
                 </div>
+                <div class="bt-top-actions">
+                    <div class="bt-segmented" role="group" aria-label="Bluetooth display mode">
+                        <button id="bt-btn-basic" type="button" onclick="btSetMode('basic')">Basic</button>
+                        <button id="bt-btn-advanced" type="button" onclick="btSetMode('advanced')" class="active">Expert</button>
+                    </div>
+                    <button type="button" class="bt-icon-btn" onclick="btToggleLang()" aria-label="Bluetooth language"><span id="bt-lang-indicator">CS</span></button>
+                    <button type="button" class="bt-icon-btn" onclick="btToggleTheme()" aria-label="Bluetooth theme"><span id="bt-theme-icon">☾</span></button>
+                </div>
+            </nav>
+
+            <div class="bt-workspace">
+                <aside class="bt-sidebar-left">
+                    <div class="bt-menu-title" data-bt-i18n-cs="Hlavní Menu" data-bt-i18n-en="Main Menu">Hlavní Menu</div>
+                    <button type="button">⌂ <span data-bt-i18n-cs="Přehled" data-bt-i18n-en="Overview">Přehled</span></button>
+                    <button type="button">▣ Systém</button>
+                    <button type="button" class="active">♢ Bluetooth</button>
+                    <button type="button">≋ Wi-Fi</button>
+                    <button type="button">▰ Terminál</button>
+                </aside>
+
+                <main class="bt-main-content">
+                    <header class="bt-advanced-header">
+                        <div>
+                            <h2 data-bt-i18n-cs="Správa Topologie Bluetooth" data-bt-i18n-en="Bluetooth Topology Manager">Správa Topologie Bluetooth</h2>
+                            <p data-bt-i18n-cs="Komplexní náhled na adaptéry a zařízení v síti" data-bt-i18n-en="Overview of adapters and network devices">Komplexní náhled na adaptéry a zařízení v síti</p>
+                        </div>
+                        <div>
+                            <button type="button" onclick="bluetoothScan()">⌁ <span data-bt-i18n-cs="Skenovat Adaptéry" data-bt-i18n-en="Scan Adapters">Skenovat Adaptéry</span></button>
+                            <button type="button" class="bt-primary" onclick="btPairNew()">＋ <span data-bt-i18n-cs="Nové Zařízení" data-bt-i18n-en="New Device">Nové Zařízení</span></button>
+                        </div>
+                    </header>
+
+                    <div class="bt-grid-container">
+                        <section class="bt-panel bt-area-topo" aria-label="Live Bluetooth topology">
+                            <div class="bt-topo-title"><h3 data-bt-i18n-cs="Živá Topologie" data-bt-i18n-en="Live Topology">Živá Topologie</h3></div>
+                            <div class="bt-zoom-controls">
+                                <button type="button" onclick="btZoomTopo(0.1)" aria-label="Zoom in">＋</button>
+                                <button type="button" onclick="btZoomTopo(-0.1)" aria-label="Zoom out">−</button>
+                                <button type="button" onclick="btResetTopo()" aria-label="Reset topology">⛶</button>
+                            </div>
+                            <div id="bt-topo-wrapper" class="bt-topo-wrapper">
+                                <div id="bt-topo-canvas" class="bt-topo-canvas">
+                                    <svg id="bt-topology-lines" class="bt-topology-lines" aria-hidden="true"></svg>
+                                    <div id="bt-topology">Loading Bluetooth topology...</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="bt-panel bt-area-ctrl">
+                            <h3>▰ <span data-bt-i18n-cs="Ovládání Služby" data-bt-i18n-en="Service Control">Ovládání Služby</span></h3>
+                            <div id="bt-status" class="bt-control-stack">—</div>
+                        </section>
+
+                        <section class="bt-panel bt-area-filt">
+                            <h3>▽ <span data-bt-i18n-cs="Filtry zobrazení" data-bt-i18n-en="View Filters">Filtry zobrazení</span></h3>
+                            <label><input id="bt-filter-connected" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Připojeno" data-bt-i18n-en="Connected">Připojeno</span></label>
+                            <label><input id="bt-filter-paired" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Spárováno" data-bt-i18n-en="Paired">Spárováno</span></label>
+                            <label><input id="bt-filter-available" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Dostupná zařízení" data-bt-i18n-en="Available Devices">Dostupná zařízení</span></label>
+                            <button type="button" onclick="bluetoothScan()" data-bt-i18n-cs="Vynutit Skenování" data-bt-i18n-en="Force Scan">Vynutit Skenování</button>
+                        </section>
+
+                        <section class="bt-panel bt-area-over">
+                            <h3>◌ <span data-bt-i18n-cs="Stav Hardware" data-bt-i18n-en="Hardware Status">Stav Hardware</span></h3>
+                            <div id="bt-adapters" class="bt-adapter-cards"></div>
+                        </section>
+
+                        <section class="bt-panel bt-area-details">
+                            <h3>ⓘ <span data-bt-i18n-cs="Detail Zařízení" data-bt-i18n-en="Device Detail">Detail Zařízení</span></h3>
+                            <div id="bt-device-details" class="bt-detail-card">—</div>
+                        </section>
+                    </div>
+                </main>
+
+                <aside class="bt-sidebar-right">
+                    <section class="bt-panel">
+                        <h3>ϟ <span data-bt-i18n-cs="Rychlé akce" data-bt-i18n-en="Quick Actions">Rychlé akce</span></h3>
+                        <div id="bt-quick" class="bt-quick"></div>
+                    </section>
+                    <section class="bt-panel">
+                        <h3>☷ <span data-bt-i18n-cs="Celkový Přehled" data-bt-i18n-en="Summary">Celkový Přehled</span></h3>
+                        <div id="bt-summary" class="bt-summary"></div>
+                    </section>
+                    <section class="bt-panel">
+                        <h3>☰ Diagnostics</h3>
+                        <div id="bt-soundbar">—</div>
+                        <div id="bt-controller">—</div>
+                        <div id="bt-events">—</div>
+                    </section>
+                </aside>
             </div>
-            <div id="bt-status" class="media-meta">—</div>
-            <div id="bt-adapters" class="media-grid" style="margin-top:.5rem"></div>
-        </div>
-        <div class="media-grid">
-            <div class="sec">
-                <h3>Adapters / Devices</h3>
-                <div id="bt-list" data-i18n="clickScanRefresh" class="media-meta" style="margin-top:.4rem">Click Scan or Refresh</div>
-            </div>
-            <div class="sec">
-                <h3>Soundbar Readiness</h3>
-                <div id="bt-soundbar" class="media-meta" style="margin-top:.4rem">—</div>
-            </div>
-            <div class="sec">
-                <h3 data-i18n="btControllerTitle">Xbox / Controller Readiness</h3>
-                <div class="media-meta" data-i18n="btControllerDesc">Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.</div>
-                <div id="bt-controller" class="media-meta" style="margin-top:.4rem">—</div>
-            </div>
-            <div class="sec">
-                <h3>Recent Bluetooth Events</h3>
-                <div id="bt-events" class="media-meta" style="margin-top:.4rem">—</div>
+
+            <div class="bt-footer">
+                <span>Bluetooth Service: <b id="bt-service-state">Unknown</b></span>
+                <span id="bt-total-connected">Total Connected: —</span>
+                <span id="bt-total-paired">Total Paired: —</span>
+                <span>RPI OS: Bookworm (64-bit)</span>
+                <span id="bt-system-load">CPU: — Mem: —</span>
             </div>
         </div>
     </div>

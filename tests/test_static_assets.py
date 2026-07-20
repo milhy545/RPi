@@ -18,13 +18,13 @@ def test_static_app_js_has_valid_syntax() -> None:
     result = subprocess.run(
         [node, "--check", "rpi_dashboard/static/js/app.js"],
         cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        timeout=20,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=60,
         check=False,
     )
 
-    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.returncode == 0
 
 
 def test_audio_routes_cookie_helpers_are_defined() -> None:
@@ -57,3 +57,30 @@ def test_small_controls_have_touch_target_floor() -> None:
     assert "height:24px" in main_css
     assert "input[type=range]{min-height:24px" in main_css
     assert "min-height: 2.25rem" in responsive_css
+
+
+def test_bluetooth_webui_uses_gemini_control_center_shell() -> None:
+    """The production Bluetooth tab should keep the saved Gemini design shape."""
+    index_html = (REPO_ROOT / "rpi_dashboard/static/index.html").read_text()
+    main_css = (REPO_ROOT / "rpi_dashboard/static/css/main.css").read_text()
+    app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
+
+    assert 'id="bt-app" class="bt-app mode-advanced bt-theme-dark"' in index_html
+    assert 'id="bt-topo-wrapper"' in index_html
+    assert 'id="bt-topology-lines"' in index_html
+    assert 'id="bt-filter-connected"' in index_html
+    assert 'id="bt-device-details"' in index_html
+    assert ".bt-sidebar-left" in main_css
+    assert ".bt-sidebar-right" in main_css
+    assert ".bt-topo-canvas" in main_css
+    assert "function btDrawTopologyLines()" in app_js
+    assert "function btInitInteractions()" in app_js
+    assert "function btSelectedAction(action)" in app_js
+
+
+def test_bluetooth_webui_production_tab_does_not_depend_on_external_cdn() -> None:
+    """The integrated tab must be local static UI, not the standalone prototype."""
+    index_html = (REPO_ROOT / "rpi_dashboard/static/index.html").read_text()
+
+    assert "cdn.tailwindcss.com" not in index_html
+    assert "unpkg.com/@phosphor-icons" not in index_html

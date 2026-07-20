@@ -14,6 +14,7 @@ from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
 from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.tui.formatting import human_audio_sink
+from rpi_dashboard.api.routes import get_route
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -418,6 +419,41 @@ class RPiDashboard(App):
         color: $accent;
         margin-bottom: 1;
     }
+    #panel_bluetooth {
+        padding: 0 1;
+    }
+    #txt_bluetooth_topology {
+        height: 13;
+    }
+    #bt_terminal_middle {
+        height: 12;
+        margin-top: 1;
+    }
+    .bt-terminal-panel {
+        border: solid $accent;
+        padding: 0 1;
+        background: $surface;
+        color: $text;
+    }
+    #bt_terminal_middle .bt-terminal-panel {
+        width: 1fr;
+        height: 100%;
+        margin-right: 1;
+    }
+    #txt_bluetooth_adapters {
+        height: 5;
+        margin-top: 1;
+    }
+    #list_bluetooth_devices {
+        height: 7;
+        margin-top: 1;
+    }
+    #txt_bluetooth_soundbar,
+    #txt_bluetooth_controller,
+    #txt_bluetooth_events {
+        height: 4;
+        margin-top: 1;
+    }
     """
 
     def tr(self, key: str) -> str:
@@ -469,6 +505,12 @@ class RPiDashboard(App):
             with TabPane(self.tr("bluetooth"), id="tab_bluetooth"):
                 with Vertical(classes="settings-panel", id="panel_bluetooth"):
                     yield Static("", id="title_bluetooth", classes="settings-title")
+                    yield Static("", id="txt_bluetooth_topology", classes="bt-terminal-panel")
+                    with Horizontal(id="bt_terminal_middle"):
+                        yield Static("", id="txt_bluetooth_adapter_a", classes="bt-terminal-panel")
+                        yield Static("", id="txt_bluetooth_adapter_b", classes="bt-terminal-panel")
+                        yield Static("", id="txt_bluetooth_available", classes="bt-terminal-panel")
+                        yield Static("", id="txt_bluetooth_actions", classes="bt-terminal-panel")
                     yield Static("", id="txt_bluetooth_adapters")
                     yield OptionList(id="list_bluetooth_devices")
                     with Horizontal():
@@ -805,35 +847,26 @@ class RPiDashboard(App):
             devices = v2.get("devices") or bluetooth.get("devices") or bluetooth.get("paired") or []
             adapters = v2.get("adapters") or []
 
-            self.render_bluetooth_adapters(v2)
+            self.render_bluetooth_console(v2, devices, adapters)
 
             if not devices:
                 bt_list.add_option(self.empty_bt_label())
-                self.render_bluetooth_soundbar(v2)
-                self.render_bluetooth_controller((v2.get("diagnostics") or {}).get("controllers") or bluetooth.get("controller"))
-                self.render_bluetooth_events(v2)
                 return
 
             adapter_names = {
-                adapter.get("id"): adapter.get("alias") or adapter.get("name") or adapter.get("id")
-                for adapter in adapters
+                adapter.get("id"): f"Adapter {chr(65 + index)}"
+                for index, adapter in enumerate(adapters)
             }
             for device in devices:
-                status = "[CONNECTED]" if device.get("connected") else ("[PAIRED]" if device.get("paired") else "[FOUND]")
+                status = "Connected" if device.get("connected") else ("Paired" if device.get("paired") else "Available")
+                legacy_status = "[CONNECTED]" if device.get("connected") else ("[PAIRED]" if device.get("paired") else "[FOUND]")
                 role = device.get("kind") or device.get("type") or "unknown"
                 adapter_id = device.get("adapter_id") or ""
                 adapter_label = adapter_names.get(adapter_id, adapter_id or "adapter?")
                 mac = device.get("address") or device.get("mac", "")
                 key = device.get("key") or device.get("device_key") or ""
-                services = device.get("services_resolved")
-                services_text = "svc:yes" if services is True else ("svc:no" if services is False else "svc:?")
-                if adapter_id:
-                    label = (
-                        f"{status} {adapter_label} -> {device.get('name', 'Unknown')} "
-                        f"- {role} - {services_text} - {mac}"
-                    )
-                else:
-                    label = f"{status} {device.get('name', 'Unknown')} - {role} - {mac}"
+                rssi = self.bt_rssi(device)
+                label = f"{legacy_status} {device.get('name', 'Unknown')} | {adapter_label} | {rssi} | {status} | {role} | {mac}"
                 bt_list.add_option(label)
                 self._bt_mac_by_prompt[label] = mac
                 self._bt_target_by_prompt[label] = {
@@ -841,11 +874,136 @@ class RPiDashboard(App):
                     "device_key": key,
                     "mac": mac,
                 }
-            self.render_bluetooth_soundbar(v2)
-            self.render_bluetooth_controller((v2.get("diagnostics") or {}).get("controllers") or bluetooth.get("controller"))
-            self.render_bluetooth_events(v2)
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
+
+    def bt_rssi(self, device: dict | None) -> str:
+        value = (device or {}).get("rssi")
+        return f"{value} dBm" if isinstance(value, int | float) else "-- dBm"
+
+    def bt_status(self, device: dict | None) -> str:
+        device = device or {}
+        if device.get("connected"):
+            return "[green]Connected[/]"
+        if device.get("paired"):
+            return "[cyan]Paired[/]"
+        if device.get("present") is False:
+            return "[red]Absent[/]"
+        return "[yellow]Available[/]"
+
+    def bt_adapter_devices(self, devices: list[dict], adapter_id: str | None) -> list[dict]:
+        return [device for device in devices if (device.get("adapter_id") or "") == (adapter_id or "")]
+
+    def bt_avg_rssi(self, devices: list[dict]) -> str:
+        values: list[float] = []
+        for device in devices:
+            value = device.get("rssi")
+            if isinstance(value, int | float):
+                values.append(float(value))
+        if not values:
+            return "--"
+        return str(round(sum(values) / len(values)))
+
+    def render_bluetooth_console(self, state: dict | None, devices: list[dict], adapters: list[dict]) -> None:
+        state = state or {}
+        backend = state.get("backend") or {}
+        adapter_a = adapters[0] if len(adapters) > 0 else {}
+        adapter_b = adapters[1] if len(adapters) > 1 else {}
+        devices_a = self.bt_adapter_devices(devices, adapter_a.get("id"))
+        devices_b = self.bt_adapter_devices(devices, adapter_b.get("id"))
+        if not adapter_a and devices:
+            devices_a = devices
+
+        self.set_static_text("#txt_bluetooth_topology", self.render_bluetooth_topology(adapter_a, adapter_b, devices_a, devices_b))
+        self.set_static_text("#txt_bluetooth_adapter_a", self.render_bluetooth_table("ADAPTER A DEVICES", adapter_a, devices_a, "cyan"))
+        self.set_static_text("#txt_bluetooth_adapter_b", self.render_bluetooth_table("ADAPTER B DEVICES", adapter_b, devices_b, "green"))
+        self.set_static_text("#txt_bluetooth_available", self.render_bluetooth_available(devices))
+        self.set_static_text("#txt_bluetooth_actions", self.render_bluetooth_actions())
+        self.render_bluetooth_adapters(state)
+        self.render_bluetooth_soundbar(state)
+        self.render_bluetooth_controller((state.get("diagnostics") or {}).get("controllers"))
+        self.render_bluetooth_events(state)
+
+        total_connected = len([device for device in devices if device.get("connected")])
+        total_paired = len([device for device in devices if device.get("paired")])
+        online = len([adapter for adapter in adapters if adapter.get("present") and adapter.get("powered")])
+        self.set_static_text(
+            "#txt_bluetooth_adapters",
+            (
+                f"Bluetooth Service: [green]{'Degraded' if backend.get('degraded') else 'Running'}[/] | "
+                f"Backend: {backend.get('name', 'unknown')} | "
+                f"Adapters Online: [cyan]{online}/{len(adapters)}[/] | "
+                f"Total Connected: [green]{total_connected}[/] | Total Paired: [cyan]{total_paired}[/]"
+            ),
+        )
+
+    def render_bluetooth_topology(self, adapter_a: dict, adapter_b: dict, devices_a: list[dict], devices_b: list[dict]) -> str:
+        def device_rows(items: list[dict], color: str) -> list[str]:
+            rows = []
+            for device in items[:4]:
+                name = str(device.get("name") or "Unknown Device")[:18]
+                rows.append(f"[{color}]|--[/] {name:<18} {self.bt_rssi(device):>8}")
+            return rows or [f"[{color}]|--[/] No devices"]
+
+        left = device_rows(devices_a, "cyan")
+        right = device_rows(devices_b, "green")
+        while len(left) < 4:
+            left.append("")
+        while len(right) < 4:
+            right.append("")
+        a_power = "[green]Powered On[/]" if adapter_a.get("powered") else "[red]Powered Off[/]"
+        b_power = "[green]Powered On[/]" if adapter_b.get("powered") else "[red]Powered Off[/]"
+        lines = [
+            "[cyan]TOPOLOGY[/]  RPi Bluetooth Control Center (TUI)    Dual Adapter Management    Auto Connect: [green]ON[/]    [S] Scan All  [P] Pair New  [R] Refresh",
+            "",
+            f"        [cyan]ADAPTER A[/] {a_power:<22} RSSI Avg: {self.bt_avg_rssi(devices_a):>4} dBm"
+            f"                              [green]ADAPTER B[/] {b_power:<22} RSSI Avg: {self.bt_avg_rssi(devices_b):>4} dBm",
+            f"{left[0]:<44}     [cyan]  /\\  [/]" + "      DENS-MTB      " + f"[green]  /\\  [/]{right[0]:>34}",
+            f"{left[1]:<44}     [cyan] < BT >[/] --- [red]x[/] --- [green]< BT >[/] {right[1]:>34}",
+            f"{left[2]:<44}     [cyan]  \\/  [/]" + "  [red]Connection Error[/]  " + f"[green]  \\/  [/]{right[2]:>28}",
+            f"{left[3]:<44}              Out of Range                  {right[3]:>34}",
+            "",
+            f"        [cyan]{len([d for d in devices_a if d.get('connected')])} Connected[/]  {len([d for d in devices_a if not d.get('connected')])} Available"
+            f"                                      [green]{len([d for d in devices_b if d.get('connected')])} Connected[/]  {len([d for d in devices_b if not d.get('connected')])} Available",
+        ]
+        return "\n".join(lines)
+
+    def render_bluetooth_table(self, title: str, adapter: dict, devices: list[dict], color: str) -> str:
+        rows = [f"[{color}]{title}[/]", "#  Device Name          RSSI      Status", "------------------------------------------"]
+        for index, device in enumerate(devices[:5], start=1):
+            name = str(device.get("name") or "Unknown Device")[:18]
+            rows.append(f"{index:<2} {name:<18} {self.bt_rssi(device):>8}  {self.bt_status(device)}")
+        if not devices:
+            rows.append("No devices reported")
+        rows.append("")
+        rows.append(f"Adapter Address: {adapter.get('address', '--')}")
+        return "\n".join(rows)
+
+    def render_bluetooth_available(self, devices: list[dict]) -> str:
+        rows = ["[yellow]AVAILABLE DEVICES[/]", "Device Name          RSSI      Adapter", "--------------------------------------"]
+        available = [device for device in devices if not device.get("connected")][:5]
+        for device in available:
+            adapter = device.get("adapter_id") or "-"
+            rows.append(f"{str(device.get('name') or 'Unknown')[:18]:<18} {self.bt_rssi(device):>8}  {adapter[:8]}")
+        if not available:
+            rows.append("No available devices")
+        rows.append("")
+        rows.append("Press [P] to pair selected device")
+        return "\n".join(rows)
+
+    def render_bluetooth_actions(self) -> str:
+        return "\n".join(
+            [
+                "[magenta]QUICK ACTIONS[/]",
+                "[S] Scan All Adapters",
+                "[P] Pair New Device",
+                "[C] Connect to Device",
+                "[D] Disconnect Device",
+                "[R] Refresh Topology",
+                "[X] Remove Paired Device",
+                "[M] More Settings",
+            ]
+        )
 
     def render_bluetooth_adapters(self, state: dict | None) -> None:
         if not state:
@@ -1105,6 +1263,34 @@ class RPiDashboard(App):
         # api_app.router.add_post("/system/screensaver", self.handle_system_screensaver)
         api_app.router.add_post("/mode/launch", self.handle_mode_launch)
         api_app.router.add_post("/mode/stop", self.handle_mode_stop)
+        api_app.router.add_get("/", self.handle_webui_index)
+        api_app.router.add_get("/index.html", self.handle_webui_index)
+        api_app.router.add_get("/manifest.json", self.handle_webui_manifest)
+        api_app.router.add_get("/favicon.ico", self.handle_webui_favicon)
+        api_app.router.add_static("/static", self.static_dir())
+        api_app.router.add_route("*", "/mpv/play", self.handle_legacy_mpv_play)
+        api_app.router.add_route("*", "/mpv/stop", self.handle_legacy_mpv_stop)
+        api_app.router.add_route("*", "/mpv/status", self.handle_legacy_mpv_status)
+        api_app.router.add_route("*", "/mpv/seek", self.handle_legacy_mpv_seek)
+        api_app.router.add_route("*", "/mpv/volume", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/mpv/memory", self.handle_mpv_memory)
+        api_app.router.add_route("*", "/mpv/memory/clear", self.handle_mpv_memory_clear)
+        api_app.router.add_route("*", "/mpv/memory-save", self.handle_mpv_memory_save)
+        api_app.router.add_route("*", "/mpv/toggle", self.handle_mpv_toggle)
+        api_app.router.add_route("*", "/mpv/vol", self.handle_mpv_relative_volume)
+        api_app.router.add_route("*", "/mpv/seekabs", self.handle_mpv_seek_absolute)
+        api_app.router.add_route("*", "/bt/state", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/discovery", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/adapter-power", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/device-action", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/scan", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/controller", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/pair", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/trust", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/connect", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/disconnect", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/remove", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/devices/state", self.handle_registered_api_route)
 
         self.api_runner = web.AppRunner(api_app)
         await self.api_runner.setup()
@@ -1114,6 +1300,174 @@ class RPiDashboard(App):
             self.write_log(f"[NETWORK] API server listening on 0.0.0.0:{API_PORT} with CORS and Auth enabled")
         except Exception as e:
             self.write_log(f"[ERROR] Failed to start API server: {e}")
+
+    def static_dir(self) -> str:
+        """Return the static WebUI asset directory."""
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "rpi_dashboard", "static")
+
+    async def handle_webui_index(self, request: web.Request) -> web.StreamResponse:
+        """Serve the browser WebUI from the live TUI service."""
+        index_path = os.path.join(self.static_dir(), "index.html")
+        return web.FileResponse(index_path)
+
+    async def handle_webui_manifest(self, request: web.Request) -> web.Response:
+        """Serve a minimal PWA manifest compatible with the legacy webserver."""
+        manifest = {
+            "name": "RPi Dashboard",
+            "short_name": "RPiDash",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#0d1117",
+            "theme_color": "#0d1117",
+            "icons": [
+                {
+                    "src": (
+                        "data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" "
+                        "viewBox=\"0 0 100 100\"><rect width=\"100\" height=\"100\" "
+                        "rx=\"20\" fill=\"%23238636\"/><text x=\"50\" y=\"50\" "
+                        "font-size=\"50\" text-anchor=\"middle\" dy=\".3em\" "
+                        "fill=\"white\">TV</text></svg>"
+                    ),
+                    "sizes": "192x192 512x512",
+                    "type": "image/svg+xml",
+                }
+            ],
+            "share_target": {
+                "action": "/",
+                "method": "GET",
+                "params": {"title": "title", "text": "text", "url": "share_url"},
+            },
+        }
+        return web.json_response(manifest, content_type="application/manifest+json")
+
+    async def handle_webui_favicon(self, request: web.Request) -> web.Response:
+        """Avoid noisy browser favicon 404s."""
+        return web.Response(status=204, content_type="image/x-icon")
+
+    async def handle_legacy_mpv_play(self, request: web.Request) -> web.Response:
+        """Start mpv through the legacy WebUI playback path."""
+        import webserver
+
+        url = request.query.get("url", "").strip()
+        quality = request.query.get("q")
+        resume = request.query.get("resume", "0") not in {"0", "", "false", "False"}
+        if not url:
+            return web.json_response({"error": "no url"}, status=400)
+        result = await asyncio.to_thread(webserver.mpv_start, url, quality, resume)
+        if result.get("ok"):
+            self._legacy_mpv_started_at = time.time()
+        return web.json_response(result)
+
+    async def handle_legacy_mpv_stop(self, request: web.Request) -> web.Response:
+        """Stop mpv through the legacy WebUI playback path."""
+        import webserver
+
+        memory = await asyncio.to_thread(webserver.save_mpv_resume_memory) if webserver.mpv_ipc_socket_live() else None
+        stopped = await asyncio.to_thread(webserver.mpv_stop)
+        self._legacy_mpv_started_at = 0.0
+        return web.json_response({"ok": True, "memory": memory, "stop": stopped})
+
+    async def handle_legacy_mpv_status(self, request: web.Request) -> web.Response:
+        """Return legacy mpv status shape expected by the WebUI."""
+        import webserver
+
+        result = await asyncio.to_thread(webserver.mpv_st)
+        if result.get("on") and not result.get("pos") and getattr(self, "_legacy_mpv_started_at", None):
+            result["pos"] = max(0.1, time.time() - self._legacy_mpv_started_at)
+        return web.json_response(result)
+
+    async def handle_legacy_mpv_seek(self, request: web.Request) -> web.Response:
+        """Relative seek endpoint used by the WebUI buttons."""
+        import webserver
+
+        try:
+            delta = float(request.query.get("d", "10"))
+        except ValueError:
+            return web.json_response({"ok": False, "error": "d must be number"})
+        await asyncio.to_thread(webserver.mcmd, "seek", delta, "relative")
+        return web.json_response({"ok": True})
+
+    async def handle_mpv_memory(self, request: web.Request) -> web.Response:
+        """Return saved resume memory for WebUI compatibility."""
+        import webserver
+
+        url = request.query.get("url", "")
+        if not url:
+            return web.json_response({"error": "no url"}, status=400)
+        memory = await asyncio.to_thread(webserver.get_mpv_memory_for_url, url)
+        return web.json_response({"ok": True, "memory": memory})
+
+    async def handle_mpv_memory_clear(self, request: web.Request) -> web.Response:
+        """Accept resume-memory clear requests without breaking playback."""
+        import webserver
+
+        url = request.query.get("url", "")
+        cleared = await asyncio.to_thread(webserver.clear_mpv_memory_for_url, url) if url else False
+        return web.json_response({"ok": True, "cleared": cleared})
+
+    async def handle_mpv_memory_save(self, request: web.Request) -> web.Response:
+        """Save mpv resume memory when mpv is active."""
+        import webserver
+
+        if not await asyncio.to_thread(webserver.mpv_ipc_socket_live):
+            return web.json_response({"ok": True, "memory": "mpv not running"})
+        memory = await asyncio.to_thread(webserver.save_mpv_resume_memory)
+        return web.json_response({"ok": True, "memory": memory})
+
+    async def handle_mpv_toggle(self, request: web.Request) -> web.Response:
+        """Toggle mpv pause for WebUI compatibility."""
+        import webserver
+
+        await asyncio.to_thread(webserver.mcmd, "cycle", "pause")
+        status = await asyncio.to_thread(webserver.mget, "pause")
+        return web.json_response({"ok": True, "paused": status.get("data", False)})
+
+    async def handle_mpv_relative_volume(self, request: web.Request) -> web.Response:
+        """Adjust mpv volume relatively for keyboard/WebUI controls."""
+        import webserver
+
+        try:
+            delta = int(request.query.get("d", "10"))
+        except ValueError:
+            return web.json_response({"ok": False, "error": "d must be integer"})
+        await asyncio.to_thread(webserver.mcmd, "add", "volume", delta)
+        return web.json_response({"ok": True})
+
+    async def handle_mpv_seek_absolute(self, request: web.Request) -> web.Response:
+        """Seek mpv to an absolute position for the WebUI scrubber."""
+        import webserver
+
+        try:
+            position = float(request.query.get("pos", "0"))
+        except ValueError:
+            return web.json_response({"ok": False, "error": "pos must be number"})
+        await asyncio.to_thread(webserver.mcmd, "seek", position, "absolute")
+        return web.json_response({"ok": True})
+
+    async def handle_registered_api_route(self, request: web.Request) -> web.Response:
+        """Serve shared API route handlers from the live TUI API process."""
+        handler = get_route(request.path)
+        if handler is None:
+            raise web.HTTPNotFound()
+        query = {key: [value] for key, value in request.query.items()}
+        if request.method in {"POST", "PUT", "PATCH"}:
+            body_query = await self.request_body_query(request)
+            query.update(body_query)
+        result = await asyncio.to_thread(handler, query)
+        return web.json_response(result)
+
+    async def request_body_query(self, request: web.Request) -> dict[str, list[str]]:
+        """Normalize JSON or form bodies into the legacy handler query shape."""
+        try:
+            if request.content_type == "application/json":
+                data = await request.json()
+            else:
+                data = dict(await request.post())
+        except Exception:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(key): [str(value)] for key, value in data.items()}
 
     async def api_middleware(self, request: web.Request, handler) -> web.Response:
         """Middleware to handle CORS and optional API Key validation."""

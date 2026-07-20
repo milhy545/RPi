@@ -6,6 +6,7 @@ import pytest
 
 from rpi_dashboard.api import handlers
 from rpi_dashboard.services import devices
+from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
 from rpi_dashboard.services.bluetooth.service import set_backend_for_tests
 
@@ -124,3 +125,26 @@ def test_bt_state_enriches_soundbar_with_audio_readiness(monkeypatch):
     assert steps["pipewire_sink"]["state"] is True
     assert steps["route"]["state"] is True
     assert steps["route"]["reason"] == "Soundbar is default sink"
+
+
+def test_bluez_backend_delegates_operations_when_state_is_from_fallback(monkeypatch):
+    """Fallback state must not be used as invalid D-Bus object paths."""
+    fallback = FakeBluetoothBackend.with_soundbar_and_controller()
+    backend = BlueZDbusBackend(fallback=fallback)
+
+    async def broken_bluez_state():
+        raise RuntimeError("dbus unavailable")
+
+    monkeypatch.setattr(backend, "_state_from_bluez", broken_bluez_state)
+    set_backend_for_tests(backend)
+
+    state = handlers.handle_bt_state({})
+    adapter_id = state["adapters"][0]["id"]
+
+    result = handlers.handle_bt_discovery(
+        parse_qs(f"action=start&adapter_id={adapter_id}")
+    )
+
+    assert result["ok"] is True
+    assert result["operation"]["type"] == "start_discovery"
+    assert result["operation"]["adapter_id"] == adapter_id

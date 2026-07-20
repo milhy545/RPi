@@ -1,0 +1,39 @@
+{
+  "track_id": "bluetooth-tui-control-center-parity_20260719",
+  "type": "ui-refactor",
+  "status": "implemented",
+  "created": "2026-07-19T23:10:00+01:00",
+  "updated": "2026-07-20T02:53:11+01:00",
+  "owner": "codex",
+  "priority": "high",
+  "description": "Bring the live Textual Bluetooth tab in tui.py into close visual and interaction parity with docs/design/rpi-screenshots/RPi-BT-TUI.png, and keep the WebUI Bluetooth settings design aligned with docs/design/bluetooth/bt-webui-gemini-prototype.html while preserving the shared Bluetooth backend and live dashboard constraints.",
+  "estimated_hours": "12-20",
+  "phases": 8,
+  "dependencies": [
+    "Textual",
+    "live tui.py entrypoint",
+    "Bluetooth control center v2 state contract",
+    "BlueZ-backed /bt/state data",
+    "docs/design/rpi-screenshots/RPi-BT-TUI.png",
+    "docs/design/bluetooth/bt-webui-gemini-prototype.html"
+  ],
+  "related_tracks": [
+    "bluetooth-control-center-refactor_20260718",
+    "bluetooth-xbox-controller_20260709",
+    "dashboard-modes-settings-terminal_20260613",
+    "refactor-fullstack_20260706"
+  ],
+  "tags": [
+    "bluetooth",
+    "tui",
+    "textual",
+    "ascii-ui",
+    "dual-adapter",
+    "control-center",
+    "design-parity",
+    "tty1",
+    "testing",
+    "webui",
+    "design-reference"
+  ]
+}

@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="cs" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPi Bluetooth Control Center</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { bg: '#0A0E17', panel: '#111722', border: '#1F2937' }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Base Setup */
+        body { margin: 0; overflow: hidden; transition: background-color 0.3s, color 0.3s; }
+        .layout-wrapper { display: flex; flex-direction: column; width: 100vw; height: 100vh; overflow: hidden; }
+        .main-workspace { display: flex; flex: 1; overflow: hidden; }
+
+        .sidebar-left { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; z-index: 40; }
+        .sidebar-right { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; overflow-y: auto; z-index: 40; }
+        .main-content { flex: 1; display: flex; flex-direction: column; padding: 1.5rem; overflow-y: auto; overflow-x: hidden; }
+
+        /* Unified Panels (Ochrana proti bílým lajnám) */
+        .panel {
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            background-color: #FFFFFF;
+            border: 1px solid #E5E7EB;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .dark .panel { background-color: #111722; border-color: #1F2937; box-shadow: none; }
+
+        .sidebar-left, .sidebar-right { background-color: #FFFFFF; border-color: #E5E7EB; border-width: 1px; }
+        .dark .sidebar-left, .dark .sidebar-right { background-color: #111722; border-color: #1F2937; }
+
+        /* Mody zobrazení */
+        body.mode-basic .sidebar-left, body.mode-basic .sidebar-right, body.mode-basic .adv-header { display: none; }
+        body.mode-advanced .topo-title-basic { display: none; }
+
+        /* --- RESPONSIVE GRID SYSTEM --- */
+        .grid-container {
+            display: grid; gap: 1.25rem; grid-template-columns: 1fr;
+            grid-template-areas: "topo" "ctrl" "filt" "over" "details";
+        }
+        @media (min-width: 1024px) {
+            body.mode-basic .grid-container {
+                grid-template-columns: 280px 1fr 320px;
+                grid-template-areas: "ctrl topo details" "filt over details";
+            }
+            body.mode-advanced .grid-container {
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas: "topo topo" "ctrl over" "filt details";
+            }
+        }
+        /* Velké displeje v Expert módu - Topo na celou šířku, panely dole v řadě */
+        @media (min-width: 1500px) {
+            body.mode-advanced .grid-container {
+                grid-template-columns: repeat(4, 1fr);
+                grid-template-areas: "topo topo topo topo" "ctrl filt over details";
+            }
+        }
+
+        .area-ctrl { grid-area: ctrl; }
+        .area-filt { grid-area: filt; }
+        .area-topo { grid-area: topo; position: relative; display: flex; flex-direction: column; min-height: 400px; padding: 0 !important; overflow: hidden; }
+        .area-over { grid-area: over; }
+        .area-details { grid-area: details; }
+
+        /* Interactive Topology Canvas */
+        #topo-wrapper { overflow: hidden; position: absolute; inset: 0; cursor: grab; background-color: transparent; }
+        #topo-wrapper:active { cursor: grabbing; }
+        #topo-canvas { position: absolute; width: 1400px; height: 600px; transform-origin: 0 0; }
+
+        .topo-node { position: absolute; transform: translate(-50%, -50%); z-index: 10; }
+        .topo-device { cursor: pointer; transition: all 0.2s ease; outline: 2px solid transparent; }
+        .topo-device:hover { transform: translate(-50%, -50%) scale(1.05); z-index: 20; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+        .topo-device.selected { outline-color: #3B82F6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); z-index: 25; }
+        .dark .topo-device.selected { outline-color: #00F0FF; box-shadow: 0 0 15px rgba(0, 240, 255, 0.5); }
+        .topo-device.offline { opacity: 0.5; filter: grayscale(0.8); }
+
+        .hex-glow-cyan { filter: drop-shadow(0 0 10px rgba(0,240,255,0.4)); }
+        .hex-glow-green { filter: drop-shadow(0 0 10px rgba(57,255,20,0.4)); }
+
+        .label-bg { background-color: rgba(255,255,255,0.9); padding: 2px 10px; border-radius: 99px; }
+        .dark .label-bg { background-color: #111722; padding: 2px 10px; border-radius: 99px; }
+
+        /* Neprůstřelné CSS Toggles */
+        .toggle-wrapper { position: relative; width: 36px; height: 20px; display: inline-block; flex-shrink: 0; }
+        .toggle-checkbox { display: none; }
+        .toggle-label {
+            display: block; overflow: hidden; cursor: pointer; border-radius: 9999px; width: 100%; height: 100%;
+            background-color: #D1D5DB; transition: background-color 0.2s;
+        }
+        .dark .toggle-label { background-color: #4B5563; }
+        .toggle-label:before {
+            content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+            background-color: white; transition: transform 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .toggle-checkbox:checked + .toggle-label { background-color: #3B82F6; }
+        .toggle-checkbox:checked + .toggle-label:before { transform: translateX(16px); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        .dark ::-webkit-scrollbar-track { background: #0A0E17; }
+        .light ::-webkit-scrollbar-track { background: #F3F4F6; }
+        .dark ::-webkit-scrollbar-thumb { background: #1F2937; border-radius: 4px; }
+        .light ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3B82F6; }
+    </style>
+</head>
+<body class="mode-advanced font-sans bg-gray-100 text-gray-900 dark:bg-[#0A0E17] dark:text-gray-100">
+
+    <div class="layout-wrapper">
+
+        <!-- GLOBAL TOP NAVIGATION -->
+        <nav class="w-full border-b border-gray-200 dark:border-[#1F2937] bg-white dark:bg-[#111722] px-4 py-2.5 flex items-center justify-between z-50 relative">
+            <div class="flex items-center gap-3">
+                <i class="ph-fill ph-raspberry-pi text-3xl text-red-600 dark:text-red-500"></i>
+                <div class="hidden sm:block">
+                    <h1 class="font-bold text-sm tracking-wide">RPi Control Center</h1>
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest i18n" data-cs="Správce Připojení" data-en="Connection Manager">Správce Připojení</span>
+                </div>
+            </div>
+
+            <!-- Central Legenda a Status -->
+            <div class="flex-1 flex items-center gap-3 ml-6">
+                <div class="hidden lg:flex items-center gap-2 text-xs text-gray-500 font-mono bg-gray-100 dark:bg-[#0A0E17] px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#1F2937]">
+                    <i class="ph-fill ph-circle text-[8px] text-green-500 animate-pulse"></i> HCI0 & HCI1 Online
+                </div>
+
+                <div class="hidden xl:flex items-center gap-4 text-[10px] font-semibold bg-gray-50 dark:bg-[#0A0E17] px-3 py-1.5 rounded-md border border-gray-200 dark:border-[#1F2937] ml-2">
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-[2px] bg-blue-500 dark:bg-[#00F0FF]"></span> <span class="text-gray-500 dark:text-gray-400 i18n" data-cs="Tok Audia" data-en="Audio Flow">Tok Audia</span></div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-[2px] bg-green-500 dark:bg-[#39FF14]"></span> <span class="text-gray-500 dark:text-gray-400 i18n" data-cs="Data/IoT" data-en="Data/IoT">Data/IoT</span></div>
+                    <div class="flex items-center gap-1.5"><span class="w-3 h-[2px] border-t-2 border-dashed border-gray-400"></span> <span class="text-gray-500 dark:text-gray-400 i18n" data-cs="Odpojeno / Slabé" data-en="Offline / Weak">Odpojeno / Slabé</span></div>
+                </div>
+            </div>
+
+            <!-- Toggles -->
+            <div class="flex items-center gap-2 md:gap-3">
+                <div class="flex bg-gray-100 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] p-1 rounded-lg">
+                    <button id="btn-basic" onclick="setMode('basic')" class="px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 text-gray-500 hover:text-gray-900 dark:hover:text-white">Basic</button>
+                    <button id="btn-advanced" onclick="setMode('advanced')" class="px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 bg-blue-500 text-white shadow">Expert</button>
+                </div>
+                <div class="w-px h-6 bg-gray-200 dark:bg-[#1F2937] mx-1 hidden sm:block"></div>
+                <button onclick="toggleLang()" class="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#1F2937] hover:bg-gray-50 dark:hover:bg-[#1A2537] transition-colors active:scale-95 text-xs font-bold bg-white dark:bg-[#111722]"><span id="lang-indicator">CS</span></button>
+                <button onclick="toggleTheme()" class="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 dark:border-[#1F2937] hover:bg-gray-50 dark:hover:bg-[#1A2537] transition-colors active:scale-95 bg-white dark:bg-[#111722] text-gray-600 dark:text-gray-300"><i id="theme-icon" class="ph-fill ph-moon text-lg"></i></button>
+            </div>
+        </nav>
+
+        <div class="main-workspace flex-1 flex overflow-hidden">
+
+            <!-- LEFT SIDEBAR -->
+            <aside class="sidebar-left border-r p-4">
+                <div class="text-xs font-semibold text-gray-500 mb-4 px-2 uppercase tracking-wider i18n" data-cs="Hlavní Menu" data-en="Main Menu">Hlavní Menu</div>
+                <nav class="flex-1 space-y-1">
+                    <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1A2537] dark:hover:text-white rounded-lg transition-colors font-medium active:scale-95"><i class="ph ph-house text-lg"></i> <span class="i18n" data-cs="Přehled" data-en="Overview">Přehled</span></a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1A2537] dark:hover:text-white rounded-lg transition-colors font-medium active:scale-95"><i class="ph ph-cpu text-lg"></i> Systém</a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm text-blue-600 dark:text-[#00F0FF] bg-blue-50 dark:bg-[#1A2537] rounded-lg border border-blue-200 dark:border-[#23354E] font-bold shadow-sm active:scale-95"><i class="ph-fill ph-bluetooth text-lg"></i> Bluetooth</a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1A2537] dark:hover:text-white rounded-lg transition-colors font-medium active:scale-95"><i class="ph ph-wifi-high text-lg"></i> Wi-Fi</a>
+                    <a href="#" class="flex items-center gap-3 px-3 py-2.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#1A2537] dark:hover:text-white rounded-lg transition-colors font-medium active:scale-95"><i class="ph ph-terminal-window text-lg"></i> Terminál</a>
+                </nav>
+            </aside>
+
+            <!-- MAIN CONTENT AREA -->
+            <main class="main-content">
+
+                <header class="adv-header items-center justify-between mb-6 shrink-0">
+                    <div>
+                        <h1 class="text-2xl font-bold tracking-wide i18n" data-cs="Správa Topologie Bluetooth" data-en="Bluetooth Topology Manager">Správa Topologie Bluetooth</h1>
+                        <p class="text-sm text-gray-500 mt-1 font-medium i18n" data-cs="Komplexní náhled na adaptéry a zařízení v síti" data-en="Overview of adapters and network devices">Komplexní náhled na adaptéry a zařízení v síti</p>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button class="flex items-center gap-2 border border-gray-300 dark:border-[#1F2937] bg-white dark:bg-[#1A2537] hover:bg-gray-50 dark:hover:bg-[#23354E] px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95 shadow-sm text-gray-700 dark:text-gray-200"><i class="ph-bold ph-radar text-blue-500 dark:text-[#00F0FF]"></i> <span class="i18n" data-cs="Skenovat Adaptéry" data-en="Scan Adapters">Skenovat Adaptéry</span></button>
+                        <button class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all active:scale-95 shadow-md"><i class="ph-bold ph-plus"></i> <span class="i18n" data-cs="Nové Zařízení" data-en="New Device">Nové Zařízení</span></button>
+                    </div>
+                </header>
+
+                <div class="grid-container">
+
+                    <!-- 1. TOPOLOGY PANEL (Interactive Canvas) -->
+                    <div class="panel area-topo relative overflow-hidden bg-gray-50 dark:bg-transparent">
+                        <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-30 pointer-events-none">
+                            <div class="topo-title-basic pointer-events-auto label-bg shadow-sm">
+                                <h2 class="text-sm font-bold i18n" data-cs="Živá Topologie" data-en="Live Topology">Živá Topologie</h2>
+                            </div>
+                        </div>
+
+                        <!-- Zoom Tlačítka -->
+                        <div class="absolute bottom-4 right-4 z-30 flex flex-col gap-1 bg-white/90 dark:bg-[#111722]/90 p-1.5 rounded-xl border border-gray-200 dark:border-[#1F2937] backdrop-blur shadow-lg pointer-events-auto">
+                            <button onclick="zoomTopo(0.1)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-[#1A2537] text-gray-700 dark:text-gray-300 transition-all active:scale-90"><i class="ph-bold ph-plus"></i></button>
+                            <button onclick="zoomTopo(-0.1)" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-[#1A2537] text-gray-700 dark:text-gray-300 transition-all active:scale-90"><i class="ph-bold ph-minus"></i></button>
+                            <div class="w-full h-px bg-gray-200 dark:bg-gray-700 my-0.5"></div>
+                            <button onclick="resetTopo()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-[#1A2537] text-blue-500 transition-all active:scale-90"><i class="ph-bold ph-arrows-out"></i></button>
+                        </div>
+
+                        <!-- CANVAS -->
+                        <div id="topo-wrapper">
+                            <div id="topo-canvas">
+                                <!-- Čáry -->
+                                <svg id="topology-lines" class="absolute inset-0 w-full h-full pointer-events-none z-0"></svg>
+
+                                <!-- ==== ADAPTÉR A (AUDIO) ==== -->
+                                <div id="node-adapter-a" class="topo-node flex flex-col items-center z-10" style="left: 30%; top: 50%;">
+                                    <div class="text-blue-600 dark:text-[#00F0FF] font-bold text-sm tracking-wider mb-2 z-20 label-bg">ADAPTER A</div>
+                                    <div id="hex-a" class="relative flex items-center justify-center w-[75px] h-[85px] hex-glow-cyan z-10 hover:scale-105 transition-transform">
+                                        <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 110">
+                                            <polygon points="50,2 98,28 98,82 50,108 2,82 2,28" class="fill-white dark:fill-[#111722] stroke-blue-500 dark:stroke-[#00F0FF]" stroke-width="2.5"/>
+                                        </svg>
+                                        <i class="ph-bold ph-bluetooth text-[34px] text-blue-600 dark:text-white relative z-10"></i>
+                                    </div>
+                                    <div class="mt-2 text-[10px] text-blue-700 dark:text-[#00F0FF] border border-blue-200 dark:border-[#00F0FF]/30 bg-blue-50 dark:bg-[#1A2537] px-2.5 py-1 rounded-md uppercase font-bold shadow-sm z-20">AUDIO HUB</div>
+                                </div>
+
+                                <!-- ==== ADAPTÉR B (IOT) ==== -->
+                                <div id="node-adapter-b" class="topo-node flex flex-col items-center z-10" style="left: 70%; top: 50%;">
+                                    <div class="text-green-600 dark:text-[#39FF14] font-bold text-sm tracking-wider mb-2 z-20 label-bg">ADAPTER B</div>
+                                    <div id="hex-b" class="relative flex items-center justify-center w-[75px] h-[85px] hex-glow-green z-10 hover:scale-105 transition-transform">
+                                        <svg class="absolute inset-0 w-full h-full" viewBox="0 0 100 110">
+                                            <polygon points="50,2 98,28 98,82 50,108 2,82 2,28" class="fill-white dark:fill-[#111722] stroke-green-500 dark:stroke-[#39FF14]" stroke-width="2.5"/>
+                                        </svg>
+                                        <i class="ph-bold ph-bluetooth text-[34px] text-green-600 dark:text-white relative z-10"></i>
+                                    </div>
+                                    <div class="mt-2 text-[10px] text-green-700 dark:text-[#39FF14] border border-green-200 dark:border-[#39FF14]/30 bg-green-50 dark:bg-[#1A2537] px-2.5 py-1 rounded-md uppercase font-bold shadow-sm z-20">IOT & INPUT</div>
+                                </div>
+
+                                <!-- Zařízení generovaná přes JS aby se ušetřilo místo -->
+                                <div id="devices-container"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. BLUETOOTH CONTROL PANEL -->
+                    <div class="panel area-ctrl flex flex-col">
+                        <h2 class="text-sm font-bold mb-5 flex items-center gap-2"><i class="ph-fill ph-sliders text-blue-500"></i> <span class="i18n" data-cs="Ovládání Služby" data-en="Service Control">Ovládání Služby</span></h2>
+                        <div class="space-y-4 text-sm font-medium flex-1">
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors i18n" data-cs="Automatické připojení" data-en="Auto Connect">Automatické připojení</span>
+                                <div class="toggle-wrapper"><input type="checkbox" class="toggle-checkbox" checked><span class="toggle-label"></span></div>
+                            </label>
+                            <label class="flex items-center justify-between cursor-pointer group">
+                                <span class="text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors i18n" data-cs="Viditelnost sítě (All)" data-en="Discoverable (All)">Viditelnost sítě (All)</span>
+                                <div class="toggle-wrapper"><input type="checkbox" class="toggle-checkbox" checked><span class="toggle-label"></span></div>
+                            </label>
+                            <div class="flex items-center justify-between gap-3 pt-2 border-t border-gray-100 dark:border-[#1F2937]">
+                                <span class="text-gray-600 dark:text-gray-400 text-xs truncate i18n" data-cs="Časovač" data-en="Timeout">Časovač</span>
+                                <select class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded-md px-2 py-1 outline-none text-xs w-[80px] text-right">
+                                    <option>2 min</option><option>5 min</option><option class="i18n" data-cs="Trvale" data-en="Always">Trvale</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-gray-600 dark:text-gray-400 text-xs truncate i18n" data-cs="Režim skenování" data-en="Scan Mode">Režim skenování</span>
+                                <select class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded-md px-2 py-1 outline-none text-xs w-[90px] text-right">
+                                    <option>Balanced</option><option>Aggressive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. FILTERS PANEL -->
+                    <div class="panel area-filt flex flex-col">
+                        <h2 class="text-sm font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-funnel text-blue-500"></i> <span class="i18n" data-cs="Filtry zobrazení" data-en="View Filters">Filtry zobrazení</span></h2>
+                        <div class="space-y-3 text-sm font-medium mb-auto">
+                            <label class="flex items-center gap-3 cursor-pointer group"><input type="checkbox" checked class="w-4 h-4 rounded text-blue-500 border-gray-300 dark:border-gray-600 dark:bg-gray-700 cursor-pointer"><span class="text-gray-600 dark:text-gray-400 text-xs i18n" data-cs="Připojeno" data-en="Connected">Připojeno</span></label>
+                            <label class="flex items-center gap-3 cursor-pointer group"><input type="checkbox" checked class="w-4 h-4 rounded text-blue-500 border-gray-300 dark:border-gray-600 dark:bg-gray-700 cursor-pointer"><span class="text-gray-600 dark:text-gray-400 text-xs i18n" data-cs="Spárováno" data-en="Paired">Spárováno</span></label>
+                            <label class="flex items-center gap-3 cursor-pointer group"><input type="checkbox" class="w-4 h-4 rounded text-blue-500 border-gray-300 dark:border-gray-600 dark:bg-gray-700 cursor-pointer"><span class="text-gray-600 dark:text-gray-400 text-xs i18n" data-cs="Dostupná zařízení" data-en="Available Devices">Dostupná zařízení</span></label>
+                        </div>
+                        <button class="w-full mt-6 bg-gray-50 hover:bg-gray-100 dark:bg-[#0A0E17] dark:hover:bg-[#1A2537] border border-gray-200 dark:border-[#1F2937] text-blue-600 dark:text-[#00F0FF] font-bold py-2 rounded-lg text-xs transition-all active:scale-95 shadow-sm i18n" data-cs="Vynutit Skenování" data-en="Force Scan">Vynutit Skenování</button>
+                    </div>
+
+                    <!-- 4. ADAPTER OVERVIEW PANEL -->
+                    <div class="panel area-over flex flex-col">
+                        <h2 class="text-sm font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-cpu text-blue-500"></i> <span class="i18n" data-cs="Stav Hardware" data-en="Hardware Status">Stav Hardware</span></h2>
+                        <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded-xl p-4 flex flex-col items-center relative shadow-sm">
+                                <div class="text-sm font-bold text-blue-600 dark:text-[#00F0FF] mt-1">Adapter A</div>
+                                <div class="relative w-28 h-14 flex items-end justify-center overflow-hidden mt-4 mb-1">
+                                    <svg viewBox="0 0 100 50" class="absolute inset-0 w-full h-full transform scale-110 translate-y-1">
+                                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" class="text-gray-200 dark:text-gray-800"/>
+                                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="currentColor" stroke-width="8" stroke-dasharray="125" stroke-dashoffset="35" stroke-linecap="round" class="text-blue-500 dark:text-[#00F0FF]"/>
+                                    </svg>
+                                    <div class="flex flex-col items-center pb-1 relative z-10"><span class="text-xl font-black leading-none">-55</span></div>
+                                </div>
+                                <div class="text-[10px] text-gray-500 font-mono mb-2">dBm (Avg)</div>
+                            </div>
+                            <div class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded-xl p-4 flex flex-col items-center relative shadow-sm">
+                                <div class="text-sm font-bold text-green-600 dark:text-[#39FF14] mt-1">Adapter B</div>
+                                <div class="relative w-28 h-14 flex items-end justify-center overflow-hidden mt-4 mb-1">
+                                    <svg viewBox="0 0 100 50" class="absolute inset-0 w-full h-full transform scale-110 translate-y-1">
+                                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" class="text-gray-200 dark:text-gray-800"/>
+                                        <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="currentColor" stroke-width="8" stroke-dasharray="125" stroke-dashoffset="20" stroke-linecap="round" class="text-green-500 dark:text-[#39FF14]"/>
+                                    </svg>
+                                    <div class="flex flex-col items-center pb-1 relative z-10"><span class="text-xl font-black leading-none">-50</span></div>
+                                </div>
+                                <div class="text-[10px] text-gray-500 font-mono mb-2">dBm (Avg)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5. DEVICE DETAILS PANEL (Dynamic) -->
+                    <div class="panel area-details flex flex-col">
+                        <h2 class="text-sm font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-info text-blue-500"></i> <span class="i18n" data-cs="Detail Zařízení" data-en="Device Detail">Detail Zařízení</span></h2>
+                        <div class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded-xl p-5 flex-1 flex flex-col shadow-sm">
+                            <h3 id="detail-name" class="font-bold text-lg mb-2">Samsung Soundbar</h3>
+                            <div id="detail-status" class="flex items-center gap-1.5 text-xs text-green-600 dark:text-[#39FF14] mb-6 font-semibold bg-green-50 dark:bg-[#39FF14]/10 w-max px-2.5 py-1 rounded-md border border-green-200 dark:border-[#39FF14]/20"><i id="detail-status-icon" class="ph-fill ph-check-circle"></i> <span id="detail-status-text" class="i18n" data-cs="Připojeno aktivně" data-en="Active">Připojeno aktivně</span></div>
+
+                            <div class="space-y-4 text-sm font-medium mb-8 bg-white dark:bg-[#111722] p-4 rounded-xl border border-gray-200 dark:border-[#1F2937] shadow-sm">
+                                <div class="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 pb-3">
+                                    <span class="text-gray-500 text-xs i18n" data-cs="Síla signálu" data-en="Signal">Síla signálu</span>
+                                    <span id="detail-rssi" class="font-mono font-bold text-blue-600 dark:text-[#00F0FF] text-xs"><i class="ph-fill ph-cell-signal-full"></i> -48 dBm</span>
+                                </div>
+                                <div class="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 pb-3">
+                                    <span class="text-gray-500 text-xs i18n" data-cs="MAC Adresa" data-en="MAC Address">MAC Adresa</span>
+                                    <span id="detail-mac" class="font-mono font-bold text-gray-700 dark:text-gray-300 text-xs bg-gray-50 dark:bg-[#0A0E17] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">04:50:48:91:22:33</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-500 text-xs i18n" data-cs="Adaptér" data-en="Adapter">Adaptér</span>
+                                    <span id="detail-adapter" class="text-blue-700 dark:text-[#00F0FF] font-bold bg-blue-50 dark:bg-[#00F0FF]/10 border border-blue-200 dark:border-[#00F0FF]/30 px-2 py-0.5 rounded text-[10px]">Adapter A</span>
+                                </div>
+                            </div>
+                            <div class="mt-auto flex flex-col gap-2">
+                                <button class="w-full py-2.5 bg-white dark:bg-[#111722] hover:bg-gray-50 dark:hover:bg-[#1A2537] rounded-lg border border-gray-200 dark:border-[#1F2937] transition-all active:scale-95 text-xs font-bold shadow-sm i18n" data-cs="Odpojit Zařízení" data-en="Disconnect">Odpojit Zařízení</button>
+                                <button id="btn-move-adapter" class="w-full py-2.5 bg-blue-50 dark:bg-[#00F0FF]/10 hover:bg-blue-100 dark:hover:bg-[#00F0FF]/20 text-blue-600 dark:text-[#00F0FF] rounded-lg border border-blue-200 dark:border-[#00F0FF]/30 transition-all active:scale-95 text-xs font-bold shadow-sm i18n" data-cs="Přesunout adaptér" data-en="Move Adapter">Přesunout adaptér</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </main>
+
+            <!-- RIGHT SIDEBAR (Expert Nástroje & Grafy) -->
+            <aside class="sidebar-right border-l p-5 space-y-6">
+                <!-- Rychlé Akce Generované dynamicky pro ušetření místa -->
+                <div class="panel p-4">
+                    <h2 class="text-sm font-bold mb-4 flex items-center gap-2"><i class="ph-fill ph-lightning text-blue-500"></i> <span class="i18n" data-cs="Rychlé akce" data-en="Quick Actions">Rychlé akce</span></h2>
+                    <div id="quick-actions" class="grid grid-cols-4 gap-2"></div>
+                </div>
+                <!-- Souhrn -->
+                <div class="panel p-4 flex-1">
+                    <h2 class="text-sm font-bold mb-3 flex items-center gap-2"><i class="ph-fill ph-list-dashes text-blue-500"></i> <span class="i18n" data-cs="Celkový Přehled" data-en="Summary">Celkový Přehled</span></h2>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded p-2.5 shadow-sm">
+                            <i class="ph-bold ph-link text-blue-500 text-lg"></i>
+                            <div class="mt-1"><div class="text-[9px] font-bold text-gray-500 i18n" data-cs="Nyní Připojeno" data-en="Connected Now">Nyní Připojeno</div><div class="text-sm font-black">11</div></div>
+                        </div>
+                        <div class="bg-gray-50 dark:bg-[#0A0E17] border border-gray-200 dark:border-[#1F2937] rounded p-2.5 shadow-sm">
+                            <i class="ph-bold ph-bluetooth text-green-500 text-lg"></i>
+                            <div class="mt-1"><div class="text-[9px] font-bold text-gray-500 i18n" data-cs="Aktivní Adaptéry" data-en="Adapters Online">Aktivní Adaptéry</div><div class="text-sm text-green-600 dark:text-green-400 font-black">2 / 2</div></div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        // === Vykreslování Zařízení (Kompaktní kód) ===
+        const devices = [
+            { id: 'node-a1', x: '6%', y: '20%', name: 'Samsung Soundbar', icon: 'ph-speaker-hifi', rssi: '-48 dBm', adapter: 'A', offline: false, source: false },
+            { id: 'node-a2', x: '2%', y: '50%', name: 'Kitchen Speaker', icon: 'ph-speaker-high', rssi: '-62 dBm', adapter: 'A', offline: false, source: false },
+            { id: 'node-a3', x: '6%', y: '80%', name: 'Sony WH-1000XM4', icon: 'ph-headphones', rssi: '-55 dBm', adapter: 'A', offline: false, source: false },
+            { id: 'node-a4', x: '18%', y: '88%', name: 'AirPods Pro', icon: 'ph-earbuds', rssi: 'Offline', adapter: 'A', offline: true, source: false },
+            { id: 'node-a5', x: '18%', y: '12%', name: 'Bose Portable', icon: 'ph-speaker-low', rssi: '-50 dBm', adapter: 'A', offline: false, source: false },
+            { id: 'node-a6', x: '46%', y: '25%', name: 'Alexa Echo', icon: 'ph-amazon-logo', rssi: '-72 dBm', adapter: 'A', offline: false, source: true },
+            { id: 'node-b1', x: '94%', y: '20%', name: 'Xbox Controller', icon: 'ph-game-controller', rssi: '-40 dBm', adapter: 'B', offline: false, source: false },
+            { id: 'node-b2', x: '98%', y: '50%', name: 'BT Keyboard', icon: 'ph-keyboard', rssi: '-58 dBm', adapter: 'B', offline: false, source: false },
+            { id: 'node-b3', x: '94%', y: '80%', name: 'Magic Mouse', icon: 'ph-mouse', rssi: '-45 dBm', adapter: 'B', offline: false, source: false },
+            { id: 'node-b4', x: '82%', y: '88%', name: 'LG TV Remote', icon: 'ph-remote-control', rssi: '-60 dBm', adapter: 'B', offline: false, source: false },
+            { id: 'node-b5', x: '82%', y: '12%', name: 'Hue Bulb', icon: 'ph-lightbulb', rssi: '-65 dBm', adapter: 'B', offline: false, source: false },
+            { id: 'node-b6', x: '54%', y: '75%', name: 'Desk RGB Strip', icon: 'ph-swatches', rssi: '-60 dBm', adapter: 'B', offline: false, source: false }
+        ];
+
+        document.getElementById('devices-container').innerHTML = devices.map(d => {
+            const isA = d.adapter === 'A';
+            const colorClass = isA ? 'blue-500' : 'green-500';
+            const darkColorHex = isA ? '#00F0FF' : '#39FF14';
+            const borderEdge = isA ? 'border-l-4' : 'border-r-4';
+
+            let html = `<div id="${d.id}" class="topo-node topo-device ${d.offline?'offline':''}" style="left:${d.x}; top:${d.y};" onclick="selectDevice('${d.id}')">`;
+            html += `<div class="w-[170px] bg-white dark:bg-[#0D121B] ${borderEdge} ${d.offline?'border-gray-400 dark:border-gray-600':'border-'+colorClass+' dark:border-['+darkColorHex+']'} rounded-xl p-2.5 flex items-center gap-2.5 shadow-md dark:shadow-none border border-gray-200 dark:border-[#1F2937]">`;
+            html += `<div class="w-7 h-7 rounded-full bg-gray-100 dark:bg-[#161F2E] flex items-center justify-center text-${d.offline?'gray-500':colorClass} dark:text-gray-300"><i class="ph-fill ${d.icon} text-base"></i></div>`;
+            html += `<div class="flex-1 min-w-0"><div class="text-[11px] font-bold text-gray-900 dark:text-white truncate">${d.name}</div><div class="text-[9px] ${d.offline?'text-red-500':'text-gray-500'} font-mono">${d.offline?'Offline':d.rssi}</div></div>`;
+            html += `</div></div>`;
+            return html;
+        }).join('');
+
+        // === Vykreslování Quick Actions ===
+        const actions = [
+            {i: 'plus-circle', c: 'blue-500', t: 'Párovat<br>Nové', tEn: 'Pair<br>New'},
+            {i: 'arrows-clockwise', c: 'blue-500', t: 'Obnovit<br>Topo', tEn: 'Refresh<br>Topo'},
+            {i: 'upload-simple', c: 'blue-500', t: 'Export<br>Dat', tEn: 'Export<br>Data'},
+            {i: 'arrows-down-up', c: 'blue-500', t: 'Změnit<br>Prioritu', tEn: 'Change<br>Priority'},
+            {i: 'leaf', c: 'green-500', t: 'Úspora<br>Energie', tEn: 'Power<br>Save'},
+            {i: 'plugs-connected', c: 'gray-500', t: 'Připojit<br>Vše', tEn: 'Connect<br>All'},
+            {i: 'x-circle', c: 'red-500', t: 'Odpojit<br>Vše', tEn: 'Disconnect<br>All', ex: 'bg-red-50 dark:bg-[#20151A] border-red-100 dark:border-[#3A1D23]'},
+            {i: 'gear', c: 'gray-500', t: 'Další<br>Nastavení', tEn: 'More<br>Settings'}
+        ];
+        document.getElementById('quick-actions').innerHTML = actions.map(a => `
+            <button class="${a.ex ? a.ex : 'bg-gray-50 dark:bg-[#0A0E17] border-gray-200 dark:border-[#1F2937] hover:bg-gray-100 dark:hover:bg-[#1A2537]'} border rounded-xl p-2 flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95 aspect-square shadow-sm">
+                <i class="ph-bold ph-${a.i} text-${a.c} text-lg"></i>
+                <span class="text-[8px] text-center font-bold text-gray-600 dark:text-gray-400 leading-tight i18n" data-cs="${a.t}" data-en="${a.tEn}">${a.t}</span>
+            </button>
+        `).join('');
+
+        // === Select Device ===
+        function selectDevice(nodeId) {
+            document.querySelectorAll('.topo-device').forEach(el => el.classList.remove('selected'));
+            document.getElementById(nodeId).classList.add('selected');
+            const data = devices.find(d => d.id === nodeId);
+            if(!data) return;
+
+            document.getElementById('detail-name').innerText = data.name;
+            document.getElementById('detail-rssi').innerHTML = `<i class="ph-fill ph-cell-signal-${data.offline ? 'none text-gray-500' : 'full'}"></i> ${data.rssi}`;
+
+            const isA = data.adapter === 'A';
+            const colorClass = isA ? 'blue' : 'green';
+            const hexColor = isA ? '#00F0FF' : '#39FF14';
+            const elAdapter = document.getElementById('detail-adapter');
+            elAdapter.className = `text-${colorClass}-700 dark:text-[${hexColor}] font-bold bg-${colorClass}-50 dark:bg-[${hexColor}]/10 border border-${colorClass}-200 dark:border-[${hexColor}]/30 px-2 py-0.5 rounded shadow-sm text-[10px] uppercase`;
+            elAdapter.innerText = `Adapter ${data.adapter}`;
+
+            const statusBlock = document.getElementById('detail-status');
+            if(data.offline) {
+                statusBlock.className = 'flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-6 font-semibold bg-gray-100 dark:bg-gray-800 w-max px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700';
+                document.getElementById('detail-status-icon').className = 'ph-fill ph-warning-circle';
+                document.getElementById('detail-status-text').innerText = 'Offline';
+            } else {
+                statusBlock.className = `flex items-center gap-1.5 text-xs text-${colorClass}-600 dark:text-[${hexColor}] mb-6 font-semibold bg-${colorClass}-50 dark:bg-[${hexColor}]/10 w-max px-2.5 py-1 rounded-md border border-${colorClass}-200 dark:border-[${hexColor}]/20`;
+                document.getElementById('detail-status-icon').className = 'ph-fill ph-check-circle';
+                document.getElementById('detail-status-text').innerText = currentLang === 'cs' ? 'Připojeno aktivně' : 'Active Connection';
+            }
+        }
+
+        // === INTERAKTIVNÍ TOPOLOGIE ===
+        const topoWrapper = document.getElementById('topo-wrapper');
+        const topoCanvas = document.getElementById('topo-canvas');
+        let scale = 1, panX = 0, panY = 0, isDragging = false, startX, startY;
+
+        function centerCanvas() {
+            const wrapperRect = topoWrapper.getBoundingClientRect();
+            panX = (wrapperRect.width - 1400) / 2;
+            panY = (wrapperRect.height - 600) / 2;
+            updateTransform();
+        }
+
+        function updateTransform() { topoCanvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+        function zoomTopo(amount) { scale = Math.min(Math.max(0.5, scale + amount), 2); updateTransform(); }
+        function resetTopo() { scale = 1; centerCanvas(); }
+
+        topoWrapper.addEventListener('mousedown', (e) => {
+            if(e.target.closest('.topo-device') || e.target.tagName === 'BUTTON') return;
+            isDragging = true; startX = e.clientX - panX; startY = e.clientY - panY;
+        });
+        window.addEventListener('mousemove', (e) => { if (isDragging) { panX = e.clientX - startX; panY = e.clientY - startY; updateTransform(); } });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mouseleave', () => isDragging = false);
+        topoWrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            scale = Math.min(Math.max(0.4, scale * (e.deltaY < 0 ? 1.05 : 0.95)), 2);
+            updateTransform();
+        });
+
+        // === VYKRESLOVÁNÍ ČAR SVG (Zcela nová čistá logika pro hrany) ===
+        function drawTopologyLines() {
+            const svg = document.getElementById('topology-lines');
+            if (!svg) return;
+            svg.innerHTML = `<defs><marker id="arrowhead-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#00F0FF" /></marker><marker id="arrowhead-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#39FF14" /></marker><marker id="arrowhead-gray" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="#9CA3AF" /></marker></defs>`;
+
+            const isDark = document.documentElement.classList.contains('dark');
+            const cCyan = isDark ? '#00F0FF' : '#3B82F6';
+            const cGreen = isDark ? '#39FF14' : '#16A34A';
+
+            devices.forEach(d => {
+                const isSource = d.source;
+                const idFrom = isSource ? d.id : (d.adapter === 'A' ? 'node-adapter-a' : 'node-adapter-b');
+                const idTo = isSource ? (d.adapter === 'A' ? 'node-adapter-a' : 'node-adapter-b') : d.id;
+
+                const elFrom = document.getElementById(idFrom);
+                const elTo = document.getElementById(idTo);
+                if(!elFrom || !elTo) return;
+
+                const cx1 = elFrom.offsetLeft, cy1 = elFrom.offsetTop;
+                const cx2 = elTo.offsetLeft, cy2 = elTo.offsetTop;
+
+                const isAdapterFrom = idFrom.includes('adapter');
+                const isAdapterTo = idTo.includes('adapter');
+
+                const dx = cx2 - cx1;
+                const dy = cy2 - cy1;
+                const angle = Math.atan2(dy, dx);
+
+                let startX, startY, endX, endY;
+                const wFrom = elFrom.offsetWidth/2, hFrom = elFrom.offsetHeight/2;
+                const wTo = elTo.offsetWidth/2, hTo = elTo.offsetHeight/2;
+
+                // Start point
+                if (isAdapterFrom) {
+                    startX = cx1; startY = cy1; // Skryto přímo pod logem
+                } else {
+                    if (Math.abs(dy) * wFrom > Math.abs(dx) * hFrom) { startX = cx1; startY = dy>0 ? cy1+hFrom+2 : cy1-hFrom-2; }
+                    else { startX = dx>0 ? cx1+wFrom+2 : cx1-wFrom-2; startY = cy1; }
+                }
+
+                // End point
+                if (isAdapterTo) {
+                    endX = cx2 - Math.cos(angle) * 45; endY = cy2 - Math.sin(angle) * 45; // Hlava šipky u okraje adaptéru
+                } else {
+                    if (Math.abs(dy) * wTo > Math.abs(dx) * hTo) { endX = cx2; endY = dy>0 ? cy2-hTo-4 : cy2+hTo+4; }
+                    else { endX = dx>0 ? cx2-wTo-4 : cx2+wTo+4; endY = cy2; }
+                }
+
+                // Control points for bezier curves
+                let cp1X, cp1Y, cp2X, cp2Y;
+                if (isAdapterFrom) { cp1X = startX + Math.cos(angle)*80; cp1Y = startY + Math.sin(angle)*80; }
+                else { cp1X = Math.abs(dy)*wFrom > Math.abs(dx)*hFrom ? startX : startX + Math.sign(dx)*60; cp1Y = Math.abs(dy)*wFrom > Math.abs(dx)*hFrom ? startY + Math.sign(dy)*60 : startY; }
+
+                if (isAdapterTo) { cp2X = endX - Math.cos(angle)*80; cp2Y = endY - Math.sin(angle)*80; }
+                else { cp2X = Math.abs(dy)*wTo > Math.abs(dx)*hTo ? endX : endX - Math.sign(dx)*60; cp2Y = Math.abs(dy)*wTo > Math.abs(dx)*hTo ? endY - Math.sign(dy)*60 : endY; }
+
+                let drawColor = d.adapter === 'A' ? cCyan : cGreen;
+                let markerName = d.adapter === 'A' ? 'cyan' : 'green';
+                if(d.offline) { drawColor = '#9CA3AF'; markerName = 'gray'; }
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`);
+                path.setAttribute('stroke', drawColor);
+                path.setAttribute('stroke-width', '2.5');
+                path.setAttribute('fill', 'none');
+                if (d.offline || isSource) path.setAttribute('stroke-dasharray', '5,5');
+                if (!d.offline && (d.adapter === 'A' || isSource)) path.setAttribute('marker-end', `url(#arrowhead-${markerName})`);
+
+                svg.appendChild(path);
+            });
+        }
+
+        // === MÓDY A TÉMATA ===
+        function setMode(mode) {
+            document.body.className = `${mode === 'basic' ? 'mode-basic' : 'mode-advanced'} font-sans ${document.documentElement.classList.contains('dark') ? 'bg-[#0A0E17] text-gray-100' : 'bg-gray-100 text-gray-900'}`;
+            if(mode === 'basic') {
+                document.getElementById('btn-basic').className = 'px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 bg-blue-500 text-white shadow';
+                document.getElementById('btn-advanced').className = 'px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 text-gray-500 hover:text-gray-900 dark:hover:text-white';
+            } else {
+                document.getElementById('btn-advanced').className = 'px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 bg-blue-500 text-white shadow';
+                document.getElementById('btn-basic').className = 'px-3 py-1.5 rounded text-xs font-semibold transition-all active:scale-95 text-gray-500 hover:text-gray-900 dark:hover:text-white';
+            }
+            setTimeout(() => { centerCanvas(); drawTopologyLines(); }, 150);
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+            document.getElementById('theme-icon').className = html.classList.contains('dark') ? 'ph-fill ph-moon text-lg' : 'ph-fill ph-sun text-lg text-yellow-500';
+            setMode(document.body.classList.contains('mode-basic') ? 'basic' : 'advanced'); // Re-apply body bg
+            drawTopologyLines();
+        }
+
+        let currentLang = 'cs';
+        function toggleLang() {
+            currentLang = currentLang === 'cs' ? 'en' : 'cs';
+            document.getElementById('lang-indicator').innerText = currentLang.toUpperCase();
+            document.querySelectorAll('.i18n').forEach(el => { el.innerText = el.getAttribute(`data-${currentLang}`); });
+            const selected = document.querySelector('.topo-device.selected');
+            if (selected) selectDevice(selected.id);
+        }
+
+        window.onload = () => { centerCanvas(); setTimeout(drawTopologyLines, 100); selectDevice('node-a1'); };
+        window.addEventListener('resize', drawTopologyLines);
+
+    </script>
+</body>
+</html>

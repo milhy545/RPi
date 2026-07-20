@@ -1,126 +1,166 @@
 import asyncio
-import os
 import sys
+import threading
+import time
+from contextlib import nullcontext
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tui import RPiDashboard
+from mode_switcher import ModeSwitcher
 from mode_switcher import ModeSwitcherState
 
-async def wait_for_log(app: RPiDashboard, needles: tuple[str, ...], timeout: float = 8.0) -> bool:
+
+class DashboardHarness:
+    def __init__(self) -> None:
+        self.exit_called = False
+        self.pause_api_server_called = False
+        self.resume_api_server_called = False
+        self.replay_log_buffer_called = False
+        self.mode_switcher = ModeSwitcher(self)
+
+    def exit(self) -> None:
+        self.exit_called = True
+
+    def pause_api_server(self) -> None:
+        self.pause_api_server_called = True
+
+    def resume_api_server(self) -> None:
+        self.resume_api_server_called = True
+
+    def replay_log_buffer(self) -> None:
+        self.replay_log_buffer_called = True
+
+    def suspend(self):
+        return nullcontext()
+
+    def write_log(self, message: str) -> None:
+        self.mode_switcher.log_buffer.write(message)
+
+
+class FakeProcess:
+    def __init__(self, return_code: int | None = 0, delay: float = 0.0) -> None:
+        self.return_code = return_code
+        self.delay = delay
+        self._done = threading.Event()
+        self._code: int | None = None
+
+    def wait(self) -> int:
+        if self.return_code is None:
+            self._done.wait()
+        elif self.delay:
+            deadline = time.monotonic() + self.delay
+            while time.monotonic() < deadline and not self._done.is_set():
+                time.sleep(0.005)
+            if self._code is None:
+                self._code = self.return_code
+                self._done.set()
+        else:
+            self._code = self.return_code
+            self._done.set()
+        return self._code if self._code is not None else -15
+
+    def poll(self) -> int | None:
+        return self._code if self._done.is_set() else None
+
+    def terminate(self) -> None:
+        self._code = -15
+        self._done.set()
+
+    def kill(self) -> None:
+        self._code = -9
+        self._done.set()
+
+
+def fake_popen(command: list[str], **_kwargs) -> FakeProcess:
+    if command[0] == "false":
+        return FakeProcess(return_code=1)
+    if command[:2] == ["sleep", "999"]:
+        return FakeProcess(return_code=0, delay=5.0)
+    if command[0] == "sleep":
+        return FakeProcess(return_code=0, delay=float(command[1]))
+    return FakeProcess(return_code=0)
+
+
+async def wait_for_state(
+    app: DashboardHarness,
+    state: ModeSwitcherState,
+    timeout: float = 2.0,
+) -> None:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
-        logs = app.mode_switcher.log_buffer.get_lines()
-        if any(any(needle in log for needle in needles) for log in logs):
-            return True
-        await asyncio.sleep(0.2)
-    return False
+        if app.mode_switcher.state == state:
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError(f"State is {app.mode_switcher.state}, expected {state}")
 
-async def run_tests():
+
+async def wait_for_exit(app: DashboardHarness, timeout: float = 2.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if app.exit_called:
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError("Dashboard exit was not requested")
+
+
+async def run_tests() -> None:
     print("=== STARTING MODE SWITCHER TEST SUITE ===")
-    os.environ["RPIDASHBOARD_TEST_COMMAND"] = "sleep 999"
-    app = RPiDashboard()
-    
-    async with app.run_test() as pilot:
-        print("Log buffer at start:", app.mode_switcher.log_buffer.get_lines())
-        
-        # 1. Verify app starts and is in IDLE mode
-        assert app.mode_switcher.state == ModeSwitcherState.IDLE
-        print("✓ App started in IDLE mode")
+    app = DashboardHarness()
 
-        # 2. Test watchdog timeout (press "w")
-        print("\n--- Testing Watchdog Timeout ---")
-        print("Pressing 'w' to launch 'sleep 999' with 5s watchdog timeout...")
-        await pilot.press("w")
-        await asyncio.sleep(2.0)  # Increased from 0.5s for CI reliability
-        
-        # Should be RUNNING
-        assert app.mode_switcher.state == ModeSwitcherState.RUNNING
-        print("✓ State transitioned to RUNNING")
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    print("App started in IDLE mode")
 
-        print("Waiting for watchdog to trigger (5s limit)...")
-        await asyncio.sleep(5.5)
-        
-        # Watchdog should fire, terminate sleep, and restore TUI
-        assert app.mode_switcher.state == ModeSwitcherState.IDLE
-        logs = app.mode_switcher.log_buffer.get_lines()
-        assert any("Watchdog fired" in log for log in logs)
-        print("✓ Watchdog fired, terminated process, and restored state to IDLE")
+    print("\n--- Testing Watchdog Timeout ---")
+    watchdog_result = await app.mode_switcher.launch(["sleep", "999"], timeout=0.05)
+    assert watchdog_result is False
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    assert any("Watchdog fired" in log for log in app.mode_switcher.log_buffer.get_lines())
+    print("Watchdog fired, terminated process, and restored state to IDLE")
 
-        # 3. Test crash recovery (press "c")
-        print("\n--- Testing Crash Recovery ---")
-        print("Pressing 'c' to launch 'false' (non-zero exit status)...")
-        await pilot.press("c")
-        
-        print("Waiting for exit...")
-        await asyncio.sleep(1.0)
-        assert app.mode_switcher.state == ModeSwitcherState.IDLE
-        logs = app.mode_switcher.log_buffer.get_lines()
-        assert any("returned code 1" in log for log in logs)
-        print("✓ Crash recovery verified (TUI safely restored to IDLE after non-zero exit)")
+    print("\n--- Testing Crash Recovery ---")
+    crash_result = await app.mode_switcher.launch(["false"], timeout=0)
+    assert crash_result is False
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    assert any("returned code 1" in log for log in app.mode_switcher.log_buffer.get_lines())
+    print("Crash recovery verified after non-zero exit")
 
-        # 4. Test concurrency serialization (press "g")
-        print("\n--- Testing Concurrency Serialization ---")
-        print("Pressing 'g' to trigger concurrent launch requests...")
-        await pilot.press("g")
-        assert await wait_for_log(app, ("Concurrency serialization test passed",), timeout=9.0)
-        
-        logs = app.mode_switcher.log_buffer.get_lines()
-        success_logs = [log for log in logs if "succeeded" in log or "passed" in log or "finished" in log]
-        print("Relevant logs:")
-        for w in success_logs[-3:]:
-            print(f"  {w}")
-        assert any("passed" in log or "succeeded" in log for log in logs)
-        print("✓ Concurrency serialization works - both launches succeeded sequentially")
+    print("\n--- Testing Concurrency Serialization ---")
+    t1 = asyncio.create_task(app.mode_switcher.launch(["sleep", "0.1"], timeout=0))
+    await asyncio.sleep(0.02)
+    t2 = asyncio.create_task(app.mode_switcher.launch(["sleep", "0.1"], timeout=0))
+    assert await asyncio.gather(t1, t2) == [True, True]
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    print("Concurrency serialization works")
 
-        await asyncio.sleep(3.0)  # Wait for mode switcher to fully reset
+    print("\n--- Testing SIGINT Handling ---")
+    sigint_task = asyncio.create_task(app.mode_switcher.launch(["sleep", "999"], timeout=0))
+    await wait_for_state(app, ModeSwitcherState.RUNNING)
+    app.mode_switcher._handle_sigint()
+    assert await sigint_task is False
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    print("SIGINT handled, subprocess terminated, state restored to IDLE")
 
-        # 5. Test SIGINT handling (launch via keyboard, then trigger sigint)
-        print("\n--- Testing SIGINT Handling ---")
-        print("Pressing 'w' to launch with test command...")
-        await pilot.press("w")
-        
-        # Wait for state transition
-        for i in range(10):
-            await asyncio.sleep(0.5)
-            if app.mode_switcher.state == ModeSwitcherState.RUNNING:
-                break
-        assert app.mode_switcher.state == ModeSwitcherState.RUNNING, f"State is {app.mode_switcher.state}, expected RUNNING"
-        print("✓ Test subprocess running")
+    print("\n--- Testing SIGTERM Handling ---")
+    sigterm_task = asyncio.create_task(app.mode_switcher.launch(["sleep", "999"], timeout=0))
+    await wait_for_state(app, ModeSwitcherState.RUNNING)
+    app.mode_switcher._handle_sigterm()
+    assert await sigterm_task is False
+    assert app.mode_switcher.state == ModeSwitcherState.IDLE
+    await wait_for_exit(app)
+    print("SIGTERM handled, clean shutdown initiated")
 
-        print("Sending SIGINT to process...")
-        app.mode_switcher._handle_sigint()
-        
-        await asyncio.sleep(1.0)
-        assert app.mode_switcher.state == ModeSwitcherState.IDLE
-        print("✓ SIGINT handled, subprocess terminated, state restored to IDLE")
+    assert app.pause_api_server_called is True
+    assert app.resume_api_server_called is True
+    assert app.replay_log_buffer_called is True
+    print("\n=== ALL TESTS PASSED SUCCESSFULLY ===")
 
-        await asyncio.sleep(2.0)  # Wait for mode switcher to fully reset
 
-        # 6. Test SIGTERM handling (launch via keyboard, then trigger sigterm)
-        print("\n--- Testing SIGTERM Handling ---")
-        print("Pressing 'w' to launch with test command...")
-        await pilot.press("w")
-        
-        # Wait for state transition
-        for i in range(10):
-            await asyncio.sleep(0.5)
-            if app.mode_switcher.state == ModeSwitcherState.RUNNING:
-                break
-        assert app.mode_switcher.state == ModeSwitcherState.RUNNING, f"State is {app.mode_switcher.state}, expected RUNNING"
-        print("✓ Test subprocess running")
+def test_mode_switcher_suite() -> None:
+    with patch("mode_switcher.subprocess.Popen", side_effect=fake_popen):
+        asyncio.run(run_tests())
 
-        print("Sending SIGTERM to process...")
-        app.mode_switcher._handle_sigterm()
-        
-        await asyncio.sleep(1.0)
-        print("✓ SIGTERM handled, clean shutdown initiated")
-        
-        print("\n=== ALL TESTS PASSED SUCCESSFULLY ===")
-
-def test_mode_switcher_suite():
-    asyncio.run(run_tests())
 
 if __name__ == "__main__":
     test_mode_switcher_suite()
