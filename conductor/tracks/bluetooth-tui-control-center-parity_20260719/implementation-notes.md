@@ -1,5 +1,29 @@
 # Implementation Notes
 
+## TUI Control Center Parity
+
+- Added `rpi_dashboard/tui/bluetooth_console.py`, a pure renderer for stable Adapter A/B slots, device classification, topology, legend, device tables, quick actions, status, diagnostics, events, help, footer, and compact fallback output.
+- Rebuilt the live `tui.py` Bluetooth tab as the reference-shaped full-width topology plus four-column middle and bottom grids.
+- Added full `170x48` and compact `85x24` layouts. The full layout uses six fixed 27-character topology zones and does not overlap or scroll.
+- Preserved adapter-aware pair, trust, connect, disconnect, remove, scan, and refresh plumbing. `G` and `M` produce explicit visible no-op notices as allowed by the route.
+- Added an optional `RPIDASHBOARD_INITIAL_TAB` runtime setting for deterministic tty verification while preserving `tab_player` as the default.
+- Added an explicit SIGTERM handler and systemd stop timeout so dashboard restarts exit cleanly instead of hanging.
+- Configured tty1 to use `Lat2-Terminus16`, increasing the physical console from `85x24` to `170x48` on the 1360x768 framebuffer.
+- Normalized device labels to ASCII and replaced markup-sensitive square brackets in live names, for example `[Samsung]` becomes `(Samsung)`.
+
+## TUI Verification Evidence
+
+- Focused checks: `uv run ruff check rpi_dashboard/tui/bluetooth_console.py tui.py tests/test_bluetooth_tui_console.py` passed.
+- Focused tests: `uv run pytest -q tests/test_bluetooth_tui_console.py tests/test_tui_modern.py -x` reported `20 passed`.
+- Full local gateway: `tools/run-ci.sh` reported `191 passed` and wrote `conductor/ci/reports/8c771ff-20260722-001605.md`.
+- The new tests cover zero, one, and two adapters; deterministic classification; ASCII-safe output; 170x48 and 85x24 layouts; panel geometry; and `S/P/C/D/X/R/G/M` key behavior with destructive operations mocked.
+- A Textual SVG was rasterized and inspected on Milhy-PC at 170x48.
+- Physical tty1 capture `/tmp/bluetooth-tui-tty1-final.png` was inspected at 1360x768 and contains the complete reference structure without overlap.
+- `/dev/vcs1` confirmed the header, topology, legend, four middle panels, four bottom panels, and one-line footer.
+- Live state during tty verification: backend `bluez-dbus`, degraded `false`, 2 adapters, 3 devices.
+- `dashboard@milhy777.service` restarted in 2 seconds with `Result=success`; tty1 remained `170x48` and the service/API remained active.
+- Generated screenshots remain runtime artifacts and are not committed.
+
 ## Completed Scope
 
 - Ported the saved Gemini WebUI prototype into the production Bluetooth WebUI tab using local static HTML/CSS/JS.
