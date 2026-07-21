@@ -184,3 +184,6 @@ Verification evidence:
 - Milhy-PC browser against live RPi: PASS, 4 real nodes and 8 quick actions;
   every supported settings, scan, power, pair, trust, connect, disconnect, and
   remove response was required to return `ok: true`.
+- The first Milhy-PC gateway retry correctly rejected a preview server holding
+  the production API test port `18090`. The preview process was stopped and the
+  port was verified free before rerunning the complete gateway.
