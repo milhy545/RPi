@@ -129,14 +129,17 @@ def test_adapter_slots_are_stable_by_bluez_index() -> None:
 
 def test_device_classification_covers_reference_groups() -> None:
     assert classify_device({"kind": "speaker"}) == "audio_output"
+    assert classify_device({"icon": "audio-headset", "name": "Wireless Headphones"}) == "audio_output"
     assert classify_device({"name": "Alexa Echo Dot"}) == "audio_input"
     assert classify_device({"name": "BLE Sensor"}) == "io"
     assert classify_device({"icon": "input-gaming"}) == "controller"
 
 
 def test_full_console_contains_every_reference_panel() -> None:
+    state = bluetooth_state()
+    state["selected_device_key"] = "adapter-a/soundbar"
     view = build_bluetooth_console(
-        bluetooth_state(),
+        state,
         facts={"os": "Bookworm (64-bit)", "kernel": "6.6.31", "bluez": "5.72", "uptime": "3d 14h"},
         cpu_percent=18,
         memory_percent=23,
@@ -144,6 +147,8 @@ def test_full_console_contains_every_reference_panel() -> None:
 
     assert "RPi Bluetooth Control Center (TUI)" in plain(view.header)
     assert "(Samsung)" in plain(view.adapter_a)
+    assert ">1 (Samsung)" in plain(view.adapter_a)
+    assert "Target: (Samsung) Soundbar" in plain(view.footer)
     assert "AUDIO OUTPUT DEVICES" in plain(view.topology)
     assert "AUDIO INPUT DEVICES" in plain(view.topology)
     assert "IO DEVICES" in plain(view.topology)
@@ -212,6 +217,11 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             assert "TOPOLOGY" in str(full_app.query_one("#txt_bluetooth_topology", Static).render())
             assert "DIAGNOSTICS" in str(full_app.query_one("#txt_bt_diagnostics", Static).render())
             assert "Bluetooth Service" in str(full_app.query_one("#txt_bt_footer", Static).render())
+            assert full_app._bt_selected_device_key == "adapter-a/soundbar"
+            await pilot.press("down")
+            await pilot.pause(0.05)
+            assert full_app._bt_selected_device_key == "adapter-a/phone"
+            assert "Smartphone XYZ" in str(full_app.query_one("#txt_bt_footer", Static).render())
 
         compact_app = tui.RPiDashboard()
         async with compact_app.run_test(size=(85, 24)) as pilot:
@@ -222,7 +232,12 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             assert panel.has_class("bt-compact")
             compact = str(compact_app.query_one("#txt_bt_compact", Static).render())
             assert "RPi Bluetooth Control Center" in compact
-            assert "Xbox Wireless Controller" in compact
+            assert "(Samsung) Soundbar" in compact
+            assert "Smartphone XYZ" in compact
+            compact_widget = compact_app.query_one("#txt_bt_compact", Static)
+            assert compact_widget.content_size.height == compact_widget.size.height
+            assert "[M] Settings" in compact
+            assert "Settings" in compact_app.export_screenshot()
 
     asyncio.run(run_check())
 

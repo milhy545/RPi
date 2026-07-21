@@ -10,6 +10,9 @@
 - Added an explicit SIGTERM handler and systemd stop timeout so dashboard restarts exit cleanly instead of hanging.
 - Configured tty1 to use `Lat2-Terminus16`, increasing the physical console from `85x24` to `170x48` on the 1360x768 framebuffer.
 - Normalized device labels to ASCII and replaced markup-sensitive square brackets in live names, for example `[Samsung]` becomes `(Samsung)`.
+- Addressed Codex PR review by prioritizing headset/headphone output evidence over generic `phone` input matching.
+- Added a visible `>` target marker, Up/Down target navigation, default/preserved device-key selection, and a matching footer target so full-layout actions never depend on an unreachable hidden selector.
+- Reserved the compact layout's final two rows for shortcuts and limited its device summary to two rows; the 85x24 screenshot now shows every advertised action through `[M] Settings`.
 
 ## TUI Verification Evidence
 
@@ -22,6 +25,7 @@
 - `/dev/vcs1` confirmed the header, topology, legend, four middle panels, four bottom panels, and one-line footer.
 - Live state during tty verification: backend `bluez-dbus`, degraded `false`, 2 adapters, 3 devices.
 - `dashboard@milhy777.service` restarted in 2 seconds with `Result=success`; tty1 remained `170x48` and the service/API remained active.
+- Post-review physical `/dev/vcs1` verification confirmed the audio-output classification, visible target marker, matching footer target, and `170x48` dimensions.
 - Generated screenshots remain runtime artifacts and are not committed.
 
 ## Completed Scope
