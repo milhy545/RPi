@@ -52,10 +52,10 @@ def classify_device(device: Device) -> str:
     combined = " ".join((kind, name, icon, evidence))
     if any(token in combined for token in ("gamepad", "xbox", "controller", "keyboard", "mouse", "midi", "input-gaming")):
         return "controller"
-    if any(token in combined for token in ("microphone", "smartphone", "phone", "echo", "audio-input", "audio-source")):
-        return "audio_input"
     if any(token in combined for token in ("speaker", "soundbar", "headphone", "headset", "audio-headset", "audio-output")):
         return "audio_output"
+    if any(token in combined for token in ("microphone", "smartphone", "phone", "echo", "audio-input", "audio-source")):
+        return "audio_input"
     return "io"
 
 
@@ -183,24 +183,26 @@ def _topology(adapters: list[Adapter], devices: list[Device]) -> str:
     return "\n".join(lines)
 
 
-def _adapter_table(title: str, adapter: Adapter, devices: list[Device], color: str) -> str:
-    rows = [f"[bold {color}]{title}[/]", "# Device          RSSI    Status", "--------------------------------------"]
+def _adapter_table(title: str, adapter: Adapter, devices: list[Device], color: str, selected_key: str) -> str:
+    rows = [f"[bold {color}]{title}[/]", " # Device         RSSI    Status", "--------------------------------------"]
     adapter_devices = [device for device in devices if device.get("adapter_id") == adapter.get("id")]
     for index, device in enumerate(adapter_devices[:4], start=1):
         status, status_color = _status(device)
-        rows.append(f"{index} {_name(device, 13):<13} {_rssi(device):>7} [{status_color}]{status}[/]")
+        marker = ">" if device.get("key") == selected_key else " "
+        rows.append(f"{marker}{index} {_name(device, 12):<12} {_rssi(device):>7} [{status_color}]{status}[/]")
     while len(rows) < 7:
         rows.append("[dim]- --                   --      --[/]")
     rows.append(f"[{color}]Adapter Address:[/] {adapter.get('address', '--')}")
     return "\n".join(rows)
 
 
-def _available(devices: list[Device], adapter_a: Adapter, adapter_b: Adapter) -> str:
+def _available(devices: list[Device], adapter_a: Adapter, adapter_b: Adapter, selected_key: str) -> str:
     labels = {adapter_a.get("id"): "A", adapter_b.get("id"): "B"}
     rows = ["[bold yellow]AVAILABLE DEVICES[/]", "Device Name       RSSI    Adapter", "--------------------------------------"]
     available = [device for device in devices if not device.get("connected")]
     for device in available[:4]:
-        rows.append(f"{_name(device, 15):<15} {_rssi(device):>7} {labels.get(device.get('adapter_id'), '-')}")
+        marker = ">" if device.get("key") == selected_key else " "
+        rows.append(f"{marker}{_name(device, 14):<14} {_rssi(device):>7} {labels.get(device.get('adapter_id'), '-')}")
     while len(rows) < 7:
         rows.append("[dim]--                   --      -[/]")
     rows.append(r"Press [yellow]\[P][/] to pair selected device")
@@ -283,6 +285,9 @@ def build_bluetooth_console(
     connected = len([device for device in devices if device.get("connected")])
     paired = len([device for device in devices if device.get("paired")])
     auto_connect = (state.get("settings") or {}).get("auto_connect", True)
+    selected_key = str(state.get("selected_device_key") or "")
+    selected_device = next((device for device in devices if device.get("key") == selected_key), None)
+    selected_name = _name(selected_device, 18) if selected_device else "None"
     service = "Degraded" if backend.get("degraded") or backend.get("available") is False else "Running"
     service_color = "red" if service == "Degraded" else "green"
     cpu = "--" if cpu_percent is None else f"{cpu_percent:.0f}%"
@@ -318,17 +323,19 @@ def build_bluetooth_console(
     )
     footer = (
         f"Bluetooth Service: [{service_color}]{service}[/]     Total Connected: [green]{connected}[/] | "
-        f"Total Paired: [cyan]{paired}[/]     RPI OS: {facts.get('os', '--')} | CPU: {cpu} | Mem: {memory}"
+        f"Total Paired: [cyan]{paired}[/]     Target: [yellow]{selected_name}[/]     "
+        f"RPI OS: {facts.get('os', '--')} | CPU: {cpu} | Mem: {memory}"
     )
     compact_rows = [
-        header,
+        f"[bold cyan](BT)[/] [bold]RPi Bluetooth Control Center[/] | Auto: {'ON' if auto_connect else 'OFF'}",
         f"Service [{service_color}]{service}[/] | Adapters {len(adapters)} | Connected {connected} | Paired {paired}",
         "[cyan]A / AUDIO[/] " + (f"{adapter_a.get('alias') or adapter_a.get('id')} {_power(adapter_a)[0]}" if adapter_a else "Not present"),
         "[green]B / IO[/]    " + (f"{adapter_b.get('alias') or adapter_b.get('id')} {_power(adapter_b)[0]}" if adapter_b else "Not present"),
     ]
-    for device in devices[:6]:
+    for device in devices[:2]:
         status, color = _status(device)
-        compact_rows.append(f"[{color}]{status:<9}[/] {_name(device, 27):<27} {_rssi(device):>8}")
+        marker = ">" if device.get("key") == selected_key else " "
+        compact_rows.append(f"{marker}[{color}]{status:<9}[/] {_name(device, 27):<27} {_rssi(device):>8}")
     compact_rows.extend(
         (
             "",
@@ -340,9 +347,9 @@ def build_bluetooth_console(
         header=header,
         topology=_topology(adapters, devices),
         legend="[bold cyan]LEGEND:[/]  [cyan]----[/] Strong (> -70 dBm)    [yellow]----[/] Weak (-70 to -85 dBm)    [red]----[/] Disconnected (< -85 dBm)",
-        adapter_a=_adapter_table("ADAPTER A DEVICES (AUDIO)", adapter_a, devices, "cyan"),
-        adapter_b=_adapter_table("ADAPTER B DEVICES (IO & CONTROLLERS)", adapter_b, devices, "green"),
-        available=_available(devices, adapter_a, adapter_b),
+        adapter_a=_adapter_table("ADAPTER A DEVICES (AUDIO)", adapter_a, devices, "cyan", selected_key),
+        adapter_b=_adapter_table("ADAPTER B DEVICES (IO & CONTROLLERS)", adapter_b, devices, "green", selected_key),
+        available=_available(devices, adapter_a, adapter_b, selected_key),
         actions=actions,
         adapter_status=_adapter_status(adapters, devices),
         diagnostics=_diagnostics(state, facts),

@@ -896,11 +896,14 @@ class RPiDashboard(App):
             v2 = bluetooth.get("v2") or {}
             devices = v2.get("devices") or bluetooth.get("devices") or bluetooth.get("paired") or []
             adapters = v2.get("adapters") or []
-
-            self.render_bluetooth_console(v2, devices, adapters)
+            self._bluetooth_state_snapshot = v2
+            self._bluetooth_devices_snapshot = devices
+            self._bluetooth_adapters_snapshot = adapters
 
             if not devices:
                 bt_list.add_option(self.empty_bt_label())
+                self._bt_selected_device_key = ""
+                self.render_bluetooth_console(v2, devices, adapters)
                 return
 
             adapter_names = {
@@ -924,6 +927,20 @@ class RPiDashboard(App):
                     "device_key": key,
                     "mac": mac,
                 }
+            selected_key = getattr(self, "_bt_selected_device_key", "")
+            selected_index = next(
+                (
+                    index
+                    for index in range(bt_list.option_count)
+                    if self._bt_target_by_prompt.get(str(bt_list.get_option_at_index(index).prompt), {}).get("device_key")
+                    == selected_key
+                ),
+                0,
+            )
+            bt_list.highlighted = selected_index
+            selected_prompt = str(bt_list.get_option_at_index(selected_index).prompt)
+            self._bt_selected_device_key = self._bt_target_by_prompt[selected_prompt].get("device_key", "")
+            self.render_bluetooth_console(v2, devices, adapters)
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
 
@@ -958,6 +975,7 @@ class RPiDashboard(App):
         console_state = dict(state or {})
         console_state["devices"] = devices
         console_state["adapters"] = adapters
+        console_state["selected_device_key"] = getattr(self, "_bt_selected_device_key", "")
         cpu_percent, memory_percent = self.bluetooth_system_metrics()
         view = build_bluetooth_console(
             console_state,
@@ -1342,6 +1360,14 @@ class RPiDashboard(App):
             if sink_id:
                 self.write_log(f"[AUDIO] Setting default audio output to: {sink_id}")
                 asyncio.create_task(self.set_audio_sink(sink_id))
+        elif event.option_list.id == "list_bluetooth_devices":
+            prompt = str(event.option.prompt)
+            self._bt_selected_device_key = self._bt_target_by_prompt.get(prompt, {}).get("device_key", "")
+            self.render_bluetooth_console(
+                getattr(self, "_bluetooth_state_snapshot", {}),
+                getattr(self, "_bluetooth_devices_snapshot", []),
+                getattr(self, "_bluetooth_adapters_snapshot", []),
+            )
 
     async def set_audio_sink(self, sink_id: str) -> None:
         """Sets default PulseAudio/PipeWire audio sink and refreshes list."""
@@ -1974,13 +2000,32 @@ class RPiDashboard(App):
         self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
 
 
+    def move_bluetooth_selection(self, delta: int) -> None:
+        """Move the hidden action target and mirror it in the visible tables."""
+        bt_list = self.query_one("#list_bluetooth_devices", OptionList)
+        if bt_list.option_count == 0:
+            return
+        current = bt_list.highlighted if bt_list.highlighted is not None else 0
+        selected_index = (current + delta) % bt_list.option_count
+        bt_list.highlighted = selected_index
+        prompt = str(bt_list.get_option_at_index(selected_index).prompt)
+        self._bt_selected_device_key = self._bt_target_by_prompt.get(prompt, {}).get("device_key", "")
+        self.render_bluetooth_console(
+            getattr(self, "_bluetooth_state_snapshot", {}),
+            getattr(self, "_bluetooth_devices_snapshot", []),
+            getattr(self, "_bluetooth_adapters_snapshot", []),
+        )
+
     def on_key(self, event) -> None:
         """Reset inactivity on any keyboard input and handle test hotkeys."""
         try:
             bluetooth_active = self.query_one(TabbedContent).active == "tab_bluetooth"
         except Exception:
             bluetooth_active = False
-        if bluetooth_active and event.key in {"s", "p", "c", "d", "r", "x", "g", "m", "q"}:
+        if bluetooth_active and event.key in {"up", "down"}:
+            event.stop()
+            self.move_bluetooth_selection(-1 if event.key == "up" else 1)
+        elif bluetooth_active and event.key in {"s", "p", "c", "d", "r", "x", "g", "m", "q"}:
             event.stop()
             if event.key == "s":
                 asyncio.create_task(self.scan_bluetooth())
