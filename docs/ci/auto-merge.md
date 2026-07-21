@@ -14,10 +14,11 @@ Branch protection also requires these checks:
 - `verify-done`
 - `Kilo Code Review`
 
-All review conversations must be resolved. The merge method is squash because
-`main` requires linear history. GitHub performs the merge only after every
-required review, conversation, and status check is satisfied, and then deletes
-the source branch.
+All review conversations must be resolved. The merge method is rebase, which
+keeps `main` linear while preserving the Conductor commit SHA associated with
+the local CI receipt. GitHub performs the merge only after every required
+review, conversation, and status check is satisfied, and then deletes the
+source branch.
 
 Copilot and Codex reviews remain advisory. GitHub Copilot code review submits
 comments rather than approvals, so it cannot satisfy the required approval by

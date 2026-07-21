@@ -17,8 +17,8 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - name: Enable squash auto-merge
+      - name: Enable rebase auto-merge
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge "$PR_URL" --auto --squash --delete-branch
+        run: gh pr merge "$PR_URL" --auto --rebase --delete-branch
