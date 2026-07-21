@@ -146,6 +146,7 @@ def test_full_console_contains_every_reference_panel() -> None:
     )
 
     assert "RPi Bluetooth Control Center (TUI)" in plain(view.header)
+    assert "[T] Trust" in plain(view.header)
     assert "(Samsung)" in plain(view.adapter_a)
     assert ">1 (Samsung)" in plain(view.adapter_a)
     assert "Target: (Samsung) Soundbar" in plain(view.footer)
@@ -178,6 +179,14 @@ def test_zero_and_one_adapter_states_are_honest_and_ascii_safe() -> None:
             assert "Powered On" in rendered
         else:
             assert "Adapter Address: --" in rendered
+
+
+def test_console_font_is_declared_as_a_provisioning_dependency() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dependencies = (root / "provisioning/01-install-apt-deps.sh").read_text()
+    service = (root / "provisioning/dashboard.service").read_text()
+    assert "fonts-terminus" in dependencies
+    assert "Lat2-Terminus16" in service
 
 
 def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
@@ -237,6 +246,7 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             compact_widget = compact_app.query_one("#txt_bt_compact", Static)
             assert compact_widget.content_size.height == compact_widget.size.height
             assert "[M] Settings" in compact
+            assert "[T] Trust" in compact
             assert "Settings" in compact_app.export_screenshot()
 
     asyncio.run(run_check())
@@ -272,10 +282,10 @@ def test_bluetooth_keyboard_actions_and_visible_placeholders(monkeypatch) -> Non
             monkeypatch.setattr(app, "run_bluetooth_action", fake_action)
             monkeypatch.setattr(app, "scan_bluetooth", fake_scan)
             monkeypatch.setattr(app, "update_bluetooth_devices", fake_refresh)
-            await pilot.press("s", "p", "c", "d", "x", "r")
+            await pilot.press("s", "p", "t", "c", "d", "x", "r")
             await pilot.pause(0.1)
 
-            assert calls == ["scan", "pair", "connect", "disconnect", "remove", "refresh"]
+            assert calls == ["scan", "pair", "trust", "connect", "disconnect", "remove", "refresh"]
             await pilot.press("g")
             await pilot.pause(0.05)
             footer = str(app.query_one("#txt_bt_footer", Static).render())
