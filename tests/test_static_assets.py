@@ -84,3 +84,13 @@ def test_bluetooth_webui_production_tab_does_not_depend_on_external_cdn() -> Non
 
     assert "cdn.tailwindcss.com" not in index_html
     assert "unpkg.com/@phosphor-icons" not in index_html
+
+
+def test_bluetooth_controls_call_real_settings_endpoints_and_confirm_destructive_actions() -> None:
+    app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
+
+    assert "'/bt/settings?auto_connect='" in app_js
+    assert "'/bt/discoverable?adapter_id='" in app_js
+    assert "action==='pair'||action==='remove'" in app_js
+    assert "onoff==='off'&&!confirm" in app_js
+    assert "Auto Connect '+(on?'enabled':'disabled'),'info'" not in app_js

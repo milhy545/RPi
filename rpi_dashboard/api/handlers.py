@@ -161,6 +161,44 @@ def handle_bt_adapter_power(q: Dict[str, Any]) -> Dict[str, Any]:
     return bluetooth_service.set_adapter_power(adapter_id or None, powered)
 
 
+def handle_bt_discoverable(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set adapter discoverability."""
+    adapter_id = _get(q, "adapter_id")
+    discoverable = _get(q, "discoverable", "1").lower() not in {"0", "false", "off", "no"}
+    raw_timeout = _get(q, "timeout", "")
+    try:
+        timeout = int(raw_timeout) if raw_timeout else None
+    except ValueError:
+        return {"ok": False, "error": "timeout must be an integer", "code": "unsupported"}
+    return bluetooth_service.set_adapter_discoverable(
+        adapter_id or None,
+        discoverable,
+        timeout,
+    )
+
+
+def handle_bt_settings(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist dashboard-owned Bluetooth settings."""
+    raw_auto_connect = _get(q, "auto_connect", "")
+    auto_connect = None
+    if raw_auto_connect:
+        auto_connect = raw_auto_connect.lower() not in {"0", "false", "off", "no"}
+    raw_timeout = _get(q, "discoverable_timeout", "")
+    try:
+        timeout = int(raw_timeout) if raw_timeout else None
+    except ValueError:
+        return {
+            "ok": False,
+            "error": "discoverable_timeout must be an integer",
+            "code": "unsupported",
+        }
+    return bluetooth_service.update_settings(
+        auto_connect=auto_connect,
+        discoverable_timeout=timeout,
+        scan_mode=_get(q, "scan_mode", "") or None,
+    )
+
+
 def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
     """Run an adapter-aware Bluetooth device action."""
     action = _get(q, "action")

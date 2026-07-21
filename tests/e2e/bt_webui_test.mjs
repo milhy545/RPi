@@ -25,6 +25,7 @@ const mockState = {
   },
   operations: [],
   events: [{ type: 'scan', message: 'E2E scan complete' }],
+  settings: { auto_connect: false, discoverable_timeout: 120, scan_mode: 'balanced' },
 };
 
 const requests = [];
@@ -42,7 +43,7 @@ async function assertViewport(page, name, width, height) {
   await page.evaluate(() => {
     window.sw?.('bluetooth');
     window.btInitInteractions?.();
-    if (window.BT_UI?.state) window.renderBluetoothState(window.BT_UI.state.raw);
+    if (BT_UI?.state) window.renderBluetoothState(BT_UI.state.raw);
   });
   await page.waitForSelector('#p-bluetooth.active');
   await page.waitForSelector('#bt-topology', { state: 'attached' });
@@ -65,6 +66,23 @@ async function assertViewport(page, name, width, height) {
   for (const check of checks) {
     if (!check.ok) throw new Error(`${name} viewport failed for ${check.selector}: ${JSON.stringify(check)}`);
   }
+  const geometry = await page.evaluate(() => {
+    const checkboxLefts = [...document.querySelectorAll('.bt-area-filt input[type="checkbox"]')]
+      .map(element => Math.round(element.getBoundingClientRect().left));
+    const wrapper = document.querySelector('#bt-topo-wrapper')?.getBoundingClientRect();
+    const topologyFits = wrapper && [...document.querySelectorAll('.bt-device-node')].every(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.left >= wrapper.left - 2 && rect.right <= wrapper.right + 2;
+    });
+    return {
+      checkboxLefts,
+      topologyFits,
+      noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  if (new Set(geometry.checkboxLefts).size !== 1) throw new Error(`${name} filter checkboxes are not aligned: ${geometry.checkboxLefts}`);
+  if (!geometry.topologyFits) throw new Error(`${name} topology nodes overflow the canvas`);
+  if (!geometry.noHorizontalOverflow) throw new Error(`${name} page has horizontal overflow`);
   await page.screenshot({ path: `${ARTIFACTS}/bt-viewport-${name}.png`, fullPage: true });
 }
 
@@ -76,6 +94,7 @@ async function assertViewport(page, name, width, height) {
     if (msg.type() === 'error') consoleErrors.push(msg.text());
   });
   page.on('pageerror', err => consoleErrors.push(String(err)));
+  page.on('dialog', dialog => dialog.accept());
 
   await page.route('**/bt/state', route => {
     requests.push('/bt/state');
@@ -92,6 +111,14 @@ async function assertViewport(page, name, width, height) {
   await page.route('**/bt/device-action**', route => {
     requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
     return json(route, { ok: true, result: 'device action ok' });
+  });
+  await page.route('**/bt/discoverable**', route => {
+    requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
+    return json(route, { ok: true, result: 'discoverability ok' });
+  });
+  await page.route('**/bt/settings**', route => {
+    requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
+    return json(route, { ok: true, settings: mockState.settings });
   });
   await page.route('**/youtube/cookies/status', route => json(route, { ok: true }));
   await page.route('**/mpv/status', route => json(route, { on: false }));
@@ -139,28 +166,36 @@ async function assertViewport(page, name, width, height) {
 
   await page.click('#bt-auto-connect + .bt-slider');
   await page.click('#bt-discoverable-all + .bt-slider');
-  await page.selectOption('#bt-timeout', '5 min');
-  await page.selectOption('#bt-scan-mode', 'Aggressive');
+  await page.selectOption('#bt-timeout', '300');
+  await page.selectOption('#bt-scan-mode', 'aggressive');
 
   await page.click('#bt-app button:has-text("Scan Adapters")');
   await page.click('#bt-app button:has-text("New Device")');
   await page.click('#bt-adapters button:has-text("Scan")');
   await page.click('#bt-adapters button:has-text("Power Off")');
+  await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
   await page.click("button[onclick=\"btSelectedAction('pair')\"]");
+  await page.locator('.bt-device-node', { hasText: 'Samsung Soundbar' }).click();
   await page.click("button[onclick=\"btSelectedAction('disconnect')\"]");
-  await page.click('button[onclick="btMoveAdapter()"]');
+  if (!(await page.locator('#bt-device-details button:has-text("Přesunout adaptér")').isDisabled())) {
+    throw new Error('Unsupported move-adapter control must be disabled');
+  }
+  await page.locator('.bt-device-node', { hasText: 'Sony WH-1000XM4' }).click();
   await page.click("button[onclick=\"btSelectedAction('connect')\"]");
+  await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
   await page.click("button[onclick=\"btSelectedAction('trust')\"]");
   await page.click("button[onclick=\"btSelectedAction('remove')\"]");
 
   const quickTileCount = await page.locator('.bt-action-tile').count();
   if (quickTileCount !== 8) throw new Error(`Expected 8 quick actions, got ${quickTileCount}`);
   for (let i = 0; i < quickTileCount; i++) {
-    await page.locator('.bt-action-tile').nth(i).click();
+    const tile = page.locator('.bt-action-tile').nth(i);
+    if (!(await tile.isDisabled())) await tile.click();
     await page.waitForTimeout(50);
   }
 
   await page.screenshot({ path: `${ARTIFACTS}/bt-02-clicked-all.png`, fullPage: true });
+  await page.waitForTimeout(4200);
 
   await assertViewport(page, 'desktop', 1500, 950);
   await assertViewport(page, 'tablet', 900, 1100);
@@ -169,9 +204,13 @@ async function assertViewport(page, name, width, height) {
   const deviceAction = requests.some(r => r.includes('/bt/device-action') && r.includes('adapter_id=hci-a'));
   const discovery = requests.some(r => r.includes('/bt/discovery'));
   const adapterPower = requests.some(r => r.includes('/bt/adapter-power'));
+  const discoverability = requests.some(r => r.includes('/bt/discoverable'));
+  const settings = requests.some(r => r.includes('/bt/settings'));
   if (!deviceAction) throw new Error('No adapter-aware device action request was observed');
   if (!discovery) throw new Error('No discovery request was observed');
   if (!adapterPower) throw new Error('No adapter power request was observed');
+  if (!discoverability) throw new Error('No discoverability request was observed');
+  if (!settings) throw new Error('No Bluetooth settings request was observed');
   if (consoleErrors.length) throw new Error(`Console errors: ${consoleErrors.join('; ')}`);
 
   await browser.close();

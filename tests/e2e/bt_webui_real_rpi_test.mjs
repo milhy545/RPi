@@ -11,6 +11,11 @@ async function clickAndMaybeWait(page, selector, pattern, timeout = 45000) {
     : Promise.resolve(null);
   await page.click(selector, { timeout: 20000 });
   const response = await wait;
+  if (pattern) {
+    if (!response || response.timeout) throw new Error(`${selector} did not receive ${pattern}: ${response?.timeout || 'no response'}`);
+    const payload = await response.json().catch(error => ({ ok: false, error: `Invalid JSON: ${error}` }));
+    if (!response.ok() || payload.ok !== true) throw new Error(`${selector} failed: ${JSON.stringify(payload)}`);
+  }
   await page.waitForTimeout(1000);
   return response;
 }
@@ -46,6 +51,7 @@ async function screenshotViewport(page, name, width, height) {
     }
   });
   page.on('pageerror', err => errors.push(String(err)));
+  page.on('dialog', dialog => dialog.accept());
 
   await page.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.click('#tab-bluetooth');
@@ -89,41 +95,83 @@ async function screenshotViewport(page, name, width, height) {
   if (nodeCount < 1) throw new Error('No real Bluetooth device nodes rendered');
   await page.locator('.bt-device-node').first().click();
 
-  await clickAndMaybeWait(page, '#bt-auto-connect + .bt-slider', null);
-  await clickAndMaybeWait(page, '#bt-discoverable-all + .bt-slider', '/bt/discovery');
-  await page.selectOption('#bt-timeout', '5 min');
-  await page.selectOption('#bt-scan-mode', 'Aggressive');
+  await clickAndMaybeWait(page, '#bt-auto-connect + .bt-slider', '/bt/settings');
+  await clickAndMaybeWait(page, '#bt-discoverable-all + .bt-slider', '/bt/discoverable');
+  await Promise.all([
+    page.waitForResponse(response => response.url().includes('/bt/settings')),
+    page.selectOption('#bt-timeout', '300'),
+  ]);
+  await Promise.all([
+    page.waitForResponse(response => response.url().includes('/bt/settings')),
+    page.selectOption('#bt-scan-mode', 'aggressive'),
+  ]);
   await clickAndMaybeWait(page, '#bt-app button:has-text("Scan Adapters")', '/bt/discovery');
   await clickAndMaybeWait(page, '#bt-adapters button:has-text("Scan")', '/bt/discovery');
-  await clickAndMaybeWait(page, '#bt-adapters button:has-text("Power Off")', '/bt/adapter-power');
-  await page.waitForTimeout(5000);
-  await page.evaluate(() => window.bluetoothRefresh?.());
-  await page.waitForTimeout(10000);
-  const powerOnCount = await page.locator('#bt-adapters button:has-text("Power On")').count();
-  if (!powerOnCount) {
-    const state = await page.evaluate(async () => {
-      const response = await fetch('/bt/state');
-      const data = await response.json();
-      return data.adapters.map(adapter => [adapter.id, adapter.powered]);
-    });
-    if (!state.some(([, powered]) => powered === false)) {
-      console.log(`Power Off click completed but no adapter remained off: ${JSON.stringify(state)}`);
-    }
-  } else {
-    await clickAndMaybeWait(page, '#bt-adapters button:has-text("Power On")', '/bt/adapter-power');
+  const autoConnectOff = await page.evaluate(async () => (
+    await (await fetch('/bt/settings?auto_connect=0')).json()
+  ));
+  if (autoConnectOff.ok !== true) throw new Error(`Failed to disable Auto Connect for action tests: ${JSON.stringify(autoConnectOff)}`);
+
+  for (const action of ['pair', 'trust', 'disconnect', 'connect', 'remove']) {
+    const selected = await page.evaluate(async actionName => {
+      const predicate = {
+        pair: device => device.paired,
+        trust: device => !device.trusted || device.paired,
+        connect: device => device.paired && !device.connected,
+        disconnect: device => device.connected,
+        remove: device => device.present !== false && !device.paired,
+      }[actionName];
+      let device;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const freshState = await (await fetch('/bt/state')).json();
+        window.renderBluetoothState(freshState);
+        device = (BT_UI?.state?.devices || []).find(predicate);
+        if (device) break;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (!device) {
+        return {
+          ok: false,
+          devices: (BT_UI?.state?.devices || []).map(item => ({
+            name: item.name,
+            paired: item.paired,
+            trusted: item.trusted,
+            connected: item.connected,
+            present: item.present,
+          })),
+        };
+      }
+      BT_UI.selected = btStableKey(device);
+      if (actionName === 'pair') device.paired = false;
+      if (actionName === 'trust') device.trusted = false;
+      window.btRenderCurrent();
+      return { ok: true };
+    }, action);
+    if (!selected.ok) throw new Error(`No real device matched the ${action} test state: ${JSON.stringify(selected.devices)}`);
+    const selector = `button[onclick="btSelectedAction('${action}')"]`;
+    if (await page.locator(selector).isDisabled()) throw new Error(`${action} action is unexpectedly disabled`);
+    await clickAndMaybeWait(page, selector, '/bt/device-action');
+    await page.evaluate(() => window.bluetoothRefresh());
+    await page.waitForTimeout(500);
   }
+
+  await clickAndMaybeWait(page, '#bt-adapters button:has-text("Power Off")', '/bt/adapter-power');
   await page.waitForTimeout(3000);
 
-  for (const action of ['pair', 'trust', 'connect', 'disconnect', 'remove']) {
-    const selector = `button[onclick="btSelectedAction('${action}')"]`;
-    if (await page.locator(selector).count()) {
-      await clickAndMaybeWait(page, selector, '/bt/device-action');
+  const restore = await page.evaluate(async () => {
+    const state = await (await fetch('/bt/state')).json();
+    const results = [];
+    for (const adapter of state.adapters.filter(candidate => candidate.present && !candidate.powered)) {
+      results.push(await (await fetch(`/bt/adapter-power?adapter_id=${encodeURIComponent(adapter.id)}&powered=1`)).json());
     }
-  }
+    return results;
+  });
+  if (restore.some(result => result.ok !== true)) throw new Error(`Adapter power restore failed: ${JSON.stringify(restore)}`);
 
   const quickCount = await page.locator('.bt-action-tile').count();
   for (let i = 0; i < quickCount; i++) {
-    await page.locator('.bt-action-tile').nth(i).click();
+    const tile = page.locator('.bt-action-tile').nth(i);
+    if (!(await tile.isDisabled())) await tile.click();
     await page.waitForTimeout(1000);
   }
 

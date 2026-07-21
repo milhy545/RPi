@@ -194,6 +194,20 @@ class FakeBluetoothBackend:
         """Set adapter power in memory."""
         return await self._adapter_operation("set_power", adapter_id, powered=powered)
 
+    async def set_adapter_discoverable(
+        self,
+        adapter_id: str,
+        discoverable: bool,
+        timeout: int = 0,
+    ) -> Operation:
+        """Set adapter discoverability in memory."""
+        return await self._adapter_operation(
+            "set_discoverable",
+            adapter_id,
+            discoverable=discoverable,
+            timeout=timeout,
+        )
+
     async def start_discovery(self, adapter_id: str) -> Operation:
         """Start discovery on an adapter."""
         return await self._adapter_operation("start_discovery", adapter_id)
@@ -270,6 +284,8 @@ class FakeBluetoothBackend:
             return scripted
         if operation_type == "set_power":
             adapter = replace(adapter, powered=bool(kwargs["powered"]))
+        elif operation_type == "set_discoverable":
+            adapter = replace(adapter, discoverable=bool(kwargs["discoverable"]))
         elif operation_type == "start_discovery":
             adapter = replace(adapter, discovering=True)
         elif operation_type == "stop_discovery":
@@ -610,6 +626,7 @@ def fake_device(
         icon=icon,
         uuids=uuids,
         paired=paired,
+        bonded=paired,
         trusted=trusted,
         connected=connected,
         services_resolved=services_resolved,
@@ -621,7 +638,7 @@ def fake_device(
 
 def _apply_device_operation(device: Device, operation_type: str) -> Device:
     if operation_type == "pair":
-        return replace(device, paired=True, present=True, known=True)
+        return replace(device, paired=True, bonded=True, present=True, known=True)
     if operation_type == "trust":
         return replace(device, trusted=True)
     if operation_type == "untrust":
@@ -634,6 +651,7 @@ def _apply_device_operation(device: Device, operation_type: str) -> Device:
         return replace(
             device,
             paired=False,
+            bonded=False,
             trusted=False,
             connected=False,
             present=False,

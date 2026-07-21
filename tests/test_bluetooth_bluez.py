@@ -1,15 +1,21 @@
-"""Tests for BlueZ D-Bus state mapping."""
+"""Tests for BlueZ D-Bus state mapping and bounded operations."""
+
+import asyncio
+from types import SimpleNamespace
 
 import pytest
 
 dbus_fast = pytest.importorskip("dbus_fast")
 Variant = dbus_fast.Variant
+MessageType = dbus_fast.MessageType
 
 from rpi_dashboard.services.bluetooth.bluez import ADAPTER1
 from rpi_dashboard.services.bluetooth.bluez import BATTERY1
 from rpi_dashboard.services.bluetooth.bluez import DEVICE1
+from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.bluez import _adapters_from_managed
 from rpi_dashboard.services.bluetooth.bluez import _devices_from_managed
+from rpi_dashboard.services.bluetooth.bluez import _index_from_path
 
 
 def test_bluez_managed_objects_map_two_adapters_and_devices():
@@ -47,6 +53,7 @@ def test_bluez_managed_objects_map_two_adapters_and_devices():
                 "Icon": Variant("s", "audio-card"),
                 "UUIDs": Variant("as", ["0000110b-0000-1000-8000-00805f9b34fb"]),
                 "Paired": Variant("b", True),
+                "Bonded": Variant("b", True),
                 "Trusted": Variant("b", True),
                 "Connected": Variant("b", True),
                 "ServicesResolved": Variant("b", True),
@@ -81,3 +88,100 @@ def test_bluez_managed_objects_map_two_adapters_and_devices():
     soundbar = next(device for device in devices if device.kind == "speaker")
     assert soundbar.rssi == -44
     assert soundbar.battery_percentage == 87
+    assert soundbar.bonded is True
+
+
+def test_bluez_path_index_rejects_non_hci_paths():
+    assert _index_from_path("/org/bluez/hci12/dev_AA") == 12
+    assert _index_from_path("bluetoothctl://AA:BB") is None
+
+
+@pytest.mark.asyncio
+async def test_no_argument_dbus_method_uses_empty_signature():
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            self.message = message
+            return SimpleNamespace(message_type=object())
+
+    bus = Bus()
+    backend = BlueZDbusBackend(operation_timeout=0.2)
+
+    async def connect():
+        return bus
+
+    backend._connect = connect
+    operation = await backend._call_method(
+        "start_discovery",
+        "/org/bluez/hci0",
+        ADAPTER1,
+        "StartDiscovery",
+    )
+
+    assert operation.state == "succeeded"
+    assert bus.message.signature == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("operation_type", "member", "error_name", "detail"),
+    [
+        ("start_discovery", "StartDiscovery", "org.bluez.Error.InProgress", "Operation already in progress"),
+        ("stop_discovery", "StopDiscovery", "org.bluez.Error.NotReady", "Resource Not Ready"),
+    ],
+)
+async def test_discovery_methods_are_idempotent(operation_type, member, error_name, detail):
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            return SimpleNamespace(
+                message_type=MessageType.ERROR,
+                error_name=error_name,
+                body=[detail],
+            )
+
+    backend = BlueZDbusBackend(operation_timeout=0.2)
+
+    async def connect():
+        return Bus()
+
+    backend._connect = connect
+    operation = await backend._call_method(
+        operation_type,
+        "/org/bluez/hci0",
+        ADAPTER1,
+        member,
+    )
+
+    assert operation.state == "succeeded"
+    assert operation.result["already_in_state"] is True
+
+
+@pytest.mark.asyncio
+async def test_dbus_method_timeout_returns_structured_failure():
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            await asyncio.sleep(1)
+
+    backend = BlueZDbusBackend(operation_timeout=0.01)
+
+    async def connect():
+        return Bus()
+
+    backend._connect = connect
+    operation = await backend._call_method(
+        "connect",
+        "/org/bluez/hci0/dev_AA",
+        DEVICE1,
+        "Connect",
+    )
+
+    assert operation.state == "failed"
+    assert operation.error is not None
+    assert operation.error.code == "backend_unavailable"
+    assert backend._operations[-1] == operation
+    assert backend._events[-1].type == "operation_failed"

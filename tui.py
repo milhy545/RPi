@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label, Input
 from textual.reactive import reactive
 import time
@@ -8,7 +8,11 @@ import sys
 import socket
 import asyncio
 import shlex
+import threading
+import urllib.error
+import urllib.request
 from datetime import datetime
+from http.server import ThreadingHTTPServer
 from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
@@ -503,7 +507,7 @@ class RPiDashboard(App):
                     yield Button(self.tr("restart_padlna"), id="btn_restart_padlna", variant="default")
 
             with TabPane(self.tr("bluetooth"), id="tab_bluetooth"):
-                with Vertical(classes="settings-panel", id="panel_bluetooth"):
+                with VerticalScroll(classes="settings-panel", id="panel_bluetooth"):
                     yield Static("", id="title_bluetooth", classes="settings-title")
                     yield Static("", id="txt_bluetooth_topology", classes="bt-terminal-panel")
                     with Horizontal(id="bt_terminal_middle"):
@@ -1022,9 +1026,11 @@ class RPiDashboard(App):
             scan = "scan" if adapter.get("discovering") else "idle"
             present = "present" if adapter.get("present") else "absent"
             role = adapter.get("role") or "-"
+            index = adapter.get("index")
+            index_text = "?" if index is None else str(index)
             lines.append(
                 f"{adapter.get('alias') or adapter.get('name') or adapter.get('id')}: "
-                f"{present}, power:{power}, {scan}, hci{adapter.get('index', '?')}, "
+                f"{present}, power:{power}, {scan}, hci{index_text}, "
                 f"role:{role}, addr:{adapter.get('address', '?')}"
             )
         self.set_static_text("#txt_bluetooth_adapters", "\n".join(lines))
@@ -1237,9 +1243,18 @@ class RPiDashboard(App):
         """Clean up background tasks and close the API server."""
         if hasattr(self, "api_runner") and self.api_runner:
             await self.api_runner.cleanup()
+        legacy_server = getattr(self, "_legacy_webserver", None)
+        if legacy_server is not None:
+            await asyncio.to_thread(legacy_server.shutdown)
+            legacy_server.server_close()
+        legacy_thread = getattr(self, "_legacy_webserver_thread", None)
+        if legacy_thread is not None:
+            legacy_thread.join(timeout=5)
 
     async def start_api_server(self) -> None:
         """Start the aiohttp API listener in the background with CORS and auth middlewares."""
+        await asyncio.to_thread(self._start_legacy_webserver)
+
         @web.middleware
         async def _middleware(request, handler):
             return await self.api_middleware(request, handler)
@@ -1291,6 +1306,7 @@ class RPiDashboard(App):
         api_app.router.add_route("*", "/bt/disconnect", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/remove", self.handle_registered_api_route)
         api_app.router.add_route("*", "/devices/state", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/{tail:.*}", self.handle_legacy_webserver_proxy)
 
         self.api_runner = web.AppRunner(api_app)
         await self.api_runner.setup()
@@ -1300,6 +1316,57 @@ class RPiDashboard(App):
             self.write_log(f"[NETWORK] API server listening on 0.0.0.0:{API_PORT} with CORS and Auth enabled")
         except Exception as e:
             self.write_log(f"[ERROR] Failed to start API server: {e}")
+
+    def _start_legacy_webserver(self) -> None:
+        """Start an internal compatibility server for legacy WebUI endpoints."""
+        if getattr(self, "_legacy_webserver", None) is not None:
+            return
+        import webserver
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), webserver.H)
+        thread = threading.Thread(
+            target=server.serve_forever,
+            name="legacy-webui-compat",
+            daemon=True,
+        )
+        thread.start()
+        self._legacy_webserver = server
+        self._legacy_webserver_thread = thread
+
+    async def handle_legacy_webserver_proxy(self, request: web.Request) -> web.Response:
+        """Proxy unported routes to the complete legacy WebUI compatibility handler."""
+        server = getattr(self, "_legacy_webserver", None)
+        if server is None:
+            raise web.HTTPServiceUnavailable(text="Legacy WebUI compatibility server unavailable")
+        body = await request.read()
+        url = f"http://127.0.0.1:{server.server_port}{request.path_qs}"
+
+        def proxy_request() -> tuple[int, bytes, str]:
+            headers = {}
+            if request.content_type:
+                headers["Content-Type"] = request.content_type
+            proxied = urllib.request.Request(
+                url,
+                data=body if request.method in {"POST", "PUT", "PATCH"} else None,
+                headers=headers,
+                method=request.method,
+            )
+            try:
+                with urllib.request.urlopen(proxied, timeout=30) as response:
+                    return (
+                        response.status,
+                        response.read(),
+                        response.headers.get("Content-Type", "application/json"),
+                    )
+            except urllib.error.HTTPError as exc:
+                return (
+                    exc.code,
+                    exc.read(),
+                    exc.headers.get("Content-Type", "application/json"),
+                )
+
+        status, payload, content_type = await asyncio.to_thread(proxy_request)
+        return web.Response(status=status, body=payload, headers={"Content-Type": content_type})
 
     def static_dir(self) -> str:
         """Return the static WebUI asset directory."""

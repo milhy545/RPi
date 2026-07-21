@@ -2057,6 +2057,18 @@ class H(BaseHTTPRequestHandler):
                 return
 
         try:
+            registry_first = {
+                "/bt/state",
+                "/bt/discovery",
+                "/bt/adapter-power",
+                "/bt/discoverable",
+                "/bt/settings",
+                "/bt/device-action",
+            }
+            if path in registry_first:
+                handler = get_route(path)
+                if handler:
+                    return self.sj(200, handler(q))
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
             elif path=="/manifest.json":
@@ -2289,34 +2301,35 @@ class H(BaseHTTPRequestHandler):
             elif path=="/bt/trust":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,devices_service.bluetooth_trust(mac))
+                self.sj(200,get_route(path)(q))
             elif path=="/bt/pair":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,devices_service.bluetooth_pair(mac))
+                self.sj(200,get_route(path)(q))
             elif path=="/bt/connect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                result=devices_service.bluetooth_connect(mac)
+                result=get_route(path)(q)
                 bt_sink=None
-                for _ in range(10):
-                    bt_sink=next((s["name"] for s in _pactl_lines("sinks") if s["name"].startswith("bluez_")),None)
-                    if bt_sink: break
-                    time.sleep(1)
-                if bt_sink: _keepalive_start(bt_sink)
+                if result.get("ok"):
+                    for _ in range(10):
+                        bt_sink=next((s["name"] for s in _pactl_lines("sinks") if s["name"].startswith("bluez_")),None)
+                        if bt_sink: break
+                        time.sleep(1)
+                    if bt_sink: _keepalive_start(bt_sink)
                 result.update({"bt_sink":bt_sink,"keepalive":_keepalive_status()})
                 self.sj(200,result)
             elif path=="/bt/disconnect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                result=devices_service.bluetooth_disconnect(mac)
-                _keepalive_stop()
+                result=get_route(path)(q)
+                if result.get("ok"): _keepalive_stop()
                 result.update({"keepalive":_keepalive_status()})
                 self.sj(200,result)
             elif path=="/bt/remove":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,devices_service.bluetooth_remove(mac))
+                self.sj(200,get_route(path)(q))
             elif path=="/system/hw-stats":
                 def _cpu_sample():
                     out=[]

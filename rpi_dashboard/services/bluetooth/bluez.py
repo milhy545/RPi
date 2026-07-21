@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections import deque
 from datetime import datetime
 from datetime import timezone
 from typing import Any
@@ -25,6 +27,7 @@ from .models import BluetoothError
 from .models import BluetoothState
 from .models import ControllerReadiness
 from .models import Device
+from .models import Event
 from .models import Operation
 from .models import ReadinessStep
 from .models import SoundbarReadiness
@@ -46,11 +49,20 @@ SAMSUNG_SOUNDBAR_MAC = "24:4B:03:92:0B:8C"
 class BlueZDbusBackend:
     """Async BlueZ backend using the system bus and standard interfaces."""
 
-    def __init__(self, fallback: BluetoothBackend | None = None) -> None:
+    def __init__(
+        self,
+        fallback: BluetoothBackend | None = None,
+        operation_timeout: float = 15.0,
+        history_limit: int = 50,
+    ) -> None:
         self.fallback = fallback
+        self.operation_timeout = operation_timeout
         self._bus: MessageBus | None = None
+        self._bus_loop: asyncio.AbstractEventLoop | None = None
         self._last_state: BluetoothState | None = None
         self._counter = 0
+        self._operations: deque[Operation] = deque(maxlen=history_limit)
+        self._events: deque[Event] = deque(maxlen=history_limit)
 
     async def state(self) -> BluetoothState:
         """Return current BlueZ state, or fallback state when unavailable."""
@@ -87,6 +99,46 @@ class BlueZDbusBackend:
             adapter_id=adapter_id,
         )
 
+    async def set_adapter_discoverable(
+        self,
+        adapter_id: str,
+        discoverable: bool,
+        timeout: int = 0,
+    ) -> Operation:
+        """Set Adapter1 discoverability and timeout."""
+        target = await self._adapter_target(adapter_id)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                "set_discoverable",
+                adapter_id=adapter_id,
+                state="failed",
+                error=target,
+            )
+        if self._adapter_requires_fallback(target):
+            return await self._fallback_backend().set_adapter_discoverable(
+                adapter_id,
+                discoverable,
+                timeout,
+            )
+        timeout_result = await self._call_properties_set(
+            "set_discoverable_timeout",
+            target.bluez_path,
+            ADAPTER1,
+            "DiscoverableTimeout",
+            Variant("u", max(0, timeout)),
+            adapter_id=adapter_id,
+        )
+        if timeout_result.state != "succeeded":
+            return timeout_result
+        return await self._call_properties_set(
+            "set_discoverable",
+            target.bluez_path,
+            ADAPTER1,
+            "Discoverable",
+            Variant("b", discoverable),
+            adapter_id=adapter_id,
+        )
+
     async def start_discovery(self, adapter_id: str) -> Operation:
         """Start discovery on one adapter."""
         return await self._adapter_method("start_discovery", adapter_id, "StartDiscovery")
@@ -96,8 +148,24 @@ class BlueZDbusBackend:
         return await self._adapter_method("stop_discovery", adapter_id, "StopDiscovery")
 
     async def pair(self, adapter_id: str, device_key: str) -> Operation:
-        """Pair a device."""
-        return await self._device_method("pair", adapter_id, device_key, "Pair")
+        """Pair through bluetoothctl, which supplies a headless BlueZ agent."""
+        if self.fallback is None:
+            error = BluetoothError(
+                "unsupported",
+                "Pairing requires a configured BlueZ agent",
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+            return self._operation(
+                "pair",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=error,
+            )
+        operation = await self.fallback.pair(adapter_id, device_key)
+        self._remember_external_operation(operation)
+        return operation
 
     async def trust(self, adapter_id: str, device_key: str) -> Operation:
         """Set Device1.Trusted true."""
@@ -166,13 +234,16 @@ class BlueZDbusBackend:
 
     async def _state_from_bluez(self) -> BluetoothState:
         bus = await self._connect()
-        reply = await bus.call(
-            Message(
-                destination=BLUEZ,
-                path="/",
-                interface=OBJECT_MANAGER,
-                member="GetManagedObjects",
-            )
+        reply = await asyncio.wait_for(
+            bus.call(
+                Message(
+                    destination=BLUEZ,
+                    path="/",
+                    interface=OBJECT_MANAGER,
+                    member="GetManagedObjects",
+                )
+            ),
+            timeout=self.operation_timeout,
         )
         if reply.message_type is MessageType.ERROR:
             raise RuntimeError(reply.body[0] if reply.body else reply.error_name)
@@ -183,7 +254,9 @@ class BlueZDbusBackend:
             backend=BackendHealth(name="bluez-dbus", degraded=False, available=True),
             adapters=tuple(adapters),
             devices=tuple(devices),
+            operations=tuple(self._operations),
             diagnostics=_diagnostics(adapters, devices),
+            events=tuple(self._events),
         )
         self._last_state = state
         return state
@@ -270,17 +343,28 @@ class BlueZDbusBackend:
     ) -> Operation:
         try:
             bus = await self._connect()
-            reply = await bus.call(
-                Message(
-                    destination=BLUEZ,
-                    path=path,
-                    interface=interface,
-                    member=member,
-                    signature=signature,
-                    body=body or [],
-                )
+            reply = await asyncio.wait_for(
+                bus.call(
+                    Message(
+                        destination=BLUEZ,
+                        path=path,
+                        interface=interface,
+                        member=member,
+                        signature=signature or "",
+                        body=body or [],
+                    )
+                ),
+                timeout=self.operation_timeout,
             )
             if reply.message_type is MessageType.ERROR:
+                if _idempotent_method_success(operation_type, reply):
+                    return self._operation(
+                        operation_type,
+                        adapter_id=adapter_id,
+                        device_key=device_key,
+                        state="succeeded",
+                        result={"dbus_member": member, "already_in_state": True},
+                    )
                 error = _dbus_error(reply, adapter_id, device_key)
                 return self._operation(
                     operation_type,
@@ -376,8 +460,13 @@ class BlueZDbusBackend:
     async def _connect(self) -> MessageBus:
         if MessageBus is None or BusType is None:
             raise RuntimeError("dbus-fast is not installed")
+        loop = asyncio.get_running_loop()
+        if self._bus is not None and self._bus_loop is not loop:
+            self._bus.disconnect()
+            self._bus = None
         if self._bus is None or not self._bus.connected:
             self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+            self._bus_loop = loop
         return self._bus
 
     def _operation(
@@ -391,7 +480,7 @@ class BlueZDbusBackend:
         error: BluetoothError | None = None,
     ) -> Operation:
         self._counter += 1
-        return Operation(
+        operation = Operation(
             id=f"bluez-op-{self._counter}",
             type=operation_type,
             adapter_id=adapter_id,
@@ -401,6 +490,31 @@ class BlueZDbusBackend:
             updated_at=_now(),
             result=result or {},
             error=error,
+        )
+        self._operations.append(operation)
+        self._events.append(
+            Event(
+                id=f"bluez-event-{self._counter}",
+                type="operation_succeeded" if state == "succeeded" else "operation_failed",
+                message=f"{operation_type} {state}",
+                timestamp=operation.updated_at,
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+        )
+        return operation
+
+    def _remember_external_operation(self, operation: Operation) -> None:
+        self._operations.append(operation)
+        self._events.append(
+            Event(
+                id=f"bluez-external-{operation.id}",
+                type="operation_succeeded" if operation.state == "succeeded" else "operation_failed",
+                message=f"{operation.type} {operation.state}",
+                timestamp=operation.updated_at,
+                adapter_id=operation.adapter_id,
+                device_key=operation.device_key,
+            )
         )
 
 
@@ -478,6 +592,7 @@ def _devices_from_managed(
                 appearance=_variant_value(props.get("Appearance"), None),
                 uuids=uuids,
                 paired=bool(_variant_value(props.get("Paired"), False)),
+                bonded=_variant_value(props.get("Bonded"), None),
                 trusted=bool(_variant_value(props.get("Trusted"), False)),
                 blocked=bool(_variant_value(props.get("Blocked"), False)),
                 connected=bool(_variant_value(props.get("Connected"), False)),
@@ -600,12 +715,24 @@ def _dbus_error(
     )
 
 
+def _idempotent_method_success(operation_type: str, reply: Message) -> bool:
+    name = reply.error_name or ""
+    detail = str(reply.body[0]) if reply.body else ""
+    if operation_type == "start_discovery":
+        return "InProgress" in name or "already in progress" in detail.lower()
+    if operation_type == "stop_discovery":
+        return "NotReady" in name or "not ready" in detail.lower()
+    return False
+
+
 def _adapter_path_for_device(path: str) -> str:
     parts = path.split("/dev_", 1)
     return parts[0]
 
 
 def _index_from_path(path: str) -> int | None:
+    if "/hci" not in path:
+        return None
     suffix = path.rsplit("/hci", 1)[-1].split("/", 1)[0]
     try:
         return int(suffix)

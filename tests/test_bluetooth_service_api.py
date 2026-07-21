@@ -1,5 +1,6 @@
 """Tests for Bluetooth service facade and API handlers."""
 
+import asyncio
 from urllib.parse import parse_qs
 
 import pytest
@@ -9,11 +10,13 @@ from rpi_dashboard.services import devices
 from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
 from rpi_dashboard.services.bluetooth.service import set_backend_for_tests
+from rpi_dashboard.services.bluetooth import service as bluetooth_service
 
 
 @pytest.fixture(autouse=True)
-def reset_backend():
+def reset_backend(monkeypatch, tmp_path):
     """Reset the Bluetooth backend singleton after each test."""
+    monkeypatch.setenv("RPI_BLUETOOTH_SETTINGS_PATH", str(tmp_path / "bluetooth.json"))
     set_backend_for_tests(None)
     yield
     set_backend_for_tests(None)
@@ -30,6 +33,13 @@ def test_bt_state_handler_returns_adapter_aware_contract():
     assert len(result["adapters"]) == 2
     assert all("adapter_id" in device for device in result["devices"])
     assert "soundbar" in result["diagnostics"]
+
+
+def test_sync_facade_reuses_one_persistent_event_loop():
+    async def loop_identity():
+        return id(asyncio.get_running_loop())
+
+    assert bluetooth_service._run(loop_identity()) == bluetooth_service._run(loop_identity())
 
 
 def test_bt_device_action_uses_adapter_and_device_key():
@@ -49,6 +59,7 @@ def test_bt_device_action_uses_adapter_and_device_key():
 
     assert result["ok"] is True
     assert result["operation"]["type"] == "disconnect"
+    assert result["result"] == "disconnect succeeded"
     updated = handlers.handle_bt_state({})
     disconnected = next(device for device in updated["devices"] if device["key"] == controller["key"])
     assert disconnected["connected"] is False
@@ -77,6 +88,67 @@ def test_legacy_mac_action_rejects_ambiguous_device():
 
     assert result["ok"] is False
     assert result["code"] == "ambiguous_device"
+
+
+def test_adapter_id_disambiguates_legacy_mac_action():
+    """An explicit adapter filters overlapping MAC relationships."""
+    backend = FakeBluetoothBackend.with_overlapping_remote()
+    set_backend_for_tests(backend)
+    state = handlers.handle_bt_state({})
+    adapter_id = state["adapters"][0]["id"]
+
+    result = handlers.handle_bt_connect(
+        parse_qs(f"mac=DD:EE:FF:00:00:09&adapter_id={adapter_id}")
+    )
+
+    assert result["ok"] is True
+    connected = [
+        device for device in handlers.handle_bt_state({})["devices"]
+        if device["connected"]
+    ]
+    assert [device["adapter_id"] for device in connected] == [adapter_id]
+
+
+def test_bt_discoverability_and_settings_are_real_backend_operations(tmp_path, monkeypatch):
+    backend = FakeBluetoothBackend.one_adapter()
+    set_backend_for_tests(backend)
+    monkeypatch.setenv("RPI_BLUETOOTH_SETTINGS_PATH", str(tmp_path / "bluetooth.json"))
+    adapter_id = handlers.handle_bt_state({})["adapters"][0]["id"]
+
+    setting = handlers.handle_bt_settings(parse_qs("auto_connect=0&discoverable_timeout=300"))
+    discoverable = handlers.handle_bt_discoverable(
+        parse_qs(f"adapter_id={adapter_id}&discoverable=1&timeout=300")
+    )
+    state = handlers.handle_bt_state({})
+
+    assert setting["ok"] is True
+    assert setting["settings"]["discoverable_timeout"] == 300
+    assert discoverable["ok"] is True
+    assert state["adapters"][0]["discoverable"] is True
+    assert state["settings"]["auto_connect"] is False
+
+
+def test_enabling_auto_connect_reconnects_trusted_paired_devices():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    initial = handlers.handle_bt_state({})
+    device = initial["devices"][0]
+    disconnected = handlers.handle_bt_device_action(
+        parse_qs(
+            "action=disconnect"
+            f"&adapter_id={device['adapter_id']}"
+            f"&device_key={device['key']}"
+        )
+    )
+    assert disconnected["ok"] is True
+
+    enabled = handlers.handle_bt_settings(parse_qs("auto_connect=1"))
+    state = handlers.handle_bt_state({})
+
+    assert enabled["ok"] is True
+    assert next(item for item in state["devices"] if item["key"] == device["key"])[
+        "connected"
+    ] is True
 
 
 def test_devices_state_embeds_v2_bluetooth_without_breaking_legacy_fields(monkeypatch):

@@ -134,9 +134,53 @@ Read-only live RPi smoke:
 No pairing, removal, BlueZ restart, systemd change, kernel/sysfs write, or real
 device mutation was performed during this implementation pass.
 
-## Finish Blocker
+## 2026-07-21 Hardening Update
 
-The repository has a pre-existing local `AGENTS.md` modification unrelated to
-this track. The prescribed `tools/finish-track.sh` uses `git add -A`, so it
-would include that unrelated change unless the user explicitly allows it or
-allows it to be safely moved out of the worktree before running finish.
+The production implementation was hardened against multi-adapter and live-RPi
+failures found by GitHub review and destructive E2E testing:
+
+- The synchronous service facade now owns one persistent asyncio loop, so a
+  cached D-Bus connection is never reused from a closed `asyncio.run()` loop.
+- D-Bus calls have bounded timeouts, bounded operation/event history, safe
+  no-argument signatures, and idempotent discovery start/stop handling.
+- Pairing keeps a `bluetoothctl --agent NoInputNoOutput` process alive until
+  BlueZ reports `Bonded: yes`. Device state now exposes `bonded` separately
+  from the transient `paired` property.
+- The degraded fallback serializes complete bluetoothctl command lines,
+  resolves real `hciN` indexes through sysfs, preserves operation history, and
+  detects textual failures even when bluetoothctl exits with status zero.
+- Added real `/bt/discoverable` and `/bt/settings` handlers. Auto Connect,
+  discoverability timeout, and scan mode are persisted in
+  `~/.config/rpi-dashboard/bluetooth.json`.
+- Legacy `/bt/pair`, `/bt/trust`, `/bt/connect`, `/bt/disconnect`, and
+  `/bt/remove` now use the adapter-aware resolver instead of bypassing it.
+- The TUI-hosted WebUI proxies the complete legacy endpoint surface and its
+  Bluetooth panel is scrollable at constrained tty dimensions.
+- The Gemini-derived Bluetooth WebUI design is retained while controls now
+  reflect backend truth, destructive actions require confirmation, unsupported
+  controls are disabled, and desktop/tablet/mobile geometry is asserted by
+  Playwright. Filter checkboxes share a fixed aligned column and topology nodes
+  are auto-fitted inside the canvas.
+
+Live RPi findings and recovery:
+
+- The host had both standard `wireplumber.service` and the obsolete
+  `wireplumber-bluetooth.service` claiming BlueZ media profiles. The duplicate
+  user service was disabled; standard WirePlumber now creates the Bluetooth
+  PipeWire sinks.
+- The Samsung soundbar was removed/re-paired with explicit authorization. It
+  finished as paired, bonded, trusted, connected, services-resolved, and
+  exposed `bluez_output.24_4B_03_92_0B_8C.1` in PipeWire.
+- Both adapters finished powered on and not discovering. Auto Connect was
+  restored with a 120-second discoverability timeout and balanced scan mode.
+- Tibo Sphere 2 was removed during destructive testing and requires its
+  physical pairing mode before it can be bonded again.
+
+Verification evidence:
+
+- Full RPi CI: PASS (`tools/run-ci.sh`).
+- Focused Bluetooth suite: 40 tests passed.
+- Milhy-PC mocked browser E2E: PASS, 44 Bluetooth requests.
+- Milhy-PC browser against live RPi: PASS, 4 real nodes and 8 quick actions;
+  every supported settings, scan, power, pair, trust, connect, disconnect, and
+  remove response was required to return `ok: true`.

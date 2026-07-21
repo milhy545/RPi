@@ -46,6 +46,7 @@ def test_live_tui_operational_tabs_have_usable_height():
 
     async def run_check():
         import tui
+        from textual.containers import VerticalScroll
         from textual.widgets import TabbedContent
 
         tui.API_PORT = 0
@@ -66,6 +67,44 @@ def test_live_tui_operational_tabs_have_usable_height():
                 panel = app.query_one(selector)
                 assert panel.region.height >= 8
                 assert panel.region.y >= 3
+            assert isinstance(app.query_one("#panel_bluetooth"), VerticalScroll)
+
+    asyncio.run(run_check())
+
+
+def test_tui_webui_proxy_covers_legacy_audio_and_preview_routes(monkeypatch):
+    """The TUI-hosted static app must keep its legacy endpoint surface."""
+
+    async def run_check():
+        import tui
+        import webserver
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+
+        monkeypatch.setattr(webserver, "audio_state", lambda: {"ok": True, "source": "test"})
+        monkeypatch.setattr(
+            webserver,
+            "media_preview",
+            lambda url: {"ok": True, "url": url, "title": "Preview"},
+        )
+        dashboard = tui.RPiDashboard()
+        await asyncio.to_thread(dashboard._start_legacy_webserver)
+        proxy_app = web.Application()
+        proxy_app.router.add_route("*", "/{tail:.*}", dashboard.handle_legacy_webserver_proxy)
+        client = TestClient(TestServer(proxy_app))
+        await client.start_server()
+        try:
+            audio_response = await client.get("/audio/state")
+            preview_response = await client.get("/media/preview?url=https://example.com/video")
+            assert audio_response.status == 200
+            assert (await audio_response.json())["source"] == "test"
+            assert preview_response.status == 200
+            assert (await preview_response.json())["title"] == "Preview"
+        finally:
+            await client.close()
+            await asyncio.to_thread(dashboard._legacy_webserver.shutdown)
+            dashboard._legacy_webserver.server_close()
+            dashboard._legacy_webserver_thread.join(timeout=5)
 
     asyncio.run(run_check())
 

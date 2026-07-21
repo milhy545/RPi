@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import webserver
 from rpi_dashboard.api import routes
+from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
+from rpi_dashboard.services.bluetooth.service import set_backend_for_tests
 
 
 WEBUI_GET_ENDPOINTS = {
@@ -35,6 +37,7 @@ WEBUI_GET_ENDPOINTS = {
     "/audio/volume",
     "/bt/connect",
     "/bt/adapter-power",
+    "/bt/discoverable",
     "/bt/controller",
     "/bt/device-action",
     "/bt/disconnect",
@@ -43,6 +46,7 @@ WEBUI_GET_ENDPOINTS = {
     "/bt/remove",
     "/bt/scan",
     "/bt/state",
+    "/bt/settings",
     "/bt/trust",
     "/cec/br/st",
     "/cec/br/start",
@@ -122,3 +126,18 @@ def test_webserver_delegates_registered_get_route(server_url):
 def test_route_registry_covers_webui_get_endpoints():
     missing = WEBUI_GET_ENDPOINTS - set(routes.ROUTES)
     assert missing == set()
+
+
+def test_legacy_bt_connect_uses_adapter_aware_resolver(server_url):
+    set_backend_for_tests(FakeBluetoothBackend.with_overlapping_remote())
+    try:
+        with urllib.request.urlopen(
+            server_url + "/bt/connect?mac=DD:EE:FF:00:00:09",
+            timeout=5,
+        ) as response:
+            payload = json.loads(response.read().decode())
+    finally:
+        set_backend_for_tests(None)
+
+    assert payload["ok"] is False
+    assert payload["code"] == "ambiguous_device"

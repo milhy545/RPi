@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
+from collections import deque
 from datetime import datetime
 from datetime import timezone
+from pathlib import Path
 from typing import Any
 
 from .fake import SAMSUNG_SOUNDBAR_MAC
@@ -20,6 +23,7 @@ from .models import BluetoothError
 from .models import BluetoothState
 from .models import ControllerReadiness
 from .models import Device
+from .models import Event
 from .models import Operation
 from .models import ReadinessStep
 from .models import SoundbarReadiness
@@ -32,10 +36,12 @@ from .models import normalize_address
 class BluetoothctlBackend:
     """Bluetooth backend backed by bounded `bluetoothctl` subprocess calls."""
 
-    def __init__(self, timeout: int = 8) -> None:
+    def __init__(self, timeout: int = 8, history_limit: int = 50) -> None:
         self.timeout = timeout
         self._counter = 0
         self._last_state: BluetoothState | None = None
+        self._operations: deque[Operation] = deque(maxlen=history_limit)
+        self._events: deque[Event] = deque(maxlen=history_limit)
 
     async def state(self) -> BluetoothState:
         """Read state through bluetoothctl without changing device state."""
@@ -57,6 +63,23 @@ class BluetoothctlBackend:
             "set_power",
             adapter_id,
             ["power", "on" if powered else "off"],
+        )
+
+    async def set_adapter_discoverable(
+        self,
+        adapter_id: str,
+        discoverable: bool,
+        timeout: int = 0,
+    ) -> Operation:
+        """Set adapter discoverability with an explicit timeout."""
+        return await asyncio.to_thread(
+            self._adapter_command,
+            "set_discoverable",
+            adapter_id,
+            [
+                ["discoverable-timeout", str(max(0, timeout))],
+                ["discoverable", "on" if discoverable else "off"],
+            ],
         )
 
     async def start_discovery(self, adapter_id: str) -> Operation:
@@ -124,7 +147,9 @@ class BluetoothctlBackend:
                 ),
                 adapters=tuple(adapters),
                 devices=tuple(devices),
+                operations=tuple(self._operations),
                 diagnostics=self._diagnostics(adapters, devices),
+                events=tuple(self._events),
             )
             self._last_state = state
             return state
@@ -150,13 +175,15 @@ class BluetoothctlBackend:
                     ).to_dict(),
                     "steamlink": {"available": None, "path": ""},
                 },
+                operations=tuple(self._operations),
+                events=tuple(self._events),
                 ok=False,
             )
             self._last_state = state
             return state
 
     def _read_adapters(self) -> list[Adapter]:
-        listed = self._run(["list"]).stdout
+        listed = self._run([["list"]]).stdout
         adapters = []
         for line in listed.splitlines():
             if not line.startswith("Controller "):
@@ -167,13 +194,14 @@ class BluetoothctlBackend:
             address = normalize_address(parts[1])
             name = parts[2] if len(parts) > 2 else ""
             adapter_id = adapter_id_from_address(address)
-            show = self._run(["select", address, "show"]).stdout
+            show = self._run([["select", address], ["show"]]).stdout
             props = _parse_show(show)
-            index = _index_from_path(props.get("bluez_path", ""))
+            index = _adapter_index_by_address(address)
+            bluez_path = f"/org/bluez/hci{index}" if index is not None else f"bluetoothctl://{address}"
             adapters.append(
                 Adapter(
                     id=adapter_id,
-                    bluez_path=props.get("bluez_path", f"/org/bluez/hci{index or 0}"),
+                    bluez_path=bluez_path,
                     index=index,
                     address=address,
                     address_type=props.get("address_type", "public"),
@@ -191,10 +219,10 @@ class BluetoothctlBackend:
         return adapters
 
     def _read_devices(self, adapter: Adapter) -> list[Device]:
-        output = self._run(["select", adapter.address, "devices"]).stdout
+        output = self._run([["select", adapter.address], ["devices"]]).stdout
         devices = []
         for raw in _parse_device_lines(output):
-            info = self._run(["select", adapter.address, "info", raw["address"]]).stdout
+            info = self._run([["select", adapter.address], ["info", raw["address"]]]).stdout
             devices.append(_device_from_info(adapter, raw, info))
         return devices
 
@@ -202,7 +230,7 @@ class BluetoothctlBackend:
         self,
         operation_type: str,
         adapter_id: str,
-        command: list[str],
+        command: list[str] | list[list[str]],
     ) -> Operation:
         adapter = self._adapter_by_id(adapter_id)
         if adapter is None:
@@ -213,13 +241,15 @@ class BluetoothctlBackend:
                 adapter_id=adapter_id,
             )
             return self._operation(operation_type, adapter_id=adapter_id, state="failed", error=error)
-        result = self._run(["select", adapter.address, *command])
+        command_lines = command if command and isinstance(command[0], list) else [command]
+        result = self._run([["select", adapter.address], *command_lines])
+        succeeded = _command_succeeded(result)
         return self._operation(
             operation_type,
             adapter_id=adapter_id,
-            state="succeeded" if result.returncode == 0 else "failed",
+            state="succeeded" if succeeded else "failed",
             result={"output": _bounded_output(result)},
-            error=None if result.returncode == 0 else _command_error(result, adapter_id),
+            error=None if succeeded else _command_error(result, adapter_id),
         )
 
     def _device_command(
@@ -245,22 +275,83 @@ class BluetoothctlBackend:
                 error=error,
             )
         mac = _address_from_key(device_key)
-        result = self._run(["select", adapter.address, operation_type, mac])
+        if operation_type == "pair":
+            result, succeeded = self._pair_with_agent(adapter, mac)
+        else:
+            result = self._run([["select", adapter.address], [operation_type, mac]])
+            succeeded = _command_succeeded(result)
         return self._operation(
             operation_type,
             adapter_id=adapter_id,
             device_key=device_key,
-            state="succeeded" if result.returncode == 0 else "failed",
+            state="succeeded" if succeeded else "failed",
             result={"output": _bounded_output(result)},
-            error=None if result.returncode == 0 else _command_error(result, adapter_id, device_key),
+            error=None if succeeded else _command_error(result, adapter_id, device_key),
         )
+
+    def _pair_with_agent(
+        self,
+        adapter: Adapter,
+        mac: str,
+    ) -> tuple[subprocess.CompletedProcess[str], bool]:
+        """Keep a headless bluetoothctl agent alive until BlueZ settles."""
+        process = subprocess.Popen(
+            ["bluetoothctl", "--agent", "NoInputNoOutput"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if process.stdin is None:
+            process.kill()
+            return subprocess.CompletedProcess(
+                ["bluetoothctl"],
+                1,
+                stdout="",
+                stderr="bluetoothctl stdin unavailable",
+            ), False
+        try:
+            time.sleep(0.5)
+            process.stdin.write(f"select {adapter.address}\npair {mac}\n")
+            process.stdin.flush()
+            succeeded = self._wait_for_device_property(adapter, mac, "bonded", "yes")
+            process.stdin.write("quit\n")
+            process.stdin.flush()
+            output, _ = process.communicate(timeout=2)
+        except (BrokenPipeError, subprocess.TimeoutExpired):
+            process.kill()
+            output, _ = process.communicate()
+            succeeded = False
+        result = subprocess.CompletedProcess(
+            ["bluetoothctl", "--agent", "NoInputNoOutput"],
+            process.returncode or 0,
+            stdout=output,
+            stderr="",
+        )
+        return result, succeeded
+
+    def _wait_for_device_property(
+        self,
+        adapter: Adapter,
+        mac: str,
+        property_name: str,
+        expected: str,
+    ) -> bool:
+        """Wait for BlueZ to settle after an asynchronous bluetoothctl action."""
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            info = self._run([["select", adapter.address], ["info", mac]]).stdout
+            if _parse_show(info).get(property_name) == expected:
+                return True
+            time.sleep(0.25)
+        return False
 
     def _adapter_by_id(self, adapter_id: str) -> Adapter | None:
         state = self._last_state or self._state_sync()
         return next((adapter for adapter in state.adapters if adapter.id == adapter_id), None)
 
-    def _run(self, commands: list[str]) -> subprocess.CompletedProcess[str]:
-        script = "\n".join(commands + ["quit"]) + "\n"
+    def _run(self, commands: list[list[str]]) -> subprocess.CompletedProcess[str]:
+        script = "\n".join(" ".join(command) for command in commands) + "\nquit\n"
         return subprocess.run(
             ["bluetoothctl"],
             input=script,
@@ -280,7 +371,7 @@ class BluetoothctlBackend:
         error: BluetoothError | None = None,
     ) -> Operation:
         self._counter += 1
-        return Operation(
+        operation = Operation(
             id=f"bluetoothctl-op-{self._counter}",
             type=operation_type,
             adapter_id=adapter_id,
@@ -291,6 +382,18 @@ class BluetoothctlBackend:
             result=result or {},
             error=error,
         )
+        self._operations.append(operation)
+        self._events.append(
+            Event(
+                id=f"bluetoothctl-event-{self._counter}",
+                type="operation_succeeded" if state == "succeeded" else "operation_failed",
+                message=f"{operation_type} {state}",
+                timestamp=operation.updated_at,
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+        )
+        return operation
 
     def _diagnostics(
         self,
@@ -314,7 +417,7 @@ def _parse_show(output: str) -> dict[str, str]:
     for line in output.splitlines():
         clean = line.strip()
         if clean.startswith("Controller "):
-            props["bluez_path"] = clean.split(" ", 2)[0] if clean.startswith("/") else ""
+            continue
         if ":" not in clean:
             continue
         key, value = clean.split(":", 1)
@@ -325,6 +428,28 @@ def _parse_show(output: str) -> dict[str, str]:
             props["bluez_path"] = clean.split()[0]
             break
     return props
+
+
+def _adapter_index_by_address(address: str) -> int | None:
+    """Resolve the current hci index from sysfs without guessing hci0."""
+    normalized = normalize_address(address)
+    for address_file in sorted(Path("/sys/class/bluetooth").glob("hci*/address")):
+        try:
+            candidate = normalize_address(address_file.read_text(encoding="utf-8").strip())
+        except OSError:
+            continue
+        if candidate != normalized:
+            continue
+        name = address_file.parent.name
+        if name.startswith("hci") and name[3:].isdigit():
+            return int(name[3:])
+    return None
+
+
+def _command_succeeded(result: subprocess.CompletedProcess[str]) -> bool:
+    output = f"{result.stdout}\n{result.stderr}".lower()
+    failure_markers = ("failed", "not available", "invalid command", "error:")
+    return result.returncode == 0 and not any(marker in output for marker in failure_markers)
 
 
 def _parse_device_lines(output: str) -> list[dict[str, str]]:
@@ -360,6 +485,7 @@ def _device_from_info(adapter: Adapter, raw: dict[str, str], info: str) -> Devic
         icon=icon,
         uuids=uuids,
         paired=props.get("paired", "no") == "yes",
+        bonded=_yes_no_unknown(props.get("bonded")),
         trusted=props.get("trusted", "no") == "yes",
         blocked=props.get("blocked", "no") == "yes",
         connected=props.get("connected", "no") == "yes",

@@ -96,6 +96,7 @@ class Device:
     appearance: int | None = None
     uuids: tuple[str, ...] = ()
     paired: bool = False
+    bonded: bool | None = None
     trusted: bool = False
     blocked: bool = False
     connected: bool = False
@@ -245,16 +246,16 @@ def make_device_key(adapter_id: str, address: str) -> str:
 
 
 def classify_device(
-    name: str = "",
-    icon: str = "",
-    uuids: tuple[str, ...] = (),
+    name: str | None = "",
+    icon: str | None = "",
+    uuids: tuple[str | None, ...] | None = (),
     appearance: int | None = None,
 ) -> tuple[str, tuple[str, ...], str]:
     """Classify a Bluetooth device from evidence stronger than name alone."""
     evidence: list[str] = []
-    uuid_text = " ".join(uuid.lower() for uuid in uuids)
-    icon_lower = icon.lower()
-    name_lower = name.lower()
+    uuid_text = " ".join((uuid or "").lower() for uuid in (uuids or ()))
+    icon_lower = (icon or "").lower()
+    name_lower = (name or "").lower()
 
     if "00001124" in uuid_text or "hid" in uuid_text:
         evidence.append("uuid:hid")

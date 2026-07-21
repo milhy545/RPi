@@ -8,6 +8,7 @@ from rpi_dashboard.services.bluetooth.fake import fake_device
 from rpi_dashboard.services.bluetooth.models import BluetoothError
 from rpi_dashboard.services.bluetooth.models import SCHEMA_VERSION
 from rpi_dashboard.services.bluetooth.models import adapter_id_from_address
+from rpi_dashboard.services.bluetooth.models import classify_device
 from rpi_dashboard.services.bluetooth.models import make_device_key
 
 
@@ -173,3 +174,7 @@ async def test_device_keys_are_adapter_scoped():
     assert serialized["adapter_id"] == adapter_id
     assert "rssi" not in serialized
     assert "battery_percentage" not in serialized
+
+
+def test_device_classification_tolerates_null_bluez_properties():
+    assert classify_device(None, None, (None,)) == ("unknown", (), "unknown")

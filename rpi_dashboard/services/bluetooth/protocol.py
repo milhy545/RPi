@@ -25,6 +25,14 @@ class BluetoothBackend(Protocol):
     async def set_adapter_power(self, adapter_id: str, powered: bool) -> Operation:
         """Set adapter power."""
 
+    async def set_adapter_discoverable(
+        self,
+        adapter_id: str,
+        discoverable: bool,
+        timeout: int = 0,
+    ) -> Operation:
+        """Set adapter discoverability and its timeout in seconds."""
+
     async def start_discovery(self, adapter_id: str) -> Operation:
         """Start discovery on a selected adapter."""
 
