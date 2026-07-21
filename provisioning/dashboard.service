@@ -7,9 +7,12 @@ Conflicts=getty@tty1.service
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/rpi-dashboard
+ExecStartPre=+/usr/bin/setfont -C /dev/tty1 Lat2-Terminus16
 ExecStart=/home/%i/rpi-dashboard/.venv/bin/python tui.py
 Restart=on-failure
 RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
 
 # TTY Configuration
 StandardInput=tty-force
@@ -21,6 +24,7 @@ TTYVTDisallocate=yes
 
 # Environment
 Environment=PATH=/usr/local/bin:/usr/bin:/bin TERM=linux
+Environment=RPIDASHBOARD_CONSOLE_FONT=Lat2-Terminus16
 EnvironmentFile=-/home/%i/rpi-dashboard/.env
 
 # OOM Protection

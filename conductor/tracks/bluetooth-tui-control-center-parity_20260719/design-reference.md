@@ -66,15 +66,15 @@ Prefer ASCII-safe symbols in live tty sections:
 
 ## Fidelity Checklist
 
-- [ ] Header matches reference content.
-- [ ] Topology is one large full-width framed region.
-- [ ] Adapter A and B hubs are visually distinct.
-- [ ] Device category boxes exist even with empty live data.
-- [ ] Legend appears below topology.
-- [ ] Middle and bottom grids match reference panel names.
-- [ ] Quick actions and Help are visible without scrolling.
-- [ ] Footer summarizes service/totals/system.
-- [ ] Physical tty capture remains legible.
+- [x] Header matches reference content.
+- [x] Topology is one large full-width framed region.
+- [x] Adapter A and B hubs are visually distinct.
+- [x] Device category boxes exist even with empty live data.
+- [x] Legend appears below topology.
+- [x] Middle and bottom grids match reference panel names.
+- [x] Quick actions and Help are visible without scrolling.
+- [x] Footer summarizes service/totals/system.
+- [x] Physical tty capture remains legible.
 
 ## WebUI Visual Inventory
 
@@ -130,11 +130,11 @@ Preserve design and interaction shape. Change implementation details freely wher
 
 ## WebUI Fidelity Checklist
 
-- [ ] Visual shell matches the prototype in dark mode.
-- [ ] Basic and Expert modes match the prototype behavior.
-- [ ] Topology pan, zoom, reset, selection, offline dimming, and line colors work.
-- [ ] Adapter A remains cyan/audio-oriented.
-- [ ] Adapter B remains green/IO-controller-oriented.
-- [ ] Control, filter, hardware, detail, quick-action, and summary panels are present.
-- [ ] Live backend state replaces prototype sample devices without changing composition.
-- [ ] Browser E2E screenshots are reviewed against the saved prototype.
+- [x] Visual shell matches the prototype in dark mode.
+- [x] Basic and Expert modes match the prototype behavior.
+- [x] Topology pan, zoom, reset, selection, offline dimming, and line colors work.
+- [x] Adapter A remains cyan/audio-oriented.
+- [x] Adapter B remains green/IO-controller-oriented.
+- [x] Control, filter, hardware, detail, quick-action, and summary panels are present.
+- [x] Live backend state replaces prototype sample devices without changing composition.
+- [x] Browser E2E screenshots are reviewed against the saved prototype.

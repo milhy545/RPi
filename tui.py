@@ -1,3 +1,4 @@
+from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label, Input
@@ -17,6 +18,7 @@ from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
 from rpi_dashboard.services import devices as devices_service
+from rpi_dashboard.tui.bluetooth_console import build_bluetooth_console
 from rpi_dashboard.tui.formatting import human_audio_sink
 from rpi_dashboard.api.routes import get_route
 
@@ -423,47 +425,85 @@ class RPiDashboard(App):
         color: $accent;
         margin-bottom: 1;
     }
-    #panel_bluetooth {
+    #panel_bluetooth { padding: 0; border: none; }
+    #title_bluetooth { display: none; }
+    #bt_full { height: auto; }
+    #txt_bt_header {
+        height: 2;
         padding: 0 1;
+        content-align: left middle;
+        background: $surface-darken-1;
     }
-    #txt_bluetooth_topology {
-        height: 13;
+    #txt_bluetooth_topology { height: 11; border: solid cyan; }
+    #txt_bt_legend {
+        height: 3;
+        border: solid $secondary;
+        padding: 0 1;
+        content-align: center middle;
     }
-    #bt_terminal_middle {
-        height: 12;
-        margin-top: 1;
-    }
+    #bt_terminal_middle { height: 11; }
+    #bt_terminal_bottom { height: 11; }
     .bt-terminal-panel {
         border: solid $accent;
         padding: 0 1;
         background: $surface;
         color: $text;
     }
-    #bt_terminal_middle .bt-terminal-panel {
+    #bt_terminal_middle .bt-terminal-panel,
+    #bt_terminal_bottom .bt-terminal-panel {
         width: 1fr;
         height: 100%;
-        margin-right: 1;
     }
-    #txt_bluetooth_adapters {
+    #txt_bluetooth_adapter_a,
+    #txt_bt_adapter_status { border: solid cyan; }
+    #txt_bluetooth_adapter_b { border: solid green; }
+    #txt_bluetooth_available { border: solid yellow; }
+    #txt_bluetooth_actions { border: solid magenta; }
+    #txt_bt_diagnostics,
+    #txt_bt_events,
+    #txt_bt_help { border: solid $secondary; }
+    #txt_bt_footer {
+        height: 1;
+        padding: 0 1;
+        background: $surface-darken-1;
+    }
+    #bt_legacy_controls {
+        display: none;
         height: 5;
+        border: solid $secondary;
         margin-top: 1;
+        padding: 0 1;
     }
-    #list_bluetooth_devices {
-        height: 7;
-        margin-top: 1;
-    }
-    #txt_bluetooth_soundbar,
-    #txt_bluetooth_controller,
-    #txt_bluetooth_events {
-        height: 4;
-        margin-top: 1;
-    }
+    #list_bluetooth_devices { height: 5; }
+    #bt_legacy_buttons { height: 3; }
+    #bt_legacy_buttons Button { margin: 0 1 0 0; min-width: 11; }
+    #txt_bt_compact { display: none; height: 1fr; border: solid cyan; padding: 0 1; }
+    #panel_bluetooth.bt-compact #bt_full { display: none; }
+    #panel_bluetooth.bt-compact #txt_bt_compact { display: block; }
+    #panel_bluetooth.bt-compact #bt_legacy_controls { display: block; margin-top: 0; }
+    #panel_bluetooth.bt-compact #list_bluetooth_devices { height: 4; }
+    #panel_bluetooth.bt-compact #bt_legacy_buttons { display: none; }
+    #panel_bluetooth.bt-compact { padding: 0; }
+    #panel_bluetooth.bt-compact #bt_legacy_controls { height: 5; }
+    #panel_bluetooth.bt-compact #txt_bt_compact { height: 1fr; }
     """
 
     def tr(self, key: str) -> str:
         return t(self.language, key)
 
     def compose(self) -> ComposeResult:
+        initial_tab = os.getenv("RPIDASHBOARD_INITIAL_TAB", "tab_player")
+        if initial_tab not in {
+            "tab_player",
+            "tab_apps",
+            "tab_audio",
+            "tab_bluetooth",
+            "tab_devices",
+            "tab_network",
+            "tab_system",
+            "tab_logs",
+        }:
+            initial_tab = "tab_player"
         yield Header(show_clock=True)
         yield TopStatus(id="top_status")
         with Horizontal(id="language_switch"):
@@ -471,7 +511,7 @@ class RPiDashboard(App):
             yield Button("CZ", id="btn_lang_cz", classes="lang-button")
             yield Button("EN", id="btn_lang_en", classes="lang-button")
         
-        with TabbedContent(initial="tab_player"):
+        with TabbedContent(initial=initial_tab):
             with TabPane(self.tr("player"), id="tab_player"):
                 with Vertical(id="main-content"):
                     yield Static("", id="title_player", classes="settings-title")
@@ -509,25 +549,31 @@ class RPiDashboard(App):
             with TabPane(self.tr("bluetooth"), id="tab_bluetooth"):
                 with VerticalScroll(classes="settings-panel", id="panel_bluetooth"):
                     yield Static("", id="title_bluetooth", classes="settings-title")
-                    yield Static("", id="txt_bluetooth_topology", classes="bt-terminal-panel")
-                    with Horizontal(id="bt_terminal_middle"):
-                        yield Static("", id="txt_bluetooth_adapter_a", classes="bt-terminal-panel")
-                        yield Static("", id="txt_bluetooth_adapter_b", classes="bt-terminal-panel")
-                        yield Static("", id="txt_bluetooth_available", classes="bt-terminal-panel")
-                        yield Static("", id="txt_bluetooth_actions", classes="bt-terminal-panel")
-                    yield Static("", id="txt_bluetooth_adapters")
-                    yield OptionList(id="list_bluetooth_devices")
-                    with Horizontal():
-                        yield Button(self.tr("scan"), id="btn_scan_bluetooth", variant="primary")
-                        yield Button(self.tr("pair"), id="btn_pair_bluetooth", variant="success")
-                        yield Button(self.tr("trust"), id="btn_trust_bluetooth", variant="warning")
-                    with Horizontal():
-                        yield Button(self.tr("connect"), id="btn_connect_bluetooth", variant="success")
-                        yield Button(self.tr("disconnect"), id="btn_disconnect_bluetooth", variant="error")
-                        yield Button(self.tr("remove"), id="btn_remove_bluetooth", variant="error")
-                    yield Static("", id="txt_bluetooth_soundbar")
-                    yield Static("", id="txt_bluetooth_controller")
-                    yield Static("", id="txt_bluetooth_events")
+                    with Vertical(id="bt_full"):
+                        yield Static("", id="txt_bt_header")
+                        yield Static("", id="txt_bluetooth_topology", classes="bt-terminal-panel")
+                        yield Static("", id="txt_bt_legend")
+                        with Horizontal(id="bt_terminal_middle"):
+                            yield Static("", id="txt_bluetooth_adapter_a", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bluetooth_adapter_b", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bluetooth_available", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bluetooth_actions", classes="bt-terminal-panel")
+                        with Horizontal(id="bt_terminal_bottom"):
+                            yield Static("", id="txt_bt_adapter_status", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bt_diagnostics", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bt_events", classes="bt-terminal-panel")
+                            yield Static("", id="txt_bt_help", classes="bt-terminal-panel")
+                        yield Static("", id="txt_bt_footer")
+                    yield Static("", id="txt_bt_compact")
+                    with Vertical(id="bt_legacy_controls"):
+                        yield OptionList(id="list_bluetooth_devices")
+                        with Horizontal(id="bt_legacy_buttons"):
+                            yield Button(self.tr("scan"), id="btn_scan_bluetooth", variant="primary")
+                            yield Button(self.tr("pair"), id="btn_pair_bluetooth", variant="success")
+                            yield Button(self.tr("trust"), id="btn_trust_bluetooth", variant="warning")
+                            yield Button(self.tr("connect"), id="btn_connect_bluetooth", variant="success")
+                            yield Button(self.tr("disconnect"), id="btn_disconnect_bluetooth", variant="error")
+                            yield Button(self.tr("remove"), id="btn_remove_bluetooth", variant="error")
 
             with TabPane(self.tr("devices"), id="tab_devices"):
                 with Vertical(classes="settings-panel", id="panel_devices"):
@@ -909,37 +955,100 @@ class RPiDashboard(App):
         return str(round(sum(values) / len(values)))
 
     def render_bluetooth_console(self, state: dict | None, devices: list[dict], adapters: list[dict]) -> None:
-        state = state or {}
-        backend = state.get("backend") or {}
-        adapter_a = adapters[0] if len(adapters) > 0 else {}
-        adapter_b = adapters[1] if len(adapters) > 1 else {}
-        devices_a = self.bt_adapter_devices(devices, adapter_a.get("id"))
-        devices_b = self.bt_adapter_devices(devices, adapter_b.get("id"))
-        if not adapter_a and devices:
-            devices_a = devices
-
-        self.set_static_text("#txt_bluetooth_topology", self.render_bluetooth_topology(adapter_a, adapter_b, devices_a, devices_b))
-        self.set_static_text("#txt_bluetooth_adapter_a", self.render_bluetooth_table("ADAPTER A DEVICES", adapter_a, devices_a, "cyan"))
-        self.set_static_text("#txt_bluetooth_adapter_b", self.render_bluetooth_table("ADAPTER B DEVICES", adapter_b, devices_b, "green"))
-        self.set_static_text("#txt_bluetooth_available", self.render_bluetooth_available(devices))
-        self.set_static_text("#txt_bluetooth_actions", self.render_bluetooth_actions())
-        self.render_bluetooth_adapters(state)
-        self.render_bluetooth_soundbar(state)
-        self.render_bluetooth_controller((state.get("diagnostics") or {}).get("controllers"))
-        self.render_bluetooth_events(state)
-
-        total_connected = len([device for device in devices if device.get("connected")])
-        total_paired = len([device for device in devices if device.get("paired")])
-        online = len([adapter for adapter in adapters if adapter.get("present") and adapter.get("powered")])
-        self.set_static_text(
-            "#txt_bluetooth_adapters",
-            (
-                f"Bluetooth Service: [green]{'Degraded' if backend.get('degraded') else 'Running'}[/] | "
-                f"Backend: {backend.get('name', 'unknown')} | "
-                f"Adapters Online: [cyan]{online}/{len(adapters)}[/] | "
-                f"Total Connected: [green]{total_connected}[/] | Total Paired: [cyan]{total_paired}[/]"
-            ),
+        console_state = dict(state or {})
+        console_state["devices"] = devices
+        console_state["adapters"] = adapters
+        cpu_percent, memory_percent = self.bluetooth_system_metrics()
+        view = build_bluetooth_console(
+            console_state,
+            facts=self.bluetooth_system_facts(),
+            cpu_percent=cpu_percent,
+            memory_percent=memory_percent,
         )
+        self._bluetooth_console_view = view
+        panels = {
+            "#txt_bt_header": view.header,
+            "#txt_bluetooth_topology": view.topology,
+            "#txt_bt_legend": view.legend,
+            "#txt_bluetooth_adapter_a": view.adapter_a,
+            "#txt_bluetooth_adapter_b": view.adapter_b,
+            "#txt_bluetooth_available": view.available,
+            "#txt_bluetooth_actions": view.actions,
+            "#txt_bt_adapter_status": view.adapter_status,
+            "#txt_bt_diagnostics": view.diagnostics,
+            "#txt_bt_events": view.recent_events,
+            "#txt_bt_help": view.help,
+            "#txt_bt_footer": view.footer,
+            "#txt_bt_compact": view.compact,
+        }
+        for selector, content in panels.items():
+            self.set_static_text(selector, content)
+        self.apply_bluetooth_layout(self.size.width, self.size.height)
+
+    def bluetooth_system_facts(self) -> dict[str, str]:
+        """Return cached, low-cost system labels for the Bluetooth diagnostics."""
+        cached = getattr(self, "_bluetooth_system_facts", None)
+        if cached is not None:
+            return cached
+        os_label = "Linux"
+        try:
+            values = {}
+            with open("/etc/os-release") as handle:
+                for line in handle:
+                    if "=" in line:
+                        key, value = line.rstrip().split("=", 1)
+                        values[key] = value.strip('"')
+            os_label = values.get("VERSION_CODENAME") or values.get("PRETTY_NAME") or os_label
+            if os.uname().machine in {"aarch64", "arm64"}:
+                os_label += " (64-bit)"
+        except OSError:
+            pass
+        try:
+            with open("/proc/uptime") as handle:
+                uptime_seconds = int(float(handle.read().split()[0]))
+            days, remainder = divmod(uptime_seconds, 86400)
+            hours, remainder = divmod(remainder, 3600)
+            minutes = remainder // 60
+            uptime = f"{days}d {hours}h {minutes}m"
+        except (OSError, ValueError, IndexError):
+            uptime = "--"
+        self._bluetooth_system_facts = {
+            "os": os_label,
+            "kernel": os.uname().release,
+            "bluez": "bluez-dbus",
+            "uptime": uptime,
+        }
+        return self._bluetooth_system_facts
+
+    def bluetooth_system_metrics(self) -> tuple[float | None, float | None]:
+        """Return lightweight CPU load and memory utilization percentages."""
+        try:
+            cpu_count = os.cpu_count() or 1
+            cpu_percent = min(100.0, os.getloadavg()[0] / cpu_count * 100.0)
+        except OSError:
+            cpu_percent = None
+        try:
+            memory = {}
+            with open("/proc/meminfo") as handle:
+                for line in handle:
+                    key, value, *_ = line.split()
+                    if key in {"MemTotal:", "MemAvailable:"}:
+                        memory[key] = int(value)
+            memory_percent = 100.0 * (1.0 - memory["MemAvailable:"] / memory["MemTotal:"])
+        except (OSError, KeyError, ValueError, ZeroDivisionError):
+            memory_percent = None
+        return cpu_percent, memory_percent
+
+    def apply_bluetooth_layout(self, width: int, height: int) -> None:
+        """Select the full reference layout or the compact low-resolution fallback."""
+        try:
+            panel = self.query_one("#panel_bluetooth")
+            panel.set_class(width < 140 or height < 38, "bt-compact")
+        except Exception:
+            pass
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.apply_bluetooth_layout(event.size.width, event.size.height)
 
     def render_bluetooth_topology(self, adapter_a: dict, adapter_b: dict, devices_a: list[dict], devices_b: list[dict]) -> str:
         def device_rows(items: list[dict], color: str) -> list[str]:
@@ -1867,12 +1976,39 @@ class RPiDashboard(App):
 
     def on_key(self, event) -> None:
         """Reset inactivity on any keyboard input and handle test hotkeys."""
-        if event.key == "w":
+        try:
+            bluetooth_active = self.query_one(TabbedContent).active == "tab_bluetooth"
+        except Exception:
+            bluetooth_active = False
+        if bluetooth_active and event.key in {"s", "p", "c", "d", "r", "x", "g", "m", "q"}:
+            event.stop()
+            if event.key == "s":
+                asyncio.create_task(self.scan_bluetooth())
+            elif event.key in {"p", "c", "d", "x"}:
+                action = {"p": "pair", "c": "connect", "d": "disconnect", "x": "remove"}[event.key]
+                asyncio.create_task(self.run_bluetooth_action(action))
+            elif event.key == "r":
+                asyncio.create_task(self.update_bluetooth_devices())
+            elif event.key == "g":
+                self.show_bluetooth_notice("Adapter priority is planned; no adapter state was changed.")
+            elif event.key == "m":
+                self.show_bluetooth_notice("More settings are available in the WebUI Expert mode.")
+            elif event.key == "q":
+                self.exit()
+        elif event.key == "w":
             asyncio.create_task(self.run_watchdog_test())
         elif event.key == "c":
             asyncio.create_task(self.run_crash_test())
         elif event.key == "g":
             asyncio.create_task(self.run_concurrency_test())
+
+    def show_bluetooth_notice(self, message: str) -> None:
+        """Show a visible status for intentionally unavailable Bluetooth commands."""
+        self.set_static_text("#txt_bt_footer", f"[yellow]NOTICE:[/] {message}")
+        view = getattr(self, "_bluetooth_console_view", None)
+        if view is not None:
+            self.set_static_text("#txt_bt_compact", f"{view.compact}\n[yellow]NOTICE:[/] {message}")
+        self.write_log(f"[BLUETOOTH] {message}")
 
 
     async def run_watchdog_test(self) -> None:
@@ -2176,5 +2312,8 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             pass
     else:
+        import signal as _signal
+
         app = RPiDashboard()
+        _signal.signal(_signal.SIGTERM, lambda _signum, _frame: app.exit())
         app.run()
