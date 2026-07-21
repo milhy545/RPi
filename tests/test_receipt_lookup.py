@@ -40,3 +40,10 @@ def test_receipt_with_different_tree_is_rejected(tmp_path: Path) -> None:
     _receipt(tmp_path / "receipt.json", commit_sha="other", tree_hash="different")
 
     assert _lookup(tmp_path, "head", "tree") == ""
+
+
+def test_malformed_receipt_is_ignored(tmp_path: Path) -> None:
+    (tmp_path / "z-malformed.json").write_text("not json")
+    receipt = _receipt(tmp_path / "a-valid.json", commit_sha="head", tree_hash="tree")
+
+    assert _lookup(tmp_path, "head", "tree") == str(receipt)
