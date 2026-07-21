@@ -36,7 +36,7 @@ def test_auto_merge_uses_safe_target_event_without_checkout() -> None:
     }
     assert all("uses" not in step for step in job["steps"])
     assert job["steps"][0]["run"] == (
-        'gh pr merge "$PR_URL" --auto --squash --delete-branch'
+        'gh pr merge "$PR_URL" --auto --rebase --delete-branch'
     )
 
 

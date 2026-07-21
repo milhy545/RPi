@@ -22,7 +22,12 @@ An atomic receipt is written ONLY on full pipeline success:
 ```
 conductor/ci/receipts/{sha}-{timestamp}.json
 ```
-No receipt = pipeline incomplete = agent must not claim done.
+No receipt for the exact commit SHA or identical Git tree = pipeline incomplete
+= agent must not claim done. The tree identity fallback exists only because
+GitHub rebase can rewrite commit metadata after the receipt is issued.
+If the base branch advanced and changed the tree, `verify-done.sh` may import a
+new receipt only from a successful GitHub Actions `push` run for the exact
+`main` HEAD SHA and the repository `ci.yml` workflow.
 
 ### Rule 4: Never ignore error output
 If ANY of these fail, the agent must STOP and report:
@@ -67,7 +72,7 @@ tools/finish-track.sh "message"
   ↓
 tools/verify-done.sh
   ↓
-  ├── receipt exists for HEAD?
+  ├── receipt exists for HEAD SHA or identical Git tree?
   ├── receipt status == "done"?
   ├── CI report exists?
   ├── working tree clean?

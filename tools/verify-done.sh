@@ -23,6 +23,7 @@ skip(){ echo "SKIP: $*"; }
 # ─── Check 1: Git status ────────────────────────────────────────────────────
 echo "=== Check 1: Git status ==="
 HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+HEAD_TREE="$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo unknown)"
 BRANCH="$(git branch --show-current 2>/dev/null || echo detached)"
 
 if [[ "$HEAD_SHA" == "unknown" ]]; then
@@ -42,9 +43,15 @@ fi
 
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
 echo "=== Check 3: Receipt for HEAD ==="
-RECEIPT="$(find "$RECEIPT_DIR" -name "${HEAD_SHA}-*.json" -type f 2>/dev/null | sort -r | head -1)"
+RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
+if [[ -z "$RECEIPT" && "$BRANCH" == "main" ]]; then
+  echo "No local source receipt matches; checking exact-main GitHub push CI..."
+  if python3 tools/import_main_receipt.py "$RECEIPT_DIR" "$REPORT_DIR" "$HEAD_SHA" "$HEAD_TREE"; then
+    RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
+  fi
+fi
 if [[ -z "$RECEIPT" ]]; then
-  err "No receipt found for HEAD=$HEAD_SHA in $RECEIPT_DIR"
+  err "No receipt found for HEAD=$HEAD_SHA or tree=$HEAD_TREE in $RECEIPT_DIR"
   echo "  This means finish-track.sh was not run or it failed." >&2
   echo "  The agent MUST NOT claim 'done' without a receipt." >&2
 else
@@ -63,6 +70,10 @@ else
   if [[ -z "$RECEIPT_SHA" ]]; then
     err "Failed to read receipt commit_sha from $RECEIPT"
   fi
+  if ! RECEIPT_TREE=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('tree_hash',''))"); then
+    err "Failed to read receipt tree_hash from $RECEIPT"
+    RECEIPT_TREE=""
+  fi
 
   if [[ -z "$RECEIPT_STATUS" ]]; then
     err "Receipt missing or unreadable"
@@ -70,10 +81,14 @@ else
     err "Receipt status is '$RECEIPT_STATUS' (expected 'done')"
   elif [[ -z "$RECEIPT_SHA" ]]; then
     err "Receipt missing commit_sha"
-  elif [[ "$RECEIPT_SHA" != "$HEAD_SHA" ]]; then
-    err "Receipt SHA ($RECEIPT_SHA) does not match HEAD ($HEAD_SHA)"
+  elif [[ "$RECEIPT_SHA" != "$HEAD_SHA" && "$RECEIPT_TREE" != "$HEAD_TREE" ]]; then
+    err "Receipt neither matches HEAD SHA nor tree hash"
   else
-    ok "Valid receipt: $RECEIPT"
+    if [[ "$RECEIPT_SHA" == "$HEAD_SHA" ]]; then
+      ok "Valid receipt for HEAD SHA: $RECEIPT"
+    else
+      ok "Valid receipt for identical Git tree after rebase: $RECEIPT"
+    fi
     # Additional checks for ci_report and actions_url
     if ! CI_REPORT=$(python3 -c "import json, sys; print(json.load(open('$RECEIPT')).get('ci_report',''))"); then
       err "Failed to read receipt ci_report from $RECEIPT"
