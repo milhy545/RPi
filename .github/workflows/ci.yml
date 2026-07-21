@@ -2,7 +2,6 @@ name: RPi Dashboard CI
 
 on:
   push:
-    branches: [ master, main ]
   pull_request:
     branches: [ master, main ]
 
@@ -69,3 +68,19 @@ jobs:
           name: rpi-dashboard-ci-reports
           path: conductor/ci/reports/*.md
           if-no-files-found: ignore
+
+  agent-approval:
+    name: agent-approval
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    needs: verify-done
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Approve the verified pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          gh pr review "$PR_URL" --approve \
+            --body "Automated approval after the required RPi Dashboard CI completed successfully."

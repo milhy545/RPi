@@ -24,9 +24,24 @@ notify_fail() {
 }
 
 latest_report() {
-  find "$REPORT_DIR" -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
-    | sort -nr \
-    | awk 'NR==1 {sub(/^[^ ]+ /, ""); print}'
+  local expected_sha="${1:-}"
+  local candidate
+
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" && -s "$candidate" ]] || continue
+    grep -qx 'PASS' "$candidate" || continue
+    if [[ -n "$expected_sha" ]] && ! grep -Fqx -- "- Commit: $expected_sha" "$candidate"; then
+      continue
+    fi
+    printf '%s\n' "$candidate"
+    return 0
+  done < <(
+    find "$REPORT_DIR" -maxdepth 1 -type f -name '*.md' -printf '%T@ %p\n' 2>/dev/null \
+      | sort -nr \
+      | sed 's/^[^ ]* //'
+  )
+
+  return 1
 }
 
 prepare_candidate() {
@@ -102,7 +117,7 @@ run_once() {
       fi
       GH_RUN_URL=$(gh run view "$GH_RUN_ID" --json url --jq '.url')
       # Emit CI report only if it exists and is non‑empty
-      CI_REPORT=$(latest_report)
+      CI_REPORT=$(latest_report "$source_sha")
       if [[ -z "$CI_REPORT" ]]; then
         notify_fail "CI report not found after successful run"
         return 1
@@ -114,7 +129,7 @@ run_once() {
       return 0
     fi
     local report
-    report="$(latest_report)"
+    report="$(latest_report "$source_sha")"
     if [[ -z "$report" ]]; then
       notify_fail "CI report not found after push failure"
       return 1
@@ -124,19 +139,25 @@ run_once() {
   fi
 
   local report
-  report="$(latest_report || true)"
+  report="$(latest_report "$source_sha" || true)"
   notify_fail "Commit $source_sha failed. Report: ${report:-none}"
   return 1
 }
 
-if [[ "$POLL_SECONDS" == "0" ]]; then
-  run_once
-  exit $?
-fi
-
-while true; do
-  if ! run_once; then
-    echo "CI failed; keeping agent alive."
+main() {
+  if [[ "$POLL_SECONDS" == "0" ]]; then
+    run_once
+    return $?
   fi
-  sleep "$POLL_SECONDS"
-done
+
+  while true; do
+    if ! run_once; then
+      echo "CI failed; keeping agent alive."
+    fi
+    sleep "$POLL_SECONDS"
+  done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
