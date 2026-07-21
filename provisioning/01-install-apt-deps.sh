@@ -15,6 +15,7 @@ APT_PACKAGES=(
     python3-venv
     git
     tmux
+    fonts-terminus
     curl
     wget
     unzip

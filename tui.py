@@ -2025,12 +2025,18 @@ class RPiDashboard(App):
         if bluetooth_active and event.key in {"up", "down"}:
             event.stop()
             self.move_bluetooth_selection(-1 if event.key == "up" else 1)
-        elif bluetooth_active and event.key in {"s", "p", "c", "d", "r", "x", "g", "m", "q"}:
+        elif bluetooth_active and event.key in {"s", "p", "t", "c", "d", "r", "x", "g", "m", "q"}:
             event.stop()
             if event.key == "s":
                 asyncio.create_task(self.scan_bluetooth())
-            elif event.key in {"p", "c", "d", "x"}:
-                action = {"p": "pair", "c": "connect", "d": "disconnect", "x": "remove"}[event.key]
+            elif event.key in {"p", "t", "c", "d", "x"}:
+                action = {
+                    "p": "pair",
+                    "t": "trust",
+                    "c": "connect",
+                    "d": "disconnect",
+                    "x": "remove",
+                }[event.key]
                 asyncio.create_task(self.run_bluetooth_action(action))
             elif event.key == "r":
                 asyncio.create_task(self.update_bluetooth_devices())

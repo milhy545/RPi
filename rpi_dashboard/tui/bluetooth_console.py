@@ -296,7 +296,7 @@ def build_bluetooth_console(
         "[bold cyan](BT)[/] [bold]RPi Bluetooth Control Center (TUI)[/]  "
         "[cyan]Dual Adapter Management[/]                         "
         f"Auto Connect: [{'green' if auto_connect else 'red'}]{'ON' if auto_connect else 'OFF'}[/] | "
-        r"\[S] Scan All  \[P] Pair New  \[R] Refresh  \[Q] Quit"
+        r"\[S] Scan All  \[P] Pair New  \[T] Trust  \[R] Refresh  \[Q] Quit"
     )
     actions = "\n".join(
         [
@@ -317,6 +317,7 @@ def build_bluetooth_console(
             "Up/Down  Navigate",
             "Enter    Select Action",
             "Tab      Switch Panel",
+            "T        Trust Device",
             "R        Refresh",
             "Q        Quit",
         ]
@@ -340,7 +341,7 @@ def build_bluetooth_console(
         (
             "",
             r"\[S] Scan  \[P] Pair  \[C] Connect  \[D] Disconnect",
-            r"\[R] Refresh  \[X] Remove  \[G] Priority  \[M] Settings",
+            r"\[T] Trust  \[R] Refresh  \[X] Remove  \[G] Priority  \[M] Settings",
         )
     )
     return BluetoothConsoleView(

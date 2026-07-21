@@ -13,6 +13,8 @@
 - Addressed Codex PR review by prioritizing headset/headphone output evidence over generic `phone` input matching.
 - Added a visible `>` target marker, Up/Down target navigation, default/preserved device-key selection, and a matching footer target so full-layout actions never depend on an unreachable hidden selector.
 - Reserved the compact layout's final two rows for shortcuts and limited its device summary to two rows; the 85x24 screenshot now shows every advertised action through `[M] Settings`.
+- Restored a reachable Trust action with the visible `[T] Trust` command in full and compact layouts and adapter-aware keyboard dispatch.
+- Added `fonts-terminus` to fresh-host APT provisioning so the required `Lat2-Terminus16` service precondition is installed before `setfont` runs.
 
 ## TUI Verification Evidence
 
