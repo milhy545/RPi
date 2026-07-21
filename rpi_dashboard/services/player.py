@@ -138,7 +138,7 @@ def mpv_st() -> Dict[str, Any]:
         pos = mget("time-pos") or 0
         dur = mget("duration") or 0
         paused = mget("paused") or False
-        title = mget("media-title") or ""
+        title = mget("media-title") or mget("filename") or mget("path") or "Playback"
         vol = mget("volume") or 100
         idle = mget("idle-active") or False
 

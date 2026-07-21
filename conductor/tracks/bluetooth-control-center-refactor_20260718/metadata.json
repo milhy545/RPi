@@ -1,0 +1,48 @@
+{
+  "track_id": "bluetooth-control-center-refactor_20260718",
+  "type": "refactor",
+  "status": "done",
+  "created": "2026-07-18T11:00:00+01:00",
+  "updated": "2026-07-21T02:05:00+01:00",
+  "owner": "codex",
+  "priority": "high",
+  "description": "Refactor Bluetooth management into a shared multi-adapter BlueZ control center with WebUI/TUI parity, stable adapter identity, diagnostics, hotplug handling, soundbar readiness, and Xbox/Steam Link readiness.",
+  "estimated_hours": "18-30",
+  "phases": 10,
+  "dependencies": [
+    "BlueZ",
+    "system D-Bus",
+    "PipeWire/PulseAudio compatibility via pactl",
+    "Textual",
+    "aiohttp",
+    "dbus-fast"
+  ],
+  "related_tracks": [
+    "bluetooth-xbox-controller_20260709",
+    "bt-audio-loopback_20260611",
+    "devices-connections",
+    "devices-tab-hardening_20260613",
+    "audio-tab-refactor_20260613",
+    "audio-routing-mixer-v2_20260613",
+    "audio-devices-age-routes_20260613",
+    "dashboard-modes-settings-terminal_20260613",
+    "refactor-fullstack_20260706"
+  ],
+  "supersedes": [
+    "implicit single-adapter bluetoothctl architecture"
+  ],
+  "tags": [
+    "bluetooth",
+    "bluez",
+    "dbus",
+    "multi-adapter",
+    "hotplug",
+    "webui",
+    "tui",
+    "diagnostics",
+    "soundbar",
+    "xbox",
+    "steam-link",
+    "testing"
+  ]
+}
