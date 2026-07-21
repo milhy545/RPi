@@ -17,9 +17,11 @@ Branch protection also requires these checks:
 All review conversations must be resolved. The merge method is rebase, which
 keeps `main` linear. Because GitHub can rewrite commit metadata and SHA during
 rebase, `verify-done.sh` accepts the original Conductor receipt only when its
-Git tree hash exactly matches the rebased commit. GitHub performs the merge only
-after every required review, conversation, and status check is satisfied, and
-then deletes the source branch.
+Git tree hash exactly matches the rebased commit. If `main` advanced and changed
+that tree, verification atomically imports a local receipt only from a successful
+GitHub Actions `push` run for the exact `main` HEAD SHA and `ci.yml` workflow.
+GitHub performs the merge only after every required review, conversation, and
+status check is satisfied, and then deletes the source branch.
 
 Copilot and Codex reviews remain advisory. GitHub Copilot code review submits
 comments rather than approvals, so it cannot satisfy the required approval by

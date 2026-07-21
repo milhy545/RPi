@@ -44,6 +44,12 @@ fi
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
 echo "=== Check 3: Receipt for HEAD ==="
 RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
+if [[ -z "$RECEIPT" && "$BRANCH" == "main" ]]; then
+  echo "No local source receipt matches; checking exact-main GitHub push CI..."
+  if python3 tools/import_main_receipt.py "$RECEIPT_DIR" "$REPORT_DIR" "$HEAD_SHA" "$HEAD_TREE"; then
+    RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
+  fi
+fi
 if [[ -z "$RECEIPT" ]]; then
   err "No receipt found for HEAD=$HEAD_SHA or tree=$HEAD_TREE in $RECEIPT_DIR"
   echo "  This means finish-track.sh was not run or it failed." >&2
