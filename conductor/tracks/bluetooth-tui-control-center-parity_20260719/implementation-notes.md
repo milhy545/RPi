@@ -104,3 +104,10 @@ Remote screenshot artifacts on Milhy-PC:
 
 - The live backend can still report `bluetoothctl` degraded state when BlueZ D-Bus state temporarily falls back. Operations now remain functional because the BlueZ backend delegates to fallback operations when fallback state is active.
 - During one real browser run, the Power Off click completed but no adapter remained off by the time state was checked; the separate destructive API test verified power off/on on both adapters successfully.
+
+## Final Review Corrections
+
+- Empty A/B adapter placeholders no longer claim the same legacy device when fallback records have no `adapter_id`; unknown devices remain visible only in topology and Available Devices.
+- Compact `G`/`M` notices replace the reserved spacer row, keeping the supported `85x24` view at its fixed nine-row height.
+- User-configurable adapter aliases are escaped before Rich markup rendering.
+- Focused review regression suite: `23 passed` across the Bluetooth console and modern TUI tests, including live Textual geometry at `170x48` and `85x24`.

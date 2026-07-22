@@ -98,6 +98,14 @@ def _power(adapter: Adapter) -> tuple[str, str]:
     return "Powered Off", "red"
 
 
+def _adapter_devices(adapter: Adapter, devices: list[Device]) -> list[Device]:
+    """Return devices assigned to a real adapter slot, never an empty placeholder."""
+    adapter_id = adapter.get("id") if adapter else None
+    if not adapter_id:
+        return []
+    return [device for device in devices if device.get("adapter_id") == adapter_id]
+
+
 def _device_category_rows(devices: list[Device], category: str) -> list[str]:
     matching = [device for device in devices if classify_device(device) == category]
     rows = []
@@ -123,8 +131,8 @@ def _topology_cell(value: str, color: str = "") -> str:
 
 def _topology(adapters: list[Adapter], devices: list[Device]) -> str:
     adapter_a, adapter_b = adapter_slots(adapters)
-    devices_a = [device for device in devices if device.get("adapter_id") == adapter_a.get("id")]
-    devices_b = [device for device in devices if device.get("adapter_id") == adapter_b.get("id")]
+    devices_a = _adapter_devices(adapter_a, devices)
+    devices_b = _adapter_devices(adapter_b, devices)
     categories = {
         name: _device_category_rows(devices, name)
         for name in ("audio_output", "audio_input", "io", "controller")
@@ -185,7 +193,7 @@ def _topology(adapters: list[Adapter], devices: list[Device]) -> str:
 
 def _adapter_table(title: str, adapter: Adapter, devices: list[Device], color: str, selected_key: str) -> str:
     rows = [f"[bold {color}]{title}[/]", " # Device         RSSI    Status", "--------------------------------------"]
-    adapter_devices = [device for device in devices if device.get("adapter_id") == adapter.get("id")]
+    adapter_devices = _adapter_devices(adapter, devices)
     for index, device in enumerate(adapter_devices[:4], start=1):
         status, status_color = _status(device)
         marker = ">" if device.get("key") == selected_key else " "
@@ -197,7 +205,11 @@ def _adapter_table(title: str, adapter: Adapter, devices: list[Device], color: s
 
 
 def _available(devices: list[Device], adapter_a: Adapter, adapter_b: Adapter, selected_key: str) -> str:
-    labels = {adapter_a.get("id"): "A", adapter_b.get("id"): "B"}
+    labels = {
+        adapter.get("id"): label
+        for adapter, label in ((adapter_a, "A"), (adapter_b, "B"))
+        if adapter.get("id")
+    }
     rows = ["[bold yellow]AVAILABLE DEVICES[/]", "Device Name       RSSI    Adapter", "--------------------------------------"]
     available = [device for device in devices if not device.get("connected")]
     for device in available[:4]:
@@ -212,7 +224,7 @@ def _available(devices: list[Device], adapter_a: Adapter, adapter_b: Adapter, se
 def _adapter_status(adapters: list[Adapter], devices: list[Device]) -> str:
     rows = ["[bold cyan]ADAPTER STATUS[/]"]
     for label, adapter in zip(("A", "B"), adapter_slots(adapters), strict=True):
-        adapter_devices = [device for device in devices if device.get("adapter_id") == adapter.get("id")]
+        adapter_devices = _adapter_devices(adapter, devices)
         power, color = _power(adapter)
         rows.extend(
             [
@@ -330,8 +342,10 @@ def build_bluetooth_console(
     compact_rows = [
         f"[bold cyan](BT)[/] [bold]RPi Bluetooth Control Center[/] | Auto: {'ON' if auto_connect else 'OFF'}",
         f"Service [{service_color}]{service}[/] | Adapters {len(adapters)} | Connected {connected} | Paired {paired}",
-        "[cyan]A / AUDIO[/] " + (f"{adapter_a.get('alias') or adapter_a.get('id')} {_power(adapter_a)[0]}" if adapter_a else "Not present"),
-        "[green]B / IO[/]    " + (f"{adapter_b.get('alias') or adapter_b.get('id')} {_power(adapter_b)[0]}" if adapter_b else "Not present"),
+        "[cyan]A / AUDIO[/] "
+        + (f"{escape(str(adapter_a.get('alias') or adapter_a.get('id')))} {_power(adapter_a)[0]}" if adapter_a else "Not present"),
+        "[green]B / IO[/]    "
+        + (f"{escape(str(adapter_b.get('alias') or adapter_b.get('id')))} {_power(adapter_b)[0]}" if adapter_b else "Not present"),
     ]
     for device in devices[:2]:
         status, color = _status(device)

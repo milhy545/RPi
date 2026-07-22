@@ -2058,7 +2058,13 @@ class RPiDashboard(App):
         self.set_static_text("#txt_bt_footer", f"[yellow]NOTICE:[/] {message}")
         view = getattr(self, "_bluetooth_console_view", None)
         if view is not None:
-            self.set_static_text("#txt_bt_compact", f"{view.compact}\n[yellow]NOTICE:[/] {message}")
+            compact_rows = view.compact.splitlines()
+            notice = f"[yellow]NOTICE:[/] {message}"
+            try:
+                compact_rows[compact_rows.index("")] = notice
+            except ValueError:
+                compact_rows[-1] = notice
+            self.set_static_text("#txt_bt_compact", "\n".join(compact_rows))
         self.write_log(f"[BLUETOOTH] {message}")
 
 

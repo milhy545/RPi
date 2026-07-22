@@ -181,6 +181,35 @@ def test_zero_and_one_adapter_states_are_honest_and_ascii_safe() -> None:
             assert "Adapter Address: --" in rendered
 
 
+def test_legacy_devices_without_adapter_are_not_duplicated_into_empty_slots() -> None:
+    state = bluetooth_state(0)
+    state["devices"] = [
+        {
+            "key": "legacy-speaker",
+            "name": "Legacy Speaker",
+            "kind": "speaker",
+            "paired": True,
+            "connected": True,
+        }
+    ]
+
+    view = build_bluetooth_console(state)
+
+    assert "Legacy Speaker" not in plain(view.adapter_a)
+    assert "Legacy Speaker" not in plain(view.adapter_b)
+    assert "Connections: 0" in plain(view.adapter_status)
+    assert "Legacy Speake" in plain(view.topology)
+
+
+def test_compact_adapter_alias_is_escaped_as_user_data() -> None:
+    state = bluetooth_state(1)
+    state["adapters"][0]["alias"] = "[broken"
+
+    compact = plain(build_bluetooth_console(state).compact)
+
+    assert "[broken Powered On" in compact
+
+
 def test_console_font_is_declared_as_a_provisioning_dependency() -> None:
     root = Path(__file__).resolve().parents[1]
     dependencies = (root / "provisioning/01-install-apt-deps.sh").read_text()
@@ -248,6 +277,12 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             assert "[M] Settings" in compact
             assert "[T] Trust" in compact
             assert "Settings" in compact_app.export_screenshot()
+            await pilot.press("g")
+            await pilot.pause(0.05)
+            compact = str(compact_app.query_one("#txt_bt_compact", Static).render())
+            assert "Adapter priority is planned" in compact
+            assert compact_widget.content_size.height == compact_widget.size.height
+            assert "priority" in compact_app.export_screenshot()
 
     asyncio.run(run_check())
 
