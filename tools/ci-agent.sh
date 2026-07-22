@@ -9,7 +9,7 @@ cd "$ROOT"
 SOURCE_REMOTE="${SOURCE_REMOTE:-local}"   # local or a git remote name
 TARGET_REMOTE="${TARGET_REMOTE:-origin}"
 BRANCH_OVERRIDE="${BRANCH:-}"
-CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 BRANCH="${BRANCH:-$CURRENT_BRANCH}"
 POLL_SECONDS="${POLL_SECONDS:-0}"
 REPORT_DIR="${REPORT_DIR:-conductor/ci/reports}"
@@ -18,15 +18,23 @@ mkdir -p "$REPORT_DIR"
 
 refresh_branch() {
   if [[ -z "$BRANCH_OVERRIDE" ]]; then
-    BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+    local current_branch
+    if ! current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null)" || [[ -z "$current_branch" ]]; then
+      echo "Cannot determine a branch from detached HEAD." >&2
+      return 1
+    fi
+    BRANCH="$current_branch"
   fi
 }
 
 remote_has_commit() {
   local source_sha="$1"
   local remote_sha
-  remote_sha="$(git ls-remote "$TARGET_REMOTE" "refs/heads/$BRANCH" 2>/dev/null | awk 'NR == 1 { print $1 }')"
-  [[ -n "$remote_sha" && "$remote_sha" == "$source_sha" ]]
+  if ! git fetch --quiet --no-tags "$TARGET_REMOTE" "refs/heads/$BRANCH" 2>/dev/null; then
+    return 1
+  fi
+  remote_sha="$(git rev-parse FETCH_HEAD 2>/dev/null)"
+  [[ -n "$remote_sha" ]] && git merge-base --is-ancestor "$source_sha" "$remote_sha"
 }
 
 notify_fail() {
@@ -81,7 +89,10 @@ prepare_candidate() {
 }
 
 run_once() {
-  refresh_branch
+  if ! refresh_branch; then
+    notify_fail "Could not determine the checked-out branch."
+    return 1
+  fi
   echo "== RPi CI agent run: $(date -Is) =="
   local source_sha
   if ! source_sha="$(prepare_candidate)"; then

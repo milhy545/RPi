@@ -90,6 +90,32 @@ def test_ci_agent_refreshes_checkout_branch_when_polling_without_override(tmp_pa
     assert result.stdout == "main"
 
 
+def test_ci_agent_rejects_detached_checkout_without_branch_override(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "ci@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "CI Test"], check=True)
+    (tmp_path / "README").write_text("test\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-m", "test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(tmp_path), "checkout", "--detach"], check=True, capture_output=True)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; cd "$2"; BRANCH_OVERRIDE=""; BRANCH=main; refresh_branch',
+            "ci-detached-test",
+            str(CI_AGENT),
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "detached HEAD" in result.stderr
+
+
 def test_ci_agent_detects_commit_already_on_target_branch(tmp_path: Path) -> None:
     remote = tmp_path / "remote.git"
     checkout = tmp_path / "checkout"
@@ -103,6 +129,9 @@ def test_ci_agent_detects_commit_already_on_target_branch(tmp_path: Path) -> Non
     subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", str(remote)], check=True)
     subprocess.run(["git", "-C", str(checkout), "push", "origin", "main"], check=True, capture_output=True)
     source_sha = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
+    (checkout / "README").write_text("newer remote tip\n")
+    subprocess.run(["git", "-C", str(checkout), "commit", "-am", "advance"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(checkout), "push", "origin", "main"], check=True, capture_output=True)
 
     result = subprocess.run(
         [
