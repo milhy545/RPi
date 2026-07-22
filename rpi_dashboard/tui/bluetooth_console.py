@@ -30,6 +30,22 @@ class BluetoothConsoleView:
     compact: str
 
 
+def normalize_device_keys(devices: list[Device]) -> list[Device]:
+    """Copy device records and provide a stable selection key for legacy data."""
+    normalized = []
+    for index, device in enumerate(devices):
+        item = dict(device)
+        item["key"] = (
+            item.get("key")
+            or item.get("device_key")
+            or item.get("address")
+            or item.get("mac")
+            or f"legacy-device-{index}"
+        )
+        normalized.append(item)
+    return normalized
+
+
 def adapter_slots(adapters: list[Adapter]) -> tuple[Adapter, Adapter]:
     """Return deterministic Adapter A/B slots independent of list ordering."""
     ordered = sorted(
@@ -291,7 +307,7 @@ def build_bluetooth_console(
     state = state or {}
     facts = facts or {}
     adapters = list(state.get("adapters") or [])
-    devices = list(state.get("devices") or [])
+    devices = normalize_device_keys(list(state.get("devices") or []))
     adapter_a, adapter_b = adapter_slots(adapters)
     backend = state.get("backend") or {}
     connected = len([device for device in devices if device.get("connected")])

@@ -18,7 +18,7 @@ from aiohttp import web
 from mode_switcher import ModeSwitcher, ModeSwitcherState
 from config import TUI_STATS_INTERVAL, TUI_SETTINGS_INTERVAL
 from rpi_dashboard.services import devices as devices_service
-from rpi_dashboard.tui.bluetooth_console import build_bluetooth_console
+from rpi_dashboard.tui.bluetooth_console import build_bluetooth_console, normalize_device_keys
 from rpi_dashboard.tui.formatting import human_audio_sink
 from rpi_dashboard.api.routes import get_route
 
@@ -894,7 +894,7 @@ class RPiDashboard(App):
             state = await asyncio.to_thread(devices_service.devices_state)
             bluetooth = state.get("bluetooth", {})
             v2 = bluetooth.get("v2") or {}
-            devices = v2.get("devices") or bluetooth.get("devices") or bluetooth.get("paired") or []
+            devices = normalize_device_keys(v2.get("devices") or bluetooth.get("devices") or bluetooth.get("paired") or [])
             adapters = v2.get("adapters") or []
             self._bluetooth_state_snapshot = v2
             self._bluetooth_devices_snapshot = devices
