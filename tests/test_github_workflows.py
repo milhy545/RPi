@@ -68,3 +68,54 @@ def test_ci_agent_selects_only_complete_report_for_exact_commit(tmp_path: Path) 
     )
 
     assert result.stdout.strip() == str(tmp_path / "expected.md")
+
+
+def test_ci_agent_refreshes_checkout_branch_when_polling_without_override(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main", str(tmp_path)], check=True, capture_output=True)
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; cd "$2"; BRANCH_OVERRIDE=""; BRANCH=stale; refresh_branch; printf "%s" "$BRANCH"',
+            "ci-branch-test",
+            str(CI_AGENT),
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == "main"
+
+
+def test_ci_agent_detects_commit_already_on_target_branch(tmp_path: Path) -> None:
+    remote = tmp_path / "remote.git"
+    checkout = tmp_path / "checkout"
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True)
+    subprocess.run(["git", "init", "-b", "main", str(checkout)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(checkout), "config", "user.email", "ci@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "config", "user.name", "CI Test"], check=True)
+    (checkout / "README").write_text("test\n")
+    subprocess.run(["git", "-C", str(checkout), "add", "README"], check=True)
+    subprocess.run(["git", "-C", str(checkout), "commit", "-m", "test"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", str(remote)], check=True)
+    subprocess.run(["git", "-C", str(checkout), "push", "origin", "main"], check=True, capture_output=True)
+    source_sha = subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip()
+
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; cd "$2"; TARGET_REMOTE=origin; BRANCH=main; remote_has_commit "$3"',
+            "ci-remote-test",
+            str(CI_AGENT),
+            str(checkout),
+            source_sha,
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr

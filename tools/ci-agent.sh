@@ -8,12 +8,26 @@ cd "$ROOT"
 
 SOURCE_REMOTE="${SOURCE_REMOTE:-local}"   # local or a git remote name
 TARGET_REMOTE="${TARGET_REMOTE:-origin}"
+BRANCH_OVERRIDE="${BRANCH:-}"
 CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
 BRANCH="${BRANCH:-$CURRENT_BRANCH}"
 POLL_SECONDS="${POLL_SECONDS:-0}"
 REPORT_DIR="${REPORT_DIR:-conductor/ci/reports}"
 STATE_FILE="${STATE_FILE:-.git/rpi-ci-agent-last-sha}"
 mkdir -p "$REPORT_DIR"
+
+refresh_branch() {
+  if [[ -z "$BRANCH_OVERRIDE" ]]; then
+    BRANCH="$(git branch --show-current 2>/dev/null || git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+  fi
+}
+
+remote_has_commit() {
+  local source_sha="$1"
+  local remote_sha
+  remote_sha="$(git ls-remote "$TARGET_REMOTE" "refs/heads/$BRANCH" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+  [[ -n "$remote_sha" && "$remote_sha" == "$source_sha" ]]
+}
 
 notify_fail() {
   local msg="$1"
@@ -67,6 +81,7 @@ prepare_candidate() {
 }
 
 run_once() {
+  refresh_branch
   echo "== RPi CI agent run: $(date -Is) =="
   local source_sha
   if ! source_sha="$(prepare_candidate)"; then
@@ -78,6 +93,12 @@ run_once() {
   [[ -f "$STATE_FILE" ]] && last_sha="$(cat "$STATE_FILE")"
   if [[ "$POLL_SECONDS" != "0" && "$source_sha" == "$last_sha" ]]; then
     echo "No new local commit ($source_sha)."
+    return 0
+  fi
+
+  if [[ "$POLL_SECONDS" != "0" ]] && remote_has_commit "$source_sha"; then
+    echo "Commit $source_sha is already present on $TARGET_REMOTE/$BRANCH; recording it as processed."
+    printf '%s\n' "$source_sha" > "$STATE_FILE"
     return 0
   fi
 
