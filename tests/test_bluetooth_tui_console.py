@@ -11,6 +11,7 @@ from rpi_dashboard.tui.bluetooth_console import (
     adapter_slots,
     build_bluetooth_console,
     classify_device,
+    normalize_device_keys,
 )
 
 
@@ -201,6 +202,21 @@ def test_legacy_devices_without_adapter_are_not_duplicated_into_empty_slots() ->
     assert "Legacy Speake" in plain(view.topology)
 
 
+def test_legacy_device_mac_becomes_a_stable_visible_selection_key() -> None:
+    devices = normalize_device_keys(
+        [{"address": "AA:BB:CC:DD:EE:FF", "name": "Legacy Speaker", "connected": True}]
+    )
+    state = bluetooth_state(0)
+    state["devices"] = devices
+    state["selected_device_key"] = devices[0]["key"]
+
+    view = build_bluetooth_console(state)
+
+    assert devices[0]["key"] == "AA:BB:CC:DD:EE:FF"
+    assert ">Connected" in plain(view.compact)
+    assert "Target: Legacy Speaker" in plain(view.footer)
+
+
 def test_compact_adapter_alias_is_escaped_as_user_data() -> None:
     state = bluetooth_state(1)
     state["adapters"][0]["alias"] = "[broken"
@@ -283,6 +299,25 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             assert "Adapter priority is planned" in compact
             assert compact_widget.content_size.height == compact_widget.size.height
             assert "priority" in compact_app.export_screenshot()
+
+        legacy_device = {
+            "address": "AA:BB:CC:DD:EE:FF",
+            "name": "Legacy Speaker",
+            "paired": True,
+            "connected": True,
+        }
+        monkeypatch.setattr(
+            tui.devices_service,
+            "devices_state",
+            lambda: {"ok": True, "bluetooth": {"devices": [legacy_device]}},
+        )
+        legacy_app = tui.RPiDashboard()
+        async with legacy_app.run_test(size=(85, 24)):
+            legacy_app.query_one(TabbedContent).active = "tab_bluetooth"
+            await legacy_app.update_bluetooth_devices()
+            assert legacy_app._bt_selected_device_key == "AA:BB:CC:DD:EE:FF"
+            assert ">Connected" in str(legacy_app.query_one("#txt_bt_compact", Static).render())
+            assert "Target: Legacy Speaker" in plain(legacy_app._bluetooth_console_view.footer)
 
     asyncio.run(run_check())
 

@@ -111,3 +111,4 @@ Remote screenshot artifacts on Milhy-PC:
 - Compact `G`/`M` notices replace the reserved spacer row, keeping the supported `85x24` view at its fixed nine-row height.
 - User-configurable adapter aliases are escaped before Rich markup rendering.
 - Focused review regression suite: `23 passed` across the Bluetooth console and modern TUI tests, including live Textual geometry at `170x48` and `85x24`.
+- Legacy fallback records without a v2 device key now derive a stable selection key from MAC, so navigation, the visible marker, footer target, and actions remain aligned.
