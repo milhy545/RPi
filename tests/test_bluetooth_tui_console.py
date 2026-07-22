@@ -219,11 +219,12 @@ def test_legacy_device_mac_becomes_a_stable_visible_selection_key() -> None:
 
 def test_compact_adapter_alias_is_escaped_as_user_data() -> None:
     state = bluetooth_state(1)
-    state["adapters"][0]["alias"] = "[broken"
+    state["adapters"][0]["alias"] = "[broken \u0158\u00edzen\u00ed \U0001f50a"
 
     compact = plain(build_bluetooth_console(state).compact)
 
-    assert "[broken Powered On" in compact
+    assert "[broken ??zen? ? Powered On" in compact
+    compact.encode("ascii")
 
 
 def test_console_font_is_declared_as_a_provisioning_dependency() -> None:
@@ -248,6 +249,7 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
         tui.API_PORT = 0
 
         full_app = tui.RPiDashboard()
+        full_app.language = "en"
         async with full_app.run_test(size=(170, 48)) as pilot:
             full_app.query_one(TabbedContent).active = "tab_bluetooth"
             await full_app.update_bluetooth_devices()
@@ -276,8 +278,20 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             await pilot.pause(0.05)
             assert full_app._bt_selected_device_key == "adapter-a/phone"
             assert "Smartphone XYZ" in str(full_app.query_one("#txt_bt_footer", Static).render())
+            await pilot.click("#btn_lang_cz")
+            await pilot.pause(0.05)
+            assert "TOPOLOGIE" in str(full_app.query_one("#txt_bluetooth_topology", Static).render())
+            "\n".join(plain(value) for value in full_app._bluetooth_console_view.__dict__.values()).encode("ascii")
+            await pilot.click("#btn_lang_en")
+            await pilot.resize_terminal(169, 48)
+            await pilot.pause(0.05)
+            assert full_app.query_one("#panel_bluetooth").has_class("bt-compact")
+            await pilot.resize_terminal(170, 48)
+            await pilot.pause(0.05)
+            assert not full_app.query_one("#panel_bluetooth").has_class("bt-compact")
 
         compact_app = tui.RPiDashboard()
+        compact_app.language = "en"
         async with compact_app.run_test(size=(85, 24)) as pilot:
             compact_app.query_one(TabbedContent).active = "tab_bluetooth"
             await compact_app.update_bluetooth_devices()
@@ -312,6 +326,7 @@ def test_live_textual_layout_switches_at_supported_sizes(monkeypatch) -> None:
             lambda: {"ok": True, "bluetooth": {"devices": [legacy_device]}},
         )
         legacy_app = tui.RPiDashboard()
+        legacy_app.language = "en"
         async with legacy_app.run_test(size=(85, 24)):
             legacy_app.query_one(TabbedContent).active = "tab_bluetooth"
             await legacy_app.update_bluetooth_devices()

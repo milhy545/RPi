@@ -112,3 +112,6 @@ Remote screenshot artifacts on Milhy-PC:
 - User-configurable adapter aliases are escaped before Rich markup rendering.
 - Focused review regression suite: `23 passed` across the Bluetooth console and modern TUI tests, including live Textual geometry at `170x48` and `85x24`.
 - Legacy fallback records without a v2 device key now derive a stable selection key from MAC, so navigation, the visible marker, footer target, and actions remain aligned.
+- Full mode now starts at its measured `170x38` minimum; widths through 169 columns use the compact renderer.
+- Every Bluetooth console panel now follows the live CZ/EN setting and re-renders from the current snapshot on language changes; Czech tty copy is deliberately ASCII-only.
+- Adapter aliases use the same ASCII-safe terminal normalization as device labels in addition to Rich markup escaping.

@@ -729,6 +729,13 @@ class RPiDashboard(App):
             wifi_list.clear_options()
             wifi_list.add_option(self.empty_wifi_label())
 
+        if hasattr(self, "_bluetooth_state_snapshot"):
+            self.render_bluetooth_console(
+                self._bluetooth_state_snapshot,
+                self._bluetooth_devices_snapshot,
+                self._bluetooth_adapters_snapshot,
+            )
+
     def replay_log_buffer(self) -> None:
         """Replay LogBuffer history into the Log widget (e.g. after resume)."""
         try:
@@ -982,6 +989,7 @@ class RPiDashboard(App):
             facts=self.bluetooth_system_facts(),
             cpu_percent=cpu_percent,
             memory_percent=memory_percent,
+            language=self.language,
         )
         self._bluetooth_console_view = view
         panels = {
@@ -1061,7 +1069,7 @@ class RPiDashboard(App):
         """Select the full reference layout or the compact low-resolution fallback."""
         try:
             panel = self.query_one("#panel_bluetooth")
-            panel.set_class(width < 140 or height < 38, "bt-compact")
+            panel.set_class(width < 170 or height < 38, "bt-compact")
         except Exception:
             pass
 
