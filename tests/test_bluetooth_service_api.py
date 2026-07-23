@@ -42,6 +42,27 @@ def test_sync_facade_reuses_one_persistent_event_loop():
     assert bluetooth_service._run(loop_identity()) == bluetooth_service._run(loop_identity())
 
 
+def test_sync_runner_cancels_stalled_operation():
+    runner = bluetooth_service._AsyncRunner()
+
+    with pytest.raises(TimeoutError, match="timed out after"):
+        runner.run(asyncio.sleep(10), timeout=0.01)
+
+
+def test_state_read_does_not_trigger_auto_connect(monkeypatch):
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    monkeypatch.setattr(
+        bluetooth_service,
+        "_apply_auto_connect",
+        lambda *_args, **_kwargs: pytest.fail("state read triggered auto-connect"),
+    )
+
+    result = handlers.handle_bt_state({})
+
+    assert result["ok"] is True
+
+
 def test_bt_device_action_uses_adapter_and_device_key():
     """Adapter-aware actions update the selected fake device."""
     backend = FakeBluetoothBackend.with_soundbar_and_controller()

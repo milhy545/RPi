@@ -1,5 +1,6 @@
 """Regression tests for the adapter-aware bluetoothctl fallback."""
 
+import io
 import subprocess
 
 import pytest
@@ -88,6 +89,132 @@ def test_pairing_waits_for_bluez_to_report_paired(monkeypatch):
     )
 
     assert operation.state == "succeeded"
+
+
+def test_pairing_bounds_pairability_to_selected_adapter(monkeypatch):
+    """Pairing opens and closes bondability around one explicit controller."""
+    backend = BluetoothctlBackend(timeout=1)
+    adapter = fallback.Adapter(
+        id="adapter-aabbcc000001",
+        bluez_path="/org/bluez/hci0",
+        index=0,
+        address="AA:BB:CC:00:00:01",
+        present=True,
+        powered=True,
+    )
+
+    class PairProcess:
+        def __init__(self):
+            self.stdin = io.StringIO()
+            self.returncode = 0
+            self.killed = False
+
+        def communicate(self, timeout=None):
+            return "Agent registered\nPairing successful\n", None
+
+        def kill(self):
+            self.killed = True
+
+    process = PairProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(fallback.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(backend, "_wait_for_device_property", lambda *args: True)
+
+    result, succeeded = backend._pair_with_agent(adapter, "11:22:33:44:55:66")
+
+    assert succeeded is True
+    assert result.returncode == 0
+    assert process.stdin.getvalue().splitlines() == [
+        "select AA:BB:CC:00:00:01",
+        "pairable on",
+        "pair 11:22:33:44:55:66",
+        "pairable off",
+        "quit",
+    ]
+
+
+def test_pairing_closes_pairability_after_failure(monkeypatch):
+    """A failed bond attempt must not leave the adapter pairable."""
+    backend = BluetoothctlBackend(timeout=1)
+    adapter = fallback.Adapter(
+        id="adapter-aabbcc000001",
+        bluez_path="/org/bluez/hci0",
+        index=0,
+        address="AA:BB:CC:00:00:01",
+        present=True,
+        powered=True,
+    )
+
+    class PairProcess:
+        def __init__(self):
+            self.stdin = io.StringIO()
+            self.returncode = 0
+
+        def communicate(self, timeout=None):
+            return "Agent registered\nFailed to pair\n", None
+
+        def kill(self):
+            return None
+
+    process = PairProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(fallback.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(backend, "_wait_for_device_property", lambda *args: False)
+
+    _result, succeeded = backend._pair_with_agent(adapter, "11:22:33:44:55:66")
+
+    assert succeeded is False
+    assert "pairable off\nquit\n" in process.stdin.getvalue()
+
+
+def test_pairing_keeps_other_adapter_closed(monkeypatch):
+    """A global BlueZ agent must not expose the non-selected controller."""
+    backend = BluetoothctlBackend(timeout=1)
+    selected = fallback.Adapter(
+        id="adapter-aabbcc000001",
+        bluez_path="/org/bluez/hci0",
+        index=0,
+        address="AA:BB:CC:00:00:01",
+        present=True,
+        powered=True,
+    )
+    other = fallback.Adapter(
+        id="adapter-aabbcc000002",
+        bluez_path="/org/bluez/hci1",
+        index=1,
+        address="AA:BB:CC:00:00:02",
+        present=True,
+        powered=True,
+    )
+
+    class PairProcess:
+        def __init__(self):
+            self.stdin = io.StringIO()
+            self.returncode = 0
+
+        def communicate(self, timeout=None):
+            return "Agent registered\nPairing successful\n", None
+
+        def kill(self):
+            return None
+
+    process = PairProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(fallback.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(backend, "_pairing_peers", lambda _selected: (other,))
+    monkeypatch.setattr(backend, "_wait_for_device_property", lambda *args: True)
+
+    _result, succeeded = backend._pair_with_agent(selected, "11:22:33:44:55:66")
+
+    assert succeeded is True
+    commands = process.stdin.getvalue().splitlines()
+    assert commands[:5] == [
+        "select AA:BB:CC:00:00:02",
+        "pairable off",
+        "select AA:BB:CC:00:00:01",
+        "pairable on",
+        "pair 11:22:33:44:55:66",
+    ]
 
 
 def test_fallback_preserves_distinct_sysfs_adapter_indices(monkeypatch):

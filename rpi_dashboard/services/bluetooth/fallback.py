@@ -310,15 +310,29 @@ class BluetoothctlBackend:
                 stdout="",
                 stderr="bluetoothctl stdin unavailable",
             ), False
+        succeeded = False
         try:
-            time.sleep(0.5)
-            process.stdin.write(f"select {adapter.address}\npair {mac}\n")
+            time.sleep(1.0)
+            for other in self._pairing_peers(adapter):
+                process.stdin.write(f"select {other.address}\npairable off\n")
+            process.stdin.write(
+                f"select {adapter.address}\n"
+                "pairable on\n"
+                f"pair {mac}\n"
+            )
             process.stdin.flush()
             succeeded = self._wait_for_device_property(adapter, mac, "bonded", "yes")
-            process.stdin.write("quit\n")
-            process.stdin.flush()
+        except BrokenPipeError:
+            succeeded = False
+        finally:
+            try:
+                process.stdin.write("pairable off\nquit\n")
+                process.stdin.flush()
+            except BrokenPipeError:
+                pass
+        try:
             output, _ = process.communicate(timeout=2)
-        except (BrokenPipeError, subprocess.TimeoutExpired):
+        except subprocess.TimeoutExpired:
             process.kill()
             output, _ = process.communicate()
             succeeded = False
@@ -329,6 +343,17 @@ class BluetoothctlBackend:
             stderr="",
         )
         return result, succeeded
+
+    def _pairing_peers(self, selected: Adapter) -> tuple[Adapter, ...]:
+        """Return other present adapters that must remain non-pairable."""
+        state = self._last_state
+        if state is None:
+            return ()
+        return tuple(
+            adapter
+            for adapter in state.adapters
+            if adapter.present and adapter.address != selected.address
+        )
 
     def _wait_for_device_property(
         self,

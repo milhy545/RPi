@@ -7,6 +7,7 @@ import json
 import os
 import threading
 import time
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ _BACKEND: Any | None = None
 _RUNNER: "_AsyncRunner | None" = None
 _RUNNER_LOCK = threading.Lock()
 _SETTINGS_LOCK = threading.Lock()
+_AUTO_CONNECT_LOCK = threading.Lock()
 _AUTO_CONNECT_LAST_ATTEMPT: dict[str, float] = {}
 _DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_connect": False,
@@ -54,7 +56,6 @@ def bluetooth_state() -> dict[str, Any]:
     """Return the versioned Bluetooth state contract."""
     backend = get_backend()
     state_obj = _run(backend.state())
-    state_obj = _apply_auto_connect(backend, state_obj)
     state = state_obj.to_dict()
     _enrich_runtime_state(state)
     return state
@@ -311,13 +312,18 @@ class _AsyncRunner:
     def _run_loop(self) -> None:
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self._ready.set()
+        self.loop.call_soon(self._ready.set)
         self.loop.run_forever()
 
-    def run(self, awaitable: Any) -> Any:
+    def run(self, awaitable: Any, timeout: float = 20.0) -> Any:
         future = asyncio.run_coroutine_threadsafe(awaitable, self.loop)
-        return future.result(timeout=60)
-
+        try:
+            return future.result(timeout=timeout)
+        except FutureTimeoutError:
+            future.cancel()
+            raise TimeoutError(
+                f"Bluetooth operation timed out after {timeout:g} seconds"
+            ) from None
 
 def _settings_path() -> Path:
     configured = os.environ.get("RPI_BLUETOOTH_SETTINGS_PATH")
@@ -347,7 +353,12 @@ def _save_settings(settings: dict[str, Any]) -> None:
         temporary.replace(path)
 
 
-def _apply_auto_connect(backend: Any, state: BluetoothState, *, force: bool = False) -> BluetoothState:
+def _apply_auto_connect(
+    backend: Any,
+    state: BluetoothState,
+    *,
+    force: bool = False,
+) -> BluetoothState:
     settings = _load_settings()
     if not settings.get("auto_connect"):
         return state
@@ -363,10 +374,11 @@ def _apply_auto_connect(backend: Any, state: BluetoothState, *, force: bool = Fa
             and not device.connected
         ):
             continue
-        last_attempt = _AUTO_CONNECT_LAST_ATTEMPT.get(device.key, 0.0)
-        if not force and now - last_attempt < 30.0:
-            continue
-        _AUTO_CONNECT_LAST_ATTEMPT[device.key] = now
+        with _AUTO_CONNECT_LOCK:
+            last_attempt = _AUTO_CONNECT_LAST_ATTEMPT.get(device.key, 0.0)
+            if not force and now - last_attempt < 30.0:
+                continue
+            _AUTO_CONNECT_LAST_ATTEMPT[device.key] = now
         _run(backend.connect(device.adapter_id, device.key))
         attempted = True
     return _run(backend.state()) if attempted else state
