@@ -71,6 +71,14 @@ def handle_audio_latency(q: Dict[str, Any]) -> Dict[str, Any]:
     return audio.audio_set_latency(key, val)
 
 
+def handle_audio_multi_output(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Manage the shared PipeWire Bluetooth multi-output route."""
+    action = _get(q, "action", "status")
+    sink_values = _get(q, "sinks")
+    sinks = [name.strip() for name in sink_values.split(",") if name.strip()] or None
+    return audio.audio_multi_output(action, sinks)
+
+
 # ─── Player Handlers ─────────────────────────────────────────────────
 
 def handle_mpv_play(q: Dict[str, Any]) -> Dict[str, Any]:

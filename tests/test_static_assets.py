@@ -27,13 +27,16 @@ def test_static_app_js_has_valid_syntax() -> None:
     assert result.returncode == 0
 
 
-def test_audio_routes_cookie_helpers_are_defined() -> None:
-    """Audio route rendering uses cookie helpers for multi-output state."""
+def test_audio_multi_output_uses_real_backend_state() -> None:
+    """Multi-output must use the shared Audio API, not a cookie-only toggle."""
     app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
 
     assert "function getCookie(name)" in app_js
     assert "function setCookie(name,value)" in app_js
     assert "multiOutputToggle()" in app_js
+    assert "api('/audio/multi-output?action=status')" in app_js
+    assert "api('/audio/multi-output?action='+action)" in app_js
+    assert "function multiOutputToggle(){let on=getCookie" not in app_js
 
 
 def test_aria_label_i18n_preserves_icon_button_content() -> None:

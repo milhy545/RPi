@@ -38,8 +38,13 @@
 
 - [ ] Task: Characterize A2DP Source/Sink and HFP/HSP HF/AG behavior on the
   installed WirePlumber 0.4 stack before selecting configuration changes.
-- [ ] Task: Add profile selection and PipeWire integration for compatible audio
+- [~] Task: Add profile selection and PipeWire integration for compatible audio
   input, output, headset microphone, volume, mute, codec, latency, and routing.
+  - Implemented a shared `module-combine-sink` route for two live Bluetooth
+    outputs, adapter-independent API/WebUI control, default-sink rollback, and
+    idempotent A2DP input loopback attachment. Live 2026-07-23 evidence confirms
+    Samsung Soundbar plus TIBO as active slaves; phone input verification remains
+    pending until the phone starts an A2DP source transport.
 - [ ] Task: Test A2DP/HFP switching, recovery, and quality with Windows, Linux,
   the Samsung soundbar, and a compatible headset/phone.
 - [ ] Task: Diagnose and mitigate profile-busy, connection-refused, xrun,

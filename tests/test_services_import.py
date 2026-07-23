@@ -8,6 +8,7 @@ def test_import_audio():
     assert hasattr(audio, 'audio_state')
     assert hasattr(audio, 'get_audio_matrix')
     assert hasattr(audio, 'audio_set_volume')
+    assert hasattr(audio, 'audio_multi_output')
 
 
 def test_import_player():
@@ -61,6 +62,7 @@ def test_import_api_handlers():
     """Test API handlers import."""
     from rpi_dashboard.api import handlers
     assert hasattr(handlers, 'handle_audio_state')
+    assert hasattr(handlers, 'handle_audio_multi_output')
     assert hasattr(handlers, 'handle_mpv_play')
     assert hasattr(handlers, 'handle_devices_state')
 

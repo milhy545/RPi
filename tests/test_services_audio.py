@@ -105,3 +105,82 @@ def test_fix_bt_audio_stutter():
         result = fix_bt_audio_stutter()
         assert "ok" in result
         assert "fixes_applied" in result
+
+
+def test_audio_multi_output_requires_two_bluetooth_sinks():
+    """A combine sink must never silently collapse to one physical output."""
+    from rpi_dashboard.services.audio import audio_multi_output
+
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=["bluez_output.one.1"]):
+        result = audio_multi_output("start")
+
+    assert result["ok"] is False
+    assert "at least two" in result["error"]
+
+
+def test_audio_multi_output_creates_combined_sink_and_selects_it():
+    """Starting multi-output should create the PipeWire sink and make it default."""
+    from rpi_dashboard.services.audio import MULTI_OUTPUT_SINK, audio_multi_output
+
+    sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
+    run_result = MagicMock(returncode=0, stdout="77\n", stderr="")
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=([], [])), \
+         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}) as status, \
+         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+        result = audio_multi_output("start")
+
+    assert result["ok"] is True
+    assert result["created"] is True
+    assert status.called
+    commands = [call.args[0] for call in run.call_args_list]
+    assert [
+        "pactl", "load-module", "module-combine-sink",
+        f"sink_name={MULTI_OUTPUT_SINK}",
+        f"slaves={','.join(sinks)}",
+        "adjust_time=1",
+    ] in commands
+    assert ["pactl", "set-default-sink", MULTI_OUTPUT_SINK] in commands
+
+
+def test_audio_multi_output_sync_is_idempotent_and_attaches_inputs():
+    """Syncing an existing route should not reload it and should attach new BT input."""
+    from rpi_dashboard.services.audio import audio_multi_output
+
+    sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
+    module = {"id": "77", "slaves": sinks}
+    run_result = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=module), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=(["bluez_input.phone.0"], [])), \
+         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}), \
+         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+        result = audio_multi_output("sync")
+
+    assert result["ok"] is True
+    assert result["created"] is False
+    assert result["attached_inputs"] == ["bluez_input.phone.0"]
+    commands = [call.args[0] for call in run.call_args_list]
+    assert not any(command[:3] == ["pactl", "load-module", "module-combine-sink"] for command in commands)
+
+
+def test_audio_multi_output_stop_restores_a_physical_sink():
+    """Stopping should switch away before unloading the virtual combine sink."""
+    from rpi_dashboard.services.audio import audio_multi_output
+
+    sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
+    module = {"id": "77", "slaves": sinks}
+    run_result = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", side_effect=[module, None]), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio._find_loopbacks", return_value=[]), \
+         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": False}), \
+         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+        result = audio_multi_output("stop")
+
+    assert result["ok"] is True
+    assert result["fallback_sink"] == sinks[0]
+    commands = [call.args[0] for call in run.call_args_list]
+    assert commands.index(["pactl", "set-default-sink", sinks[0]]) < commands.index(["pactl", "unload-module", "77"])

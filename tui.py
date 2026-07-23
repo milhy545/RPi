@@ -1452,6 +1452,7 @@ class RPiDashboard(App):
         api_app.router.add_route("*", "/bt/connect", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/disconnect", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/remove", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/audio/multi-output", self.handle_registered_api_route)
         api_app.router.add_route("*", "/devices/state", self.handle_registered_api_route)
         api_app.router.add_route("*", "/{tail:.*}", self.handle_legacy_webserver_proxy)
 

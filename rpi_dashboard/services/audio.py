@@ -17,6 +17,7 @@ AUDIO_LATENCY_FILE = os.path.expanduser("~/rpi-dashboard/.audio-latency.json")
 _DLNAIN_MODE_FILE = os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
 AUDIO_STATE_CACHE_TTL = 0.75
 SILENT_WAV = "silent-48k.wav"
+MULTI_OUTPUT_SINK = "rpi_bt_multi_output"
 
 # Device names (from config or hardcoded for now)
 BT_SOUNDBAR_SINK = "bluez_output.00_00_00_00_00_00.a2dp_sink"
@@ -119,6 +120,177 @@ def _find_loopbacks() -> List[Dict[str, Any]]:
     except Exception as e:
         print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return loops
+
+
+def _find_multi_output_module() -> Optional[Dict[str, Any]]:
+    """Find the dashboard-owned Bluetooth combine sink module."""
+    try:
+        r = _run(["pactl", "list", "short", "modules"])
+        for line in r.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 2 or parts[1] != "module-combine-sink":
+                continue
+            if f"sink_name={MULTI_OUTPUT_SINK}" not in line:
+                continue
+            slaves_match = re.search(r"(?:^|\s)slaves=([^\s]+)", line)
+            slaves = slaves_match.group(1).split(",") if slaves_match else []
+            return {"id": parts[0], "slaves": slaves}
+    except Exception as e:
+        print(f"[WARN] Multi-output module lookup failed: {type(e).__name__}: {e}", file=sys.stderr)
+    return None
+
+
+def _find_loopback(source: str, sink: str) -> Optional[str]:
+    """Find one loopback that connects an exact source and sink."""
+    for loopback in _find_loopbacks():
+        if loopback.get("source") == source and loopback.get("sink") == sink:
+            return str(loopback["id"])
+    return None
+
+
+def _bluetooth_output_sinks() -> List[str]:
+    """Return physical Bluetooth output sinks currently exposed by PipeWire."""
+    return [
+        item["name"]
+        for item in _pactl_lines("sinks")
+        if item["name"].startswith("bluez_output.") and item["name"] != MULTI_OUTPUT_SINK
+    ]
+
+
+def _bluetooth_input_sources() -> List[str]:
+    """Return active Bluetooth audio-input sources, excluding monitor nodes."""
+    return [
+        item["name"]
+        for item in _pactl_lines("sources")
+        if item["name"].startswith("bluez_input.") and not item["name"].endswith(".monitor")
+    ]
+
+
+def _multi_output_status() -> Dict[str, Any]:
+    """Return the real PipeWire state of the dashboard Bluetooth combine sink."""
+    module = _find_multi_output_module()
+    sink_names = [item["name"] for item in _pactl_lines("sinks")]
+    available_sinks = _bluetooth_output_sinks()
+    input_sources = _bluetooth_input_sources()
+    routed_inputs = [
+        str(loopback["source"])
+        for loopback in _find_loopbacks()
+        if loopback.get("sink") == MULTI_OUTPUT_SINK
+        and str(loopback.get("source", "")).startswith("bluez_input.")
+    ]
+    active = bool(module and MULTI_OUTPUT_SINK in sink_names)
+    return {
+        "ok": True,
+        "active": active,
+        "module_id": module["id"] if module else None,
+        "sink": MULTI_OUTPUT_SINK,
+        "slaves": module["slaves"] if module else [],
+        "available_sinks": available_sinks,
+        "input_sources": input_sources,
+        "routed_inputs": routed_inputs,
+        "unrouted_inputs": [source for source in input_sources if source not in routed_inputs],
+        "input_pending": active and not input_sources,
+        "default_sink": _get_default_sink(),
+    }
+
+
+def _attach_bluetooth_inputs() -> Tuple[List[str], List[str]]:
+    """Attach active phone/PC A2DP input sources to the combine sink."""
+    attached = []
+    failed = []
+    for source in _bluetooth_input_sources():
+        if _find_loopback(source, MULTI_OUTPUT_SINK):
+            attached.append(source)
+            continue
+        if _start_loopback(source, MULTI_OUTPUT_SINK) is None:
+            failed.append(source)
+        else:
+            attached.append(source)
+    return attached, failed
+
+
+def audio_multi_output(action: str = "status", sinks: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Manage one combined sink for all selected Bluetooth output devices."""
+    action = (action or "status").strip().lower()
+    if action == "status":
+        return _multi_output_status()
+    if action not in {"start", "sync", "stop"}:
+        return {"ok": False, "error": "action must be status, start, sync, or stop"}
+
+    module = _find_multi_output_module()
+    available = _bluetooth_output_sinks()
+
+    if action == "stop":
+        for loopback in _find_loopbacks():
+            if loopback.get("sink") == MULTI_OUTPUT_SINK:
+                _stop_loopback(str(loopback["id"]))
+        fallback = next((name for name in available if name in (module or {}).get("slaves", [])), None)
+        fallback = fallback or (available[0] if available else None)
+        if fallback:
+            set_default = _run(["pactl", "set-default-sink", fallback], t=5)
+            if set_default.returncode != 0:
+                return {"ok": False, "error": (set_default.stderr or "failed to set fallback sink").strip()}
+        if module:
+            unloaded = _run(["pactl", "unload-module", str(module["id"])], t=5)
+            if unloaded.returncode != 0:
+                return {"ok": False, "error": (unloaded.stderr or "failed to unload combine sink").strip()}
+        result = _multi_output_status()
+        result.update({"fallback_sink": fallback})
+        return result
+
+    requested = [name.strip() for name in (sinks or available) if name.strip()]
+    requested = list(dict.fromkeys(requested))
+    missing = [name for name in requested if name not in available]
+    if missing:
+        return {"ok": False, "error": "requested Bluetooth sinks are not available", "missing": missing}
+    if len(requested) < 2:
+        return {
+            "ok": False,
+            "error": "at least two connected Bluetooth output sinks are required",
+            "available_sinks": available,
+        }
+
+    existing_matches = bool(module and set(module["slaves"]) == set(requested))
+    if module and not existing_matches:
+        for loopback in _find_loopbacks():
+            if loopback.get("sink") == MULTI_OUTPUT_SINK:
+                _stop_loopback(str(loopback["id"]))
+        unloaded = _run(["pactl", "unload-module", str(module["id"])], t=5)
+        if unloaded.returncode != 0:
+            return {"ok": False, "error": (unloaded.stderr or "failed to replace combine sink").strip()}
+        module = None
+
+    created = False
+    if not module:
+        loaded = _run(
+            [
+                "pactl",
+                "load-module",
+                "module-combine-sink",
+                f"sink_name={MULTI_OUTPUT_SINK}",
+                f"slaves={','.join(requested)}",
+                "adjust_time=1",
+            ],
+            t=10,
+        )
+        if loaded.returncode != 0:
+            return {"ok": False, "error": (loaded.stderr or loaded.stdout or "failed to create combine sink").strip()}
+        created = True
+
+    set_default = _run(["pactl", "set-default-sink", MULTI_OUTPUT_SINK], t=5)
+    if set_default.returncode != 0:
+        if created:
+            created_module = _find_multi_output_module()
+            if created_module:
+                _run(["pactl", "unload-module", str(created_module["id"])], t=5)
+        return {"ok": False, "error": (set_default.stderr or "failed to select combine sink").strip()}
+
+    attached, failed = _attach_bluetooth_inputs()
+    result = _multi_output_status()
+    result.update({"created": created, "attached_inputs": attached})
+    if failed:
+        result.update({"ok": False, "partial": True, "error": "failed to attach Bluetooth inputs", "failed_inputs": failed})
+    return result
 
 
 def _start_loopback(source: str, sink: str, rate: int = 48000, channels: int = 2) -> Optional[int]:

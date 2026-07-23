@@ -25,6 +25,7 @@ WEBUI_GET_ENDPOINTS = {
     "/audio/latency",
     "/audio/matrix",
     "/audio/matrix/link",
+    "/audio/multi-output",
     "/audio/mute",
     "/audio/route/alexa-bt",
     "/audio/route/alexa-retarget",
