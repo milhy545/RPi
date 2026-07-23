@@ -33,6 +33,7 @@ from .models import ReadinessStep
 from .models import SoundbarReadiness
 from .models import adapter_id_from_address
 from .models import classify_device
+from .models import hide_non_owner_duplicates
 from .models import make_device_key
 from .models import normalize_address
 from .protocol import BluetoothBackend
@@ -40,10 +41,14 @@ from .protocol import BluetoothBackend
 BLUEZ = "org.bluez"
 OBJECT_MANAGER = "org.freedesktop.DBus.ObjectManager"
 PROPERTIES = "org.freedesktop.DBus.Properties"
+DBUS = "org.freedesktop.DBus"
+DBUS_PATH = "/org/freedesktop/DBus"
 ADAPTER1 = "org.bluez.Adapter1"
 DEVICE1 = "org.bluez.Device1"
 BATTERY1 = "org.bluez.Battery1"
 SAMSUNG_SOUNDBAR_MAC = "24:4B:03:92:0B:8C"
+AUDIO_SOURCE_UUID = "0000110a-0000-1000-8000-00805f9b34fb"
+AUDIO_SINK_UUID = "0000110b-0000-1000-8000-00805f9b34fb"
 
 
 class BlueZDbusBackend:
@@ -63,6 +68,8 @@ class BlueZDbusBackend:
         self._counter = 0
         self._operations: deque[Operation] = deque(maxlen=history_limit)
         self._events: deque[Event] = deque(maxlen=history_limit)
+        self._event_queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=history_limit)
+        self._subscriptions_bus: MessageBus | None = None
 
     async def state(self) -> BluetoothState:
         """Return current BlueZ state, or fallback state when unavailable."""
@@ -74,9 +81,10 @@ class BlueZDbusBackend:
             return _unavailable_state(exc)
 
     async def events(self):
-        """Signal streaming is reserved for the hotplug integration phase."""
-        if False:
-            yield None
+        """Yield bounded BlueZ object/property events as they arrive."""
+        await self._connect()
+        while True:
+            yield await self._event_queue.get()
 
     async def reconcile(self) -> BluetoothState:
         """Rebuild state from ObjectManager."""
@@ -202,8 +210,39 @@ class BlueZDbusBackend:
         )
 
     async def connect(self, adapter_id: str, device_key: str) -> Operation:
-        """Connect a device."""
-        return await self._device_method("connect", adapter_id, device_key, "Connect")
+        """Connect a device, selecting A2DP explicitly for audio endpoints."""
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                "connect",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=target,
+            )
+        if target.use_fallback:
+            return await self._fallback_backend().connect(adapter_id, device_key)
+
+        profile = _preferred_connect_profile(target.device)
+        if profile is not None:
+            return await self._call_method(
+                "connect",
+                target.bluez_path,
+                DEVICE1,
+                "ConnectProfile",
+                signature="s",
+                body=[profile],
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+        return await self._call_method(
+            "connect",
+            target.bluez_path,
+            DEVICE1,
+            "Connect",
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
 
     async def disconnect(self, adapter_id: str, device_key: str) -> Operation:
         """Disconnect a device."""
@@ -249,7 +288,7 @@ class BlueZDbusBackend:
             raise RuntimeError(reply.body[0] if reply.body else reply.error_name)
         managed = reply.body[0]
         adapters = _adapters_from_managed(managed)
-        devices = _devices_from_managed(managed, adapters)
+        devices = hide_non_owner_duplicates(_devices_from_managed(managed, adapters))
         state = BluetoothState(
             backend=BackendHealth(name="bluez-dbus", degraded=False, available=True),
             adapters=tuple(adapters),
@@ -439,6 +478,7 @@ class BlueZDbusBackend:
         return _DeviceTarget(
             bluez_path=device.bluez_path,
             adapter_path=adapter.bluez_path,
+            device=device,
             use_fallback=self._adapter_requires_fallback(adapter) or not device.bluez_path.startswith("/org/bluez/"),
         )
 
@@ -464,10 +504,105 @@ class BlueZDbusBackend:
         if self._bus is not None and self._bus_loop is not loop:
             self._bus.disconnect()
             self._bus = None
+            self._subscriptions_bus = None
         if self._bus is None or not self._bus.connected:
             self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
             self._bus_loop = loop
+            self._subscriptions_bus = None
+        await self._ensure_signal_subscriptions(self._bus)
         return self._bus
+
+    async def _ensure_signal_subscriptions(self, bus: MessageBus) -> None:
+        if self._subscriptions_bus is bus:
+            return
+        bus.add_message_handler(self._handle_bluez_signal)
+        rules = (
+            "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.ObjectManager'",
+            "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties'",
+        )
+        for rule in rules:
+            reply = await bus.call(
+                Message(
+                    destination=DBUS,
+                    path=DBUS_PATH,
+                    interface=DBUS,
+                    member="AddMatch",
+                    signature="s",
+                    body=[rule],
+                )
+            )
+            if reply.message_type is MessageType.ERROR:
+                raise RuntimeError(
+                    str(reply.body[0]) if reply.body else reply.error_name or "AddMatch failed"
+                )
+        self._subscriptions_bus = bus
+
+    def _handle_bluez_signal(self, message: Message) -> None:
+        if message.message_type is not MessageType.SIGNAL:
+            return
+        event_type = ""
+        path = message.path or ""
+        changed_interface = ""
+        if message.interface == OBJECT_MANAGER and message.member == "InterfacesAdded":
+            path = str(message.body[0])
+            interfaces = message.body[1]
+            if ADAPTER1 in interfaces:
+                event_type = "adapter_added"
+            elif DEVICE1 in interfaces:
+                event_type = "device_added"
+        elif message.interface == OBJECT_MANAGER and message.member == "InterfacesRemoved":
+            path = str(message.body[0])
+            interfaces = message.body[1]
+            if ADAPTER1 in interfaces:
+                event_type = "adapter_removed"
+            elif DEVICE1 in interfaces:
+                event_type = "device_removed"
+        elif message.interface == PROPERTIES and message.member == "PropertiesChanged":
+            changed_interface = str(message.body[0])
+            if changed_interface == ADAPTER1:
+                event_type = "adapter_changed"
+            elif changed_interface in {DEVICE1, BATTERY1}:
+                event_type = "device_changed"
+        if not event_type:
+            return
+
+        adapter_id, device_key = self._identity_for_path(path)
+        self._counter += 1
+        event = Event(
+            id=f"bluez-signal-{self._counter}",
+            type=event_type,
+            message=f"{event_type}: {path}",
+            timestamp=_now(),
+            adapter_id=adapter_id,
+            device_key=device_key,
+            detail={"path": path, "interface": changed_interface} if changed_interface else {"path": path},
+        )
+        self._events.append(event)
+        if self._event_queue.full():
+            try:
+                self._event_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        self._event_queue.put_nowait(event)
+
+    def _identity_for_path(self, path: str) -> tuple[str | None, str | None]:
+        state = self._last_state
+        if state is not None:
+            device = next((item for item in state.devices if item.bluez_path == path), None)
+            if device is not None:
+                return device.adapter_id, device.key
+            adapter = next((item for item in state.adapters if item.bluez_path == path), None)
+            if adapter is not None:
+                return adapter.id, None
+        adapter_path = _adapter_path_for_device(path)
+        if state is not None:
+            adapter = next(
+                (item for item in state.adapters if item.bluez_path == adapter_path),
+                None,
+            )
+            if adapter is not None:
+                return adapter.id, None
+        return None, None
 
     def _operation(
         self,
@@ -519,10 +654,28 @@ class BlueZDbusBackend:
 
 
 class _DeviceTarget:
-    def __init__(self, *, bluez_path: str, adapter_path: str, use_fallback: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        bluez_path: str,
+        adapter_path: str,
+        device: Device,
+        use_fallback: bool = False,
+    ) -> None:
         self.bluez_path = bluez_path
         self.adapter_path = adapter_path
+        self.device = device
         self.use_fallback = use_fallback
+
+
+def _preferred_connect_profile(device: Device) -> str | None:
+    """Select the remote A2DP role for unambiguous audio endpoints."""
+    uuids = {uuid.lower() for uuid in device.uuids}
+    if device.kind in {"speaker", "headset"} and AUDIO_SINK_UUID in uuids:
+        return AUDIO_SINK_UUID
+    if device.icon == "phone" and AUDIO_SOURCE_UUID in uuids:
+        return AUDIO_SOURCE_UUID
+    return None
 
 
 def _adapters_from_managed(managed: dict[str, Any]) -> list[Adapter]:
@@ -721,7 +874,13 @@ def _idempotent_method_success(operation_type: str, reply: Message) -> bool:
     if operation_type == "start_discovery":
         return "InProgress" in name or "already in progress" in detail.lower()
     if operation_type == "stop_discovery":
-        return "NotReady" in name or "not ready" in detail.lower()
+        return (
+            "NotReady" in name
+            or "not ready" in detail.lower()
+            or "no discovery started" in detail.lower()
+        )
+    if operation_type == "connect":
+        return "AlreadyConnected" in name or "already connected" in detail.lower()
     return False
 
 

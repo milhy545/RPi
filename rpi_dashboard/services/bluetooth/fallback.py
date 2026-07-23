@@ -30,6 +30,7 @@ from .models import SoundbarReadiness
 from .models import adapter_id_from_address
 from .models import classify_device
 from .models import make_device_key
+from .models import hide_non_owner_duplicates
 from .models import normalize_address
 
 
@@ -138,6 +139,7 @@ class BluetoothctlBackend:
             devices: list[Device] = []
             for adapter in adapters:
                 devices.extend(self._read_devices(adapter))
+            devices = hide_non_owner_duplicates(devices)
             state = BluetoothState(
                 backend=BackendHealth(
                     name="bluetoothctl",

@@ -17,6 +17,17 @@ sudo systemctl daemon-reload
 
 # Enable service for current user
 CURRENT_USER="$(whoami)"
+WIREPLUMBER_CONFIG_DIR="$HOME/.config/wireplumber/bluetooth.lua.d"
+rm -f "$WIREPLUMBER_CONFIG_DIR/99-rpi-headless.lua"
+install -D -m 0644 \
+    "$SCRIPT_DIR/wireplumber/bluetooth.lua.d/51-rpi-headless.lua" \
+    "$WIREPLUMBER_CONFIG_DIR/51-rpi-headless.lua"
+
+# A second Bluetooth-only WirePlumber races the standard session manager.
+# The local fragment lets the single standard instance work without logind.
+systemctl --user disable --now wireplumber-bluetooth.service 2>/dev/null || true
+systemctl --user restart wireplumber.service 2>/dev/null || true
+
 sudo systemctl enable "${SERVICE_NAME}@${CURRENT_USER}"
 
 # Start or restart service

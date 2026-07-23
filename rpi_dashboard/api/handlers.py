@@ -199,6 +199,16 @@ def handle_bt_settings(q: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def handle_bt_device_autoconnect(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set the adapter-scoped reconnect policy for one paired device."""
+    enabled = _get(q, "enabled", "1").lower() not in {"0", "false", "off", "no"}
+    return bluetooth_service.set_device_auto_connect(
+        _get(q, "adapter_id") or None,
+        _get(q, "device_key") or None,
+        enabled,
+    )
+
+
 def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
     """Run an adapter-aware Bluetooth device action."""
     action = _get(q, "action")

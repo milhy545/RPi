@@ -25,11 +25,18 @@ _RUNNER: "_AsyncRunner | None" = None
 _RUNNER_LOCK = threading.Lock()
 _SETTINGS_LOCK = threading.Lock()
 _AUTO_CONNECT_LOCK = threading.Lock()
+_STARTUP_RECOVERY_LOCK = threading.Lock()
+_STARTUP_RECOVERY_STARTED = False
 _AUTO_CONNECT_LAST_ATTEMPT: dict[str, float] = {}
+_AUTO_CONNECT_FAILURES: dict[str, int] = {}
+_AUTO_CONNECT_NEXT_ATTEMPT: dict[str, float] = {}
+_MANUAL_DISCONNECT_UNTIL: dict[str, float] = {}
+_MANUAL_DISCONNECT_COOLDOWN = 60.0
 _DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_connect": False,
     "discoverable_timeout": 120,
     "scan_mode": "balanced",
+    "device_auto_connect": {},
 }
 
 
@@ -50,6 +57,52 @@ def set_backend_for_tests(backend: Any | None) -> None:
     """Override the backend in tests."""
     global _BACKEND
     _BACKEND = backend
+
+
+def start_startup_recovery(*, delay: float = 2.0) -> bool:
+    """Start one bounded background recovery pass for a headless boot."""
+    global _STARTUP_RECOVERY_STARTED
+    with _STARTUP_RECOVERY_LOCK:
+        if _STARTUP_RECOVERY_STARTED:
+            return False
+        _STARTUP_RECOVERY_STARTED = True
+
+    thread = threading.Thread(
+        target=_startup_recovery_worker,
+        args=(max(0.0, delay),),
+        name="bluetooth-startup-recovery",
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
+def _startup_recovery_worker(delay: float) -> None:
+    if delay:
+        time.sleep(delay)
+    try:
+        _recover_startup_once()
+        backend = get_backend()
+        if _RUNNER is not None:
+            _RUNNER.submit(_watch_reconnect_events(backend))
+    except Exception:
+        # Recovery is best-effort and must never take down the dashboard.
+        return
+
+
+def _recover_startup_once() -> BluetoothState:
+    """Power present adapters and reconnect their paired trusted devices."""
+    backend = get_backend()
+    state = _run(backend.state())
+    if not _load_settings().get("auto_connect"):
+        return state
+
+    for adapter in state.adapters:
+        if adapter.present and not adapter.powered:
+            _run(backend.set_adapter_power(adapter.id, True))
+
+    state = _run(backend.state())
+    return _apply_auto_connect(backend, state, force=True)
 
 
 def bluetooth_state() -> dict[str, Any]:
@@ -146,6 +199,43 @@ def update_settings(
     return {"ok": True, "settings": settings}
 
 
+def set_device_auto_connect(
+    adapter_id: str | None,
+    device_key: str | None,
+    enabled: bool,
+) -> dict[str, Any]:
+    """Persist a per-device override using its adapter-scoped identity."""
+    if not adapter_id or not device_key:
+        return _error_response(
+            BluetoothError(
+                "device_missing",
+                "adapter_id and device_key are required",
+            )
+        )
+    state = _run(get_backend().state())
+    target = _resolve_device(
+        state,
+        adapter_id=adapter_id,
+        device_key=device_key,
+        mac=None,
+    )
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    settings = _load_settings()
+    policies = dict(settings.get("device_auto_connect") or {})
+    policies[device_key] = bool(enabled)
+    settings["device_auto_connect"] = policies
+    _save_settings(settings)
+    if enabled:
+        _apply_auto_connect(get_backend(), state, force=True)
+    return {
+        "ok": True,
+        "adapter_id": adapter_id,
+        "device_key": device_key,
+        "auto_connect": bool(enabled),
+    }
+
+
 def device_action(
     action: str,
     *,
@@ -163,6 +253,11 @@ def device_action(
     if runner is None:
         return _error_response(BluetoothError("unsupported", f"Unsupported action: {action}"))
     operation = _run(runner(resolved_adapter_id, resolved_device_key))
+    if action == "disconnect" and operation.state == "succeeded":
+        with _AUTO_CONNECT_LOCK:
+            _MANUAL_DISCONNECT_UNTIL[resolved_device_key] = (
+                time.monotonic() + _MANUAL_DISCONNECT_COOLDOWN
+            )
     return _operation_response(operation)
 
 
@@ -325,6 +420,10 @@ class _AsyncRunner:
                 f"Bluetooth operation timed out after {timeout:g} seconds"
             ) from None
 
+    def submit(self, awaitable: Any):
+        """Schedule a long-lived coroutine without blocking its caller."""
+        return asyncio.run_coroutine_threadsafe(awaitable, self.loop)
+
 def _settings_path() -> Path:
     configured = os.environ.get("RPI_BLUETOOTH_SETTINGS_PATH")
     if configured:
@@ -359,13 +458,35 @@ def _apply_auto_connect(
     *,
     force: bool = False,
 ) -> BluetoothState:
+    return _run(_apply_auto_connect_async(backend, state, force=force))
+
+
+async def _apply_auto_connect_async(
+    backend: Any,
+    state: BluetoothState,
+    *,
+    force: bool = False,
+) -> BluetoothState:
     settings = _load_settings()
     if not settings.get("auto_connect"):
         return state
     powered = {adapter.id for adapter in state.adapters if adapter.present and adapter.powered}
+    device_policies = settings.get("device_auto_connect") or {}
     now = time.monotonic()
     attempted = False
+    known_keys = {device.key for device in state.devices}
+    with _AUTO_CONNECT_LOCK:
+        for mapping in (
+            _AUTO_CONNECT_LAST_ATTEMPT,
+            _AUTO_CONNECT_FAILURES,
+            _AUTO_CONNECT_NEXT_ATTEMPT,
+            _MANUAL_DISCONNECT_UNTIL,
+        ):
+            for stale_key in set(mapping) - known_keys:
+                mapping.pop(stale_key, None)
     for device in state.devices:
+        if device_policies.get(device.key) is False:
+            continue
         if not (
             device.present
             and device.adapter_id in powered
@@ -375,13 +496,47 @@ def _apply_auto_connect(
         ):
             continue
         with _AUTO_CONNECT_LOCK:
+            if not force and now < _MANUAL_DISCONNECT_UNTIL.get(device.key, 0.0):
+                continue
+            if not force and now < _AUTO_CONNECT_NEXT_ATTEMPT.get(device.key, 0.0):
+                continue
             last_attempt = _AUTO_CONNECT_LAST_ATTEMPT.get(device.key, 0.0)
             if not force and now - last_attempt < 30.0:
                 continue
             _AUTO_CONNECT_LAST_ATTEMPT[device.key] = now
-        _run(backend.connect(device.adapter_id, device.key))
+        operation = await backend.connect(device.adapter_id, device.key)
+        with _AUTO_CONNECT_LOCK:
+            if operation.state == "succeeded":
+                _AUTO_CONNECT_FAILURES.pop(device.key, None)
+                _AUTO_CONNECT_NEXT_ATTEMPT.pop(device.key, None)
+            else:
+                failures = min(6, _AUTO_CONNECT_FAILURES.get(device.key, 0) + 1)
+                _AUTO_CONNECT_FAILURES[device.key] = failures
+                delay = min(300.0, 5.0 * (2 ** (failures - 1)))
+                jitter = (sum(device.key.encode("utf-8")) % 1000) / 1000.0
+                _AUTO_CONNECT_NEXT_ATTEMPT[device.key] = now + delay + jitter
         attempted = True
-    return _run(backend.state()) if attempted else state
+    return await backend.state() if attempted else state
+
+
+async def _watch_reconnect_events(backend: Any) -> None:
+    """Reconnect on bounded BlueZ presence/property events."""
+    while True:
+        try:
+            async for event in backend.events():
+                if event.type not in {
+                    "adapter_added",
+                    "adapter_changed",
+                    "device_added",
+                    "device_changed",
+                }:
+                    continue
+                state = await backend.state()
+                await _apply_auto_connect_async(backend, state)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            await asyncio.sleep(5.0)
 
 
 def _enrich_runtime_state(state: dict[str, Any]) -> None:

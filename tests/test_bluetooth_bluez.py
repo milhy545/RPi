@@ -16,6 +16,11 @@ from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.bluez import _adapters_from_managed
 from rpi_dashboard.services.bluetooth.bluez import _devices_from_managed
 from rpi_dashboard.services.bluetooth.bluez import _index_from_path
+from rpi_dashboard.services.bluetooth.bluez import _preferred_connect_profile
+from rpi_dashboard.services.bluetooth.fake import fake_device
+from rpi_dashboard.services.bluetooth.fake import fake_adapter
+from rpi_dashboard.services.bluetooth.models import BluetoothState
+from rpi_dashboard.services.bluetooth.models import BackendHealth
 
 
 def test_bluez_managed_objects_map_two_adapters_and_devices():
@@ -94,6 +99,88 @@ def test_bluez_managed_objects_map_two_adapters_and_devices():
 def test_bluez_path_index_rejects_non_hci_paths():
     assert _index_from_path("/org/bluez/hci12/dev_AA") == 12
     assert _index_from_path("bluetoothctl://AA:BB") is None
+
+
+def test_speaker_prefers_explicit_a2dp_sink_profile():
+    speaker = fake_device(
+        "adapter-a",
+        "24:4B:03:92:0B:8C",
+        name="[Samsung] Soundbar J-Series",
+        icon="audio-card",
+        uuids=("0000110b-0000-1000-8000-00805f9b34fb",),
+    )
+
+    assert _preferred_connect_profile(speaker) == "0000110b-0000-1000-8000-00805f9b34fb"
+
+
+def test_phone_prefers_explicit_a2dp_source_profile():
+    phone = fake_device(
+        "adapter-b",
+        "1C:D1:07:52:E1:1A",
+        name="realme 8 5G",
+        icon="phone",
+        uuids=("0000110a-0000-1000-8000-00805f9b34fb",),
+    )
+
+    assert _preferred_connect_profile(phone) == "0000110a-0000-1000-8000-00805f9b34fb"
+
+
+def test_bluez_property_signal_is_bounded_and_adapter_scoped():
+    adapter = fake_adapter(address="AA:BB:CC:00:00:01", index=0)
+    device = fake_device(adapter.id, "DD:EE:FF:00:00:09")
+    backend = BlueZDbusBackend(history_limit=2)
+    backend._last_state = BluetoothState(
+        backend=BackendHealth(name="fake"),
+        adapters=(adapter,),
+        devices=(device,),
+    )
+
+    for value in (-60, -55, -50):
+        backend._handle_bluez_signal(
+            SimpleNamespace(
+                message_type=MessageType.SIGNAL,
+                interface="org.freedesktop.DBus.Properties",
+                member="PropertiesChanged",
+                path=device.bluez_path,
+                body=[DEVICE1, {"RSSI": Variant("n", value)}, []],
+            )
+        )
+
+    assert len(backend._events) == 2
+    assert backend._event_queue.qsize() == 2
+    assert backend._events[-1].type == "device_changed"
+    assert backend._events[-1].adapter_id == adapter.id
+    assert backend._events[-1].device_key == device.key
+
+
+@pytest.mark.asyncio
+async def test_signal_subscriptions_are_restored_for_new_bus():
+    class Bus:
+        connected = True
+
+        def __init__(self):
+            self.handlers = []
+            self.calls = []
+
+        def add_message_handler(self, handler):
+            self.handlers.append(handler)
+
+        async def call(self, message):
+            self.calls.append(message)
+            return SimpleNamespace(message_type=object())
+
+    backend = BlueZDbusBackend()
+    first = Bus()
+    second = Bus()
+
+    await backend._ensure_signal_subscriptions(first)
+    await backend._ensure_signal_subscriptions(first)
+    await backend._ensure_signal_subscriptions(second)
+
+    assert len(first.handlers) == 1
+    assert len(first.calls) == 2
+    assert len(second.handlers) == 1
+    assert len(second.calls) == 2
 
 
 @pytest.mark.asyncio

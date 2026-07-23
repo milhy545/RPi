@@ -1,6 +1,7 @@
 """Tests for Bluetooth service facade and API handlers."""
 
 import asyncio
+from dataclasses import replace
 from urllib.parse import parse_qs
 
 import pytest
@@ -17,6 +18,10 @@ from rpi_dashboard.services.bluetooth import service as bluetooth_service
 def reset_backend(monkeypatch, tmp_path):
     """Reset the Bluetooth backend singleton after each test."""
     monkeypatch.setenv("RPI_BLUETOOTH_SETTINGS_PATH", str(tmp_path / "bluetooth.json"))
+    bluetooth_service._AUTO_CONNECT_LAST_ATTEMPT.clear()
+    bluetooth_service._AUTO_CONNECT_FAILURES.clear()
+    bluetooth_service._AUTO_CONNECT_NEXT_ATTEMPT.clear()
+    bluetooth_service._MANUAL_DISCONNECT_UNTIL.clear()
     set_backend_for_tests(None)
     yield
     set_backend_for_tests(None)
@@ -170,6 +175,135 @@ def test_enabling_auto_connect_reconnects_trusted_paired_devices():
     assert next(item for item in state["devices"] if item["key"] == device["key"])[
         "connected"
     ] is True
+
+
+def test_startup_recovery_powers_adapter_before_auto_connect():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    adapter = next(iter(backend._adapters.values()))
+    backend._adapters[adapter.id] = replace(adapter, powered=False)
+    owned = next(
+        device for device in backend._devices.values()
+        if device.adapter_id == adapter.id
+    )
+    backend._devices[owned.key] = replace(owned, connected=False)
+    bluetooth_service._save_settings(
+        {
+            "auto_connect": True,
+            "discoverable_timeout": 120,
+            "scan_mode": "balanced",
+        }
+    )
+
+    state = bluetooth_service._recover_startup_once()
+
+    recovered_adapter = next(item for item in state.adapters if item.id == adapter.id)
+    recovered_device = next(item for item in state.devices if item.key == owned.key)
+    assert recovered_adapter.powered is True
+    assert recovered_device.connected is True
+
+
+def test_manual_disconnect_suppresses_immediate_event_reconnect():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+    bluetooth_service._save_settings(
+        {
+            "auto_connect": True,
+            "discoverable_timeout": 120,
+            "scan_mode": "balanced",
+        }
+    )
+
+    disconnected = bluetooth_service.device_action(
+        "disconnect",
+        adapter_id=device.adapter_id,
+        device_key=device.key,
+    )
+    bluetooth_service._apply_auto_connect(
+        backend,
+        bluetooth_service._run(backend.state()),
+    )
+    state = bluetooth_service.bluetooth_state()
+
+    assert disconnected["ok"] is True
+    assert next(item for item in state["devices"] if item["key"] == device.key)[
+        "connected"
+    ] is False
+
+
+def test_failed_autoconnect_sets_bounded_retry_backoff():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+    backend._devices[device.key] = replace(device, connected=False)
+    backend.script_error(
+        "connect",
+        bluetooth_service.BluetoothError(
+            "connection_failed",
+            "out of range",
+            retryable=True,
+        ),
+    )
+    bluetooth_service._save_settings(
+        {
+            "auto_connect": True,
+            "discoverable_timeout": 120,
+            "scan_mode": "balanced",
+        }
+    )
+
+    bluetooth_service._apply_auto_connect(backend, bluetooth_service._run(backend.state()))
+
+    assert bluetooth_service._AUTO_CONNECT_FAILURES[device.key] == 1
+    delay = (
+        bluetooth_service._AUTO_CONNECT_NEXT_ATTEMPT[device.key]
+        - bluetooth_service._AUTO_CONNECT_LAST_ATTEMPT[device.key]
+    )
+    assert 5.0 <= delay < 6.0
+
+
+def test_per_device_autoconnect_opt_out_blocks_reconnect():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+    backend._devices[device.key] = replace(device, connected=False)
+    bluetooth_service._save_settings(
+        {
+            "auto_connect": True,
+            "discoverable_timeout": 120,
+            "scan_mode": "balanced",
+            "device_auto_connect": {device.key: False},
+        }
+    )
+
+    bluetooth_service._apply_auto_connect(
+        backend,
+        bluetooth_service._run(backend.state()),
+        force=True,
+    )
+
+    assert backend._devices[device.key].connected is False
+
+
+def test_device_autoconnect_handler_persists_adapter_scoped_override():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+
+    result = handlers.handle_bt_device_autoconnect(
+        parse_qs(
+            "enabled=0"
+            f"&adapter_id={device.adapter_id}"
+            f"&device_key={device.key}"
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["auto_connect"] is False
+    assert bluetooth_service._load_settings()["device_auto_connect"] == {
+        device.key: False
+    }
 
 
 def test_devices_state_embeds_v2_bluetooth_without_breaking_legacy_fields(monkeypatch):

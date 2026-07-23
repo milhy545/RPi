@@ -11,9 +11,9 @@
 
 ## Phase 2: Live events and operation lifecycle
 
-- [ ] Task: Add fake D-Bus signal/reconnect tests and subscribe to ObjectManager
+- [x] Task: Add fake D-Bus signal/reconnect tests and subscribe to ObjectManager
   plus Properties signals with bounded event history.
-- [ ] Task: Reconcile and resubscribe after BlueZ/D-Bus reconnect without
+- [x] Task: Reconcile and resubscribe after BlueZ/D-Bus reconnect without
   merging adapter state.
 - [ ] Task: Add adapter/device-scoped conflict serialization, operation lookup,
   cancellation, structured errors, and tested API routes.
@@ -23,9 +23,13 @@
 - [x] Task: Recover adapter-scoped pairing after reboot, keep pairability
   bounded to explicit user operations, and prevent Bluetooth timeouts from
   stalling the live WebUI/TUI service.
+- [x] Task: Restore powered state for all present adapters before startup
+  autoconnect and keep the recovery pass off the WebUI/TUI request path.
+- [x] Task: Hide an unpaired discovery shadow on the non-owning adapter when
+  exactly one adapter owns the device bond; preserve explicit dual bonds.
 - [ ] Task: Add tested pairing-agent flows for confirmation, passkey, trust,
   block, removal, profile connect/disconnect, and cancellation.
-- [ ] Task: Implement automatic reconnect for all paired devices with owning
+- [x] Task: Implement automatic reconnect for all paired devices with owning
   adapter, profile priority, bounded backoff/jitter, cooldown, and deduplication.
 - [ ] Task: Add per-device autoconnect opt-out and tests for manual disconnect,
   device absence, adapter restart, competing audio profiles, and two adapters.

@@ -9,6 +9,7 @@ from rpi_dashboard.services.bluetooth.models import BluetoothError
 from rpi_dashboard.services.bluetooth.models import SCHEMA_VERSION
 from rpi_dashboard.services.bluetooth.models import adapter_id_from_address
 from rpi_dashboard.services.bluetooth.models import classify_device
+from rpi_dashboard.services.bluetooth.models import hide_non_owner_duplicates
 from rpi_dashboard.services.bluetooth.models import make_device_key
 
 
@@ -61,6 +62,33 @@ async def test_overlapping_remote_address_is_scoped_to_adapter():
     assert {device["address"] for device in devices} == {"DD:EE:FF:00:00:09"}
     assert len({device["adapter_id"] for device in devices}) == 2
     assert len({device["key"] for device in devices}) == 2
+
+
+def test_paired_owner_hides_unpaired_shadow_on_other_adapter():
+    """A discovered duplicate is hidden once one adapter owns the bond."""
+    adapters = list(FakeBluetoothBackend.two_adapters()._adapters.values())
+    owner = fake_device(
+        adapters[0].id,
+        "DD:EE:FF:00:00:09",
+        paired=True,
+        trusted=True,
+    )
+    shadow = fake_device(adapters[1].id, "DD:EE:FF:00:00:09")
+
+    visible = hide_non_owner_duplicates([owner, shadow])
+
+    assert visible == [owner]
+
+
+def test_two_real_bonds_are_not_silently_merged():
+    """Ambiguous pre-existing bonds remain visible for explicit cleanup."""
+    adapters = list(FakeBluetoothBackend.two_adapters()._adapters.values())
+    devices = [
+        fake_device(adapters[0].id, "DD:EE:FF:00:00:09", paired=True),
+        fake_device(adapters[1].id, "DD:EE:FF:00:00:09", paired=True),
+    ]
+
+    assert hide_non_owner_duplicates(devices) == devices
 
 
 @pytest.mark.asyncio

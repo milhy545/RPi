@@ -21,6 +21,27 @@ def adapter_id_from_address(address: str) -> str:
     return f"adapter-{normalize_address(address).replace(':', '').lower()}"
 
 
+def hide_non_owner_duplicates(devices: list[Device]) -> list[Device]:
+    """Hide discovery shadows when one adapter owns the paired device.
+
+    BlueZ exposes one Device1 object per adapter, so a nearby device can appear
+    twice. Once exactly one adapter owns the bond, only that relationship is
+    actionable and should be shown. Multiple real bonds remain visible so an
+    existing ambiguous configuration is never silently merged.
+    """
+    owners: dict[str, set[str]] = {}
+    for device in devices:
+        if device.paired:
+            owners.setdefault(device.address, set()).add(device.adapter_id)
+
+    return [
+        device
+        for device in devices
+        if len(owners.get(device.address, ())) != 1
+        or device.adapter_id in owners[device.address]
+    ]
+
+
 @dataclass(frozen=True)
 class BluetoothError:
     """Structured Bluetooth error safe for API/UI use."""
@@ -207,6 +228,7 @@ class Event:
     timestamp: str
     adapter_id: str | None = None
     device_key: str | None = None
+    detail: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize event."""

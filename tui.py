@@ -144,6 +144,9 @@ def t(lang: str, key: str) -> str:
 class SystemStats(Static):
     """Show live system load from /proc and /sys."""
     def on_mount(self) -> None:
+        from rpi_dashboard.services.bluetooth import service as bluetooth_service
+
+        bluetooth_service.start_startup_recovery()
         self._settings_cache = {
             "network": 0.0,
             "audio": 0.0,
@@ -1441,6 +1444,7 @@ class RPiDashboard(App):
         api_app.router.add_route("*", "/bt/discovery", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/adapter-power", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/device-action", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/device-autoconnect", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/scan", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/controller", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/pair", self.handle_registered_api_route)
