@@ -2,7 +2,10 @@
 
 ## Status
 
-In progress.
+Done — superseded by `bluetooth-control-center-refactor_20260718`. Live
+verification on 2026-07-23 confirmed that the paired Xbox controller is
+connected, trusted, services-resolved, visible through Linux input devices,
+and reports no Steam Link readiness blockers.
 
 ## Steps
 

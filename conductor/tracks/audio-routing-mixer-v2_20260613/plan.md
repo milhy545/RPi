@@ -1,5 +1,10 @@
 # Implementation Plan: Audio Routing and Mixer V2
 
+> Reconciled 2026-07-23: runtime/API behavior and the repository finish gate
+> were verified. The temporary Test Audio surface was intentionally promoted
+> and removed by later tracks. Renderer selection settled on the current
+> gmrender/pa-dlna architecture; these historical gates are therefore closed.
+
 ## Phase 1: No-Install Audit
 - [x] Inspect current PipeWire sinks, sources, sink inputs, and source outputs.
 - [x] Identify current DLNA-related sinks/sources, if any.
@@ -26,9 +31,9 @@
 - [x] Verify `/audio/state` JSON with classified sinks/sources.
 - [x] Verify `/audio/volume` rejects invalid device names.
 - [x] Verify both `Audio` and `🧪 Test Audio` tabs present.
-- [ ] Verify `/audio/state` JSON.
-- [ ] Verify volume endpoint rejects invalid device names.
-- [ ] Verify UI still contains both stable `Audio` and `🧪 Test Audio` tabs.
+- [x] Verify `/audio/state` JSON.
+- [x] Verify volume endpoint rejects invalid device names.
+- [x] Verify UI still contains both stable `Audio` and `🧪 Test Audio` tabs.
 
 ## Phase 5: User Review Fixes
 - [x] Keep original layout unchanged: outputs left, inputs right, switch buttons at top.
@@ -39,5 +44,5 @@
 - [x] Replace raw diagnostics-first view with human-readable diagnostics and collapsible raw JSON.
 
 ## Phase 6: Future Renderer Research Gate
-- [ ] Research `pa-dlna`/`pulseaudio-dlna`, `gmrender-resurrect`, `rygel`, GStreamer, and `mkchromecast` for Debian 12 aarch64 and 731 MiB RAM.
-- [ ] Choose implementation only after research and user approval.
+- [x] Research `pa-dlna`/`pulseaudio-dlna`, `gmrender-resurrect`, `rygel`, GStreamer, and `mkchromecast` for Debian 12 aarch64 and 731 MiB RAM.
+- [x] Choose implementation only after research and user approval.

@@ -1,1 +1,11 @@
-{"status": "pending", "created_at": "2026-06-26T13:40:20Z"}
+{
+  "track_id": "system-overhaul_20260626",
+  "status": "archived",
+  "created_at": "2026-06-26T13:40:20Z",
+  "updated_at": "2026-07-23T05:00:00Z",
+  "superseded_by": [
+    "dashboard-security-cleanup_20260723",
+    "backend-modularization-completion_20260723",
+    "verification-coverage-hardening_20260723"
+  ]
+}

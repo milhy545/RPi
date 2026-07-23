@@ -2,7 +2,9 @@
 
 ## Status
 
-Implemented. Final repository CI and finish workflow are pending.
+Done. Final repository CI and `tools/verify-done.sh` were re-run successfully
+on 2026-07-23; residual backend event semantics are tracked separately in
+`bluetooth-dbus-live-events_20260723`.
 
 ## Implementer Entry Instructions
 
@@ -143,8 +145,8 @@ Before editing code:
 
 - [x] Record diff summary and verification evidence in implementation notes if added.
 - [x] Run remote/browser E2E only if shared WebUI/API routes changed.
-- [ ] Run `tools/verify-done.sh` before claiming completion.
-- [ ] Use the repository finish workflow for commit/CI.
+- [x] Run `tools/verify-done.sh` before claiming completion.
+- [x] Use the repository finish workflow for commit/CI.
 
 ## Phase 8: WebUI Bluetooth Settings Port
 

@@ -1,5 +1,8 @@
 # Implementation Plan: Player clipboard autoload reliability
 
+> Reconciled 2026-07-23: the repository finish gate was re-run successfully;
+> the historical validation tasks are now closed.
+
 ## Phase 1 — Browser behavior
 - [x] Account for clipboard reads being blocked outside user activation
 
@@ -9,5 +12,5 @@
 
 ## Phase 3 — Validation
 - [x] Update WebUI tests
-- [ ] Run CI/finish pipeline
-- [ ] Run `tools/verify-done.sh`
+- [x] Run CI/finish pipeline
+- [x] Run `tools/verify-done.sh`

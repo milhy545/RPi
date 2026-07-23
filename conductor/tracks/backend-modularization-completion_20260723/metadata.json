@@ -1,0 +1,10 @@
+{
+  "track_id": "backend-modularization-completion_20260723",
+  "title": "Backend Modularization, Visual Redesign, and Legacy Retirement",
+  "type": "refactor",
+  "status": "planned",
+  "created_at": "2026-07-23T00:00:00Z",
+  "approved_at": "2026-07-23T14:40:52Z",
+  "updated_at": "2026-07-23T14:40:52Z",
+  "tags": ["backend", "refactor", "services", "api", "redesign", "webui", "tui", "legacy", "migration"]
+}

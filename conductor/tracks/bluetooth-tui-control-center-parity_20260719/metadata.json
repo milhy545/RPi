@@ -1,9 +1,9 @@
 {
   "track_id": "bluetooth-tui-control-center-parity_20260719",
   "type": "ui-refactor",
-  "status": "implemented",
+  "status": "done",
   "created": "2026-07-19T23:10:00+01:00",
-  "updated": "2026-07-22T00:13:00+01:00",
+  "updated": "2026-07-23T05:40:00+01:00",
   "owner": "codex",
   "priority": "high",
   "description": "Bring the live Textual Bluetooth tab in tui.py into close visual and interaction parity with docs/design/rpi-screenshots/RPi-BT-TUI.png, and keep the WebUI Bluetooth settings design aligned with docs/design/bluetooth/bt-webui-gemini-prototype.html while preserving the shared Bluetooth backend and live dashboard constraints.",

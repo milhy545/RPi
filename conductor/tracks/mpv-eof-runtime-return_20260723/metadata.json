@@ -1,0 +1,10 @@
+{
+  "track_id": "mpv-eof-runtime-return_20260723",
+  "title": "Unified Return Control and MPV EOF Recovery",
+  "type": "bug",
+  "status": "planned",
+  "created_at": "2026-07-23T00:00:00Z",
+  "approved_at": "2026-07-23T14:40:52Z",
+  "updated_at": "2026-07-23T14:40:52Z",
+  "tags": ["mpv", "runtime", "eof", "recovery", "keyboard", "xbox", "gamepad", "hotkey", "mode-switcher"]
+}
