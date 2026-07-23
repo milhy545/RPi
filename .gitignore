@@ -72,5 +72,6 @@ playback-memory.json
 
 # Local CI generated reports
 conductor/ci/reports/
+conductor/ci/receipts/*.json
 core
 gitleaks_report.json

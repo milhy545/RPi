@@ -14,6 +14,8 @@ This repository is the RPi-TV Dashboard application. The home directory (`~`) is
 - `tests/` contains pytest coverage; `tests/e2e/` contains the Playwright smoke suite.
 - `conductor/` contains product context, workflow rules, tracks, CI receipts, and reports.
 
+This repository's `conductor/` directory is the single authoritative Conductor state for RPi Dashboard. Host-specific startup routing and compatibility links belong in local agent configuration, not in this repository.
+
 Do not edit generated artifacts, caches, reports, or runtime state unless the task explicitly requires cleanup.
 
 ## Build, Test, and Development Commands
@@ -49,7 +51,7 @@ Remaining TUI work for the next session: continue the visual/UX modernization on
 
 ## Commit & Pull Request Guidelines
 
-Use short, imperative commit subjects with prefixes such as `fix(webui):`, `feat(audio):`, `test(dashboard):`, and `chore(conductor):`. Pull requests should include intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware notes. Never commit secrets, `.env` files, reports, caches, or machine-specific state.
+Use short, imperative commit subjects with prefixes such as `fix(webui):`, `feat(audio):`, `test(dashboard):`, and `chore(conductor):`. Pull requests should include intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware notes. Never commit secrets, `.env` files, generated reports or receipts, caches, or machine-specific state.
 
 ## Agent-Specific Rules
 

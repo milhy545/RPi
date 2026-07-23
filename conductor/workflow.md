@@ -1,5 +1,12 @@
 # Workflow: RPi Dumb TV Dashboard
 
+## 0. Repository Routing
+
+- All RPi Dashboard work uses this Git repository's top-level directory as the project root, regardless of the agent's startup directory.
+- `<repository>/conductor` is the only writable Conductor state.
+- Host-specific compatibility links must resolve to this directory and must never hold a second project context.
+- Run repository discovery, planning, implementation, tests, Git commands, and completion gates from the repository root.
+
 ## 1. Development Cycle
 
 ### 1.1 Local Development

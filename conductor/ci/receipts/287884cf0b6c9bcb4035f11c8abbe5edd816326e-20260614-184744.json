@@ -1,9 +1,0 @@
-{
-  "status": "done",
-  "commit_sha": "287884cf0b6c9bcb4035f11c8abbe5edd816326e",
-  "message": "docs: add CI/CD pipeline reference",
-  "host": "rpi",
-  "branch": "master",
-  "timestamp": "2026-06-14T18:47:44+01:00",
-  "note": "Manual receipt — push failed in finish-track but succeeded via manual pull+rebase on Milhy-PC"
-}
