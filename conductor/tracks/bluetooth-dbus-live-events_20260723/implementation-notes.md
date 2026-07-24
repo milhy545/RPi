@@ -69,5 +69,9 @@ Automated evidence before loading the new process: targeted Bluetooth, Audio,
 API, asset, TUI, and domain tests passed (118 tests), with ruff and mypy clean.
 The isolated Playwright run on Milhy-PC passed with 45 mocked adapter-aware
 Bluetooth requests across desktop, tablet, and mobile viewport checks.
+The first follow-up gateway attempt correctly failed because that temporary
+WebUI server still owned test port 18090. PID 1422598 was identified and
+terminated, the port was verified free, and the failed run was not treated as
+evidence.
 Hardware acceptance after restart remains required for both adapters, Samsung,
 TIBO, Xbox, Windows/Linux roles, headset switching, and bidirectional OPP.
