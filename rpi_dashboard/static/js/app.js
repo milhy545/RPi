@@ -699,9 +699,14 @@ async function btWizardPopulateIoDevices() {
     let container = $('#bt-wiz-io-devices');
     if (!container) return;
     let state = await api('/bt/state');
-    let devices = (state.devices || []).filter(d => d.adapter_id === BT_WIZARD.ioAdapter);
+    let target = (BT_WIZARD.ioAdapter || '').toLowerCase();
+    let devices = (state.devices || []).filter(d => {
+        if (!target) return true;
+        let devAdapter = (d.adapter_id || '').toLowerCase();
+        return devAdapter === target || devAdapter.includes(target) || target.includes(devAdapter);
+    });
     if (!devices.length) {
-        container.innerHTML = '<em>Nenalezena žádná nová zařízení na I/O adaptéru. Ujistěte se, že zařízení vysílá.</em>';
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na I/O adaptéru. Ujistěte se, že zařízení vysílá v párovacím režimu.</em>';
         return;
     }
     container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');
@@ -711,9 +716,14 @@ async function btWizardPopulateAudioDevices() {
     let container = $('#bt-wiz-audio-devices');
     if (!container) return;
     let state = await api('/bt/state');
-    let devices = (state.devices || []).filter(d => d.adapter_id === BT_WIZARD.audioAdapter);
+    let target = (BT_WIZARD.audioAdapter || '').toLowerCase();
+    let devices = (state.devices || []).filter(d => {
+        if (!target) return true;
+        let devAdapter = (d.adapter_id || '').toLowerCase();
+        return devAdapter === target || devAdapter.includes(target) || target.includes(devAdapter);
+    });
     if (!devices.length) {
-        container.innerHTML = '<em>Nenalezena žádná nová zařízení na Audio adaptéru. Ujistěte se, že reproduktor/telefon vysílá.</em>';
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na Audio adaptéru. Ujistěte se, že reproduktor/telefon vysílá v párovacím režimu.</em>';
         return;
     }
     container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');

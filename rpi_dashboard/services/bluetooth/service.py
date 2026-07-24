@@ -427,6 +427,13 @@ def reset_all_devices() -> dict[str, Any]:
     with _AUTO_CONNECT_LOCK:
         _MANUAL_DISCONNECT_UNTIL.clear()
 
+    for adapter in state.adapters:
+        try:
+            _run(get_backend().set_adapter_power(adapter.id, True))
+            _run(get_backend().set_adapter_discoverable(adapter.id, True, 0))
+        except Exception:
+            pass
+
     return {
         "ok": True,
         "unpaired_count": len(unpaired_keys),

@@ -157,6 +157,14 @@ class BlueZDbusBackend:
 
     async def start_discovery(self, adapter_id: str) -> Operation:
         """Start discovery on one adapter."""
+        target = await self._adapter_target(adapter_id)
+        if not isinstance(target, BluetoothError) and not self._adapter_requires_fallback(target):
+            try:
+                await self._call_properties_set("set_powered", target.bluez_path, ADAPTER1, "Powered", Variant("b", True), adapter_id=adapter_id)
+                await self._call_properties_set("set_pairable", target.bluez_path, ADAPTER1, "Pairable", Variant("b", True), adapter_id=adapter_id)
+                await self._call_properties_set("set_discoverable", target.bluez_path, ADAPTER1, "Discoverable", Variant("b", True), adapter_id=adapter_id)
+            except Exception:
+                pass
         return await self._adapter_method("start_discovery", adapter_id, "StartDiscovery")
 
     async def stop_discovery(self, adapter_id: str) -> Operation:
