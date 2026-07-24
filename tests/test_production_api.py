@@ -62,7 +62,11 @@ async def main():
         time.sleep(1)
     
     if not server_ready:
-        stdout, stderr = server_proc.communicate(timeout=1)
+        try:
+            stdout, stderr = server_proc.communicate(timeout=5)
+        except Exception:
+            server_proc.kill()
+            stdout, stderr = server_proc.communicate()
         raise RuntimeError(
             "API server failed to respond within timeout\n"
             f"stdout={stdout.decode(errors='replace')}\n"
