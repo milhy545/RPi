@@ -67,5 +67,7 @@ Live evidence before the final service restart:
 
 Automated evidence before loading the new process: targeted Bluetooth, Audio,
 API, asset, TUI, and domain tests passed (118 tests), with ruff and mypy clean.
+The isolated Playwright run on Milhy-PC passed with 45 mocked adapter-aware
+Bluetooth requests across desktop, tablet, and mobile viewport checks.
 Hardware acceptance after restart remains required for both adapters, Samsung,
 TIBO, Xbox, Windows/Linux roles, headset switching, and bidirectional OPP.

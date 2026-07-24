@@ -191,10 +191,10 @@ async function assertViewport(page, name, width, height) {
   await page.click("button[onclick=\"btSelectedAction('pair')\"]");
   await page.locator('.bt-device-node', { hasText: 'Samsung Soundbar' }).click();
   await page.click("button[onclick=\"btSelectedAction('disconnect')\"]");
-  await page.locator('#bt-device-details').getByText('Audio Sink').waitFor();
+  await page.locator('#bt-device-details').getByText('Audio Sink').first().waitFor();
   await page.click("button[onclick=\"btSelectedAction('block')\"]");
   await page.locator('.bt-device-node', { hasText: 'Sony WH-1000XM4' }).click();
-  await page.locator('#bt-device-details').getByText('Object Push').waitFor();
+  await page.locator('#bt-device-details').getByText('Object Push', { exact: true }).waitFor();
   await page.click('#bt-device-details button:has-text("Send")');
   await page.click("button[onclick=\"btSelectedAction('connect')\"]");
   await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
