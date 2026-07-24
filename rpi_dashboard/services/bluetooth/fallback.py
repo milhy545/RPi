@@ -113,6 +113,14 @@ class BluetoothctlBackend:
         """Untrust a device using an explicit controller selection."""
         return await asyncio.to_thread(self._device_command, "untrust", adapter_id, device_key)
 
+    async def block(self, adapter_id: str, device_key: str) -> Operation:
+        """Block a device using an explicit controller selection."""
+        return await asyncio.to_thread(self._device_command, "block", adapter_id, device_key)
+
+    async def unblock(self, adapter_id: str, device_key: str) -> Operation:
+        """Unblock a device using an explicit controller selection."""
+        return await asyncio.to_thread(self._device_command, "unblock", adapter_id, device_key)
+
     async def connect(self, adapter_id: str, device_key: str) -> Operation:
         """Connect a device using an explicit controller selection."""
         return await asyncio.to_thread(self._device_command, "connect", adapter_id, device_key)
@@ -120,6 +128,58 @@ class BluetoothctlBackend:
     async def disconnect(self, adapter_id: str, device_key: str) -> Operation:
         """Disconnect a device using an explicit controller selection."""
         return await asyncio.to_thread(self._device_command, "disconnect", adapter_id, device_key)
+
+    async def connect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Connect one advertised profile using the selected controller."""
+        return await asyncio.to_thread(
+            self._device_profile_command,
+            "connect_profile",
+            adapter_id,
+            device_key,
+            profile_uuid,
+        )
+
+    async def disconnect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Disconnect one advertised profile using the selected controller."""
+        return await asyncio.to_thread(
+            self._device_profile_command,
+            "disconnect_profile",
+            adapter_id,
+            device_key,
+            profile_uuid,
+        )
+
+    async def media_control(
+        self,
+        adapter_id: str,
+        device_key: str,
+        action: str,
+        value: int | None = None,
+    ) -> Operation:
+        """Report that bluetoothctl cannot expose deterministic AVRCP players."""
+        error = BluetoothError(
+            "profile_unavailable",
+            "AVRCP control requires the BlueZ D-Bus backend",
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
+        return self._operation(
+            f"media_{action}",
+            adapter_id=adapter_id,
+            device_key=device_key,
+            state="failed",
+            error=error,
+        )
 
     async def remove(self, adapter_id: str, device_key: str) -> Operation:
         """Remove a device using an explicit controller selection."""
@@ -288,6 +348,66 @@ class BluetoothctlBackend:
             device_key=device_key,
             state="succeeded" if succeeded else "failed",
             result={"output": _bounded_output(result)},
+            error=None if succeeded else _command_error(result, adapter_id, device_key),
+        )
+
+    def _device_profile_command(
+        self,
+        operation_type: str,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        adapter = self._adapter_by_id(adapter_id)
+        if adapter is None:
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "adapter_missing",
+                    "Adapter is not present",
+                    retryable=True,
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                ),
+            )
+        normalized = profile_uuid.strip().lower()
+        device = None
+        if self._last_state is not None:
+            device = next(
+                (
+                    item
+                    for item in self._last_state.devices
+                    if item.adapter_id == adapter_id and item.key == device_key
+                ),
+                None,
+            )
+        if device is None or normalized not in {uuid.lower() for uuid in device.uuids}:
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "profile_unavailable",
+                    "Profile is not advertised by this device",
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                ),
+            )
+        command = "connect" if operation_type == "connect_profile" else "disconnect"
+        result = self._run(
+            [["select", adapter.address], [command, _address_from_key(device_key), normalized]]
+        )
+        succeeded = _command_succeeded(result)
+        return self._operation(
+            operation_type,
+            adapter_id=adapter_id,
+            device_key=device_key,
+            state="succeeded" if succeeded else "failed",
+            result={"profile_uuid": normalized, "output": _bounded_output(result)},
             error=None if succeeded else _command_error(result, adapter_id, device_key),
         )
 

@@ -2071,6 +2071,15 @@ class H(BaseHTTPRequestHandler):
                 "/bt/settings",
                 "/bt/device-action",
                 "/audio/multi-output",
+                "/audio/bluetooth-profiles",
+                "/audio/mute-state",
+                "/bt/device-profile",
+                "/bt/transfers",
+                "/bt/files",
+                "/bt/file-send",
+                "/bt/file-cancel",
+                "/bt/operation",
+                "/bt/media",
             }
             if path in registry_first:
                 handler = get_route(path)

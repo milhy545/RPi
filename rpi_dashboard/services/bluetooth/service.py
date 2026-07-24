@@ -85,6 +85,7 @@ def _startup_recovery_worker(delay: float) -> None:
         backend = get_backend()
         if _RUNNER is not None:
             _RUNNER.submit(_watch_reconnect_events(backend))
+            _RUNNER.submit(_start_obex_agent_safely())
     except Exception:
         # Recovery is best-effort and must never take down the dashboard.
         return
@@ -259,6 +260,193 @@ def device_action(
                 time.monotonic() + _MANUAL_DISCONNECT_COOLDOWN
             )
     return _operation_response(operation)
+
+
+def device_profile_action(
+    action: str,
+    profile_uuid: str,
+    *,
+    adapter_id: str | None = None,
+    device_key: str | None = None,
+    mac: str | None = None,
+) -> dict[str, Any]:
+    """Connect or disconnect one advertised profile on an adapter-scoped device."""
+    if action not in {"connect", "disconnect"}:
+        return _error_response(
+            BluetoothError("unsupported", "Profile action must be connect or disconnect")
+        )
+    normalized = profile_uuid.strip().lower()
+    if not normalized:
+        return _error_response(BluetoothError("profile_unavailable", "profile_uuid is required"))
+    state = _run(get_backend().state())
+    target = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=mac)
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    resolved_adapter_id, resolved_device_key = target
+    runner = getattr(get_backend(), f"{action}_profile", None)
+    if runner is None:
+        return _error_response(BluetoothError("unsupported", "Profile operations are unavailable"))
+    operation = _run(
+        runner(resolved_adapter_id, resolved_device_key, normalized)
+    )
+    return _operation_response(operation)
+
+
+def obex_state() -> dict[str, Any]:
+    """Return bounded OBEX backend and transfer state."""
+    from .obex import get_manager
+
+    return _run(get_manager().state())
+
+
+def download_files() -> dict[str, Any]:
+    """List bounded, regular outbound candidates from ~/Downloads only."""
+    from .obex import downloads_directory, max_transfer_bytes
+
+    directory = downloads_directory().resolve()
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        entries = [
+            path
+            for path in directory.iterdir()
+            if path.is_file() and not path.is_symlink() and path.stat().st_size <= max_transfer_bytes()
+        ]
+    except OSError as exc:
+        return {"ok": False, "error": str(exc), "directory": str(directory), "files": []}
+    entries.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return {
+        "ok": True,
+        "directory": str(directory),
+        "files": [
+            {
+                "name": path.name,
+                "path": str(path),
+                "size": path.stat().st_size,
+                "modified": path.stat().st_mtime,
+            }
+            for path in entries[:100]
+        ],
+    }
+
+
+def send_file(
+    file_path: str,
+    *,
+    adapter_id: str | None = None,
+    device_key: str | None = None,
+    mac: str | None = None,
+) -> dict[str, Any]:
+    """Start OPP send to one paired, trusted, adapter-scoped device."""
+    from .obex import ObexError, downloads_directory, get_manager
+
+    if not file_path:
+        return _error_response(BluetoothError("file_missing", "path is required"))
+    path = Path(file_path).expanduser().resolve()
+    allowed_root = downloads_directory().resolve()
+    if path.parent != allowed_root:
+        return _error_response(
+            BluetoothError(
+                "permission_denied",
+                "Outbound Bluetooth files must be selected from ~/Downloads",
+            )
+        )
+    state = _run(get_backend().state())
+    resolved = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=mac)
+    if isinstance(resolved, BluetoothError):
+        return _error_response(resolved)
+    resolved_adapter, resolved_key = resolved
+    device = next(item for item in state.devices if item.key == resolved_key)
+    adapter = next(item for item in state.adapters if item.id == resolved_adapter)
+    if not device.paired or not device.trusted:
+        return _error_response(
+            BluetoothError(
+                "permission_denied",
+                "Object Push requires a paired and trusted device",
+                adapter_id=resolved_adapter,
+                device_key=resolved_key,
+            )
+        )
+    from .capabilities import capability_summary
+
+    if not capability_summary(device.uuids)["file_transfer"]["object_push"]:
+        return _error_response(
+            BluetoothError(
+                "profile_unavailable",
+                "Device does not advertise Object Push",
+                adapter_id=resolved_adapter,
+                device_key=resolved_key,
+            )
+        )
+    try:
+        transfer = _run(
+            get_manager().start_send(device.address, str(path), adapter.address)
+        )
+    except ObexError as exc:
+        return _error_response(BluetoothError(exc.code, str(exc)))
+    return {"ok": True, "transfer": transfer.to_dict()}
+
+
+def cancel_file_transfer(transfer_id: str) -> dict[str, Any]:
+    """Cancel one active OBEX transfer by its dashboard ID."""
+    from .obex import ObexError, get_manager
+
+    if not transfer_id:
+        return _error_response(BluetoothError("transfer_missing", "transfer_id is required"))
+    try:
+        transfer = _run(get_manager().cancel(transfer_id))
+    except ObexError as exc:
+        return _error_response(BluetoothError(exc.code, str(exc)))
+    return {"ok": True, "transfer": transfer.to_dict()}
+
+
+def operation_status(operation_id: str) -> dict[str, Any]:
+    """Look up one bounded backend operation record."""
+    if not operation_id:
+        return _error_response(BluetoothError("operation_missing", "operation_id is required"))
+    state = _run(get_backend().state())
+    operation = next((item for item in state.operations if item.id == operation_id), None)
+    if operation is None:
+        return _error_response(BluetoothError("operation_missing", "Bluetooth operation does not exist"))
+    return {"ok": True, "operation": operation.to_dict()}
+
+
+def media_action(
+    action: str,
+    *,
+    value: int | None = None,
+    adapter_id: str | None = None,
+    device_key: str | None = None,
+    mac: str | None = None,
+) -> dict[str, Any]:
+    """Run one capability-checked AVRCP action on an adapter-scoped device."""
+    if action not in {"play", "pause", "stop", "next", "previous", "volume"}:
+        return _error_response(BluetoothError("unsupported", "Unsupported media action"))
+    state = _run(get_backend().state())
+    target = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=mac)
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    resolved_adapter, resolved_key = target
+    operation = _run(
+        get_backend().media_control(resolved_adapter, resolved_key, action, value)
+    )
+    return _operation_response(operation)
+
+
+def cancel_operation(operation_id: str) -> dict[str, Any]:
+    """Request cancellation through the active backend."""
+    if not operation_id:
+        return _error_response(BluetoothError("operation_missing", "operation_id is required"))
+    operation = _run(get_backend().cancel(operation_id))
+    return _operation_response(operation)
+
+
+async def _start_obex_agent_safely() -> None:
+    from .obex import get_manager
+
+    try:
+        await get_manager().start_receive_agent()
+    except Exception:
+        return
 
 
 def _resolve_adapter(state: BluetoothState, adapter_id: str | None):
@@ -540,7 +728,25 @@ async def _watch_reconnect_events(backend: Any) -> None:
 
 
 def _enrich_runtime_state(state: dict[str, Any]) -> None:
-    state["settings"] = _load_settings()
+    settings = _load_settings()
+    state["settings"] = settings
+    policies = settings.get("device_auto_connect") or {}
+    for device in state.get("devices") or []:
+        key = device.get("key")
+        device["auto_connect"] = bool(
+            policies.get(key, settings.get("auto_connect", False))
+        )
+        with _AUTO_CONNECT_LOCK:
+            remaining = max(
+                0.0,
+                _MANUAL_DISCONNECT_UNTIL.get(str(key), 0.0) - time.monotonic(),
+            )
+        device["manual_disconnect_cooldown_seconds"] = round(remaining, 1)
+    from .capabilities import pc_capability_matrix
+    from .obex import get_manager
+
+    state.setdefault("diagnostics", {})["pc_capability_matrix"] = pc_capability_matrix()
+    state["obex"] = get_manager().snapshot()
     _enrich_soundbar_audio_readiness(state)
     _enrich_controller_readiness(state)
 

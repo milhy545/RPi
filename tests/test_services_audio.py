@@ -1,6 +1,7 @@
 """Tests for audio service module."""
 
 from unittest.mock import patch, MagicMock
+import json
 
 
 def test_classify_sink_hdmi():
@@ -184,3 +185,72 @@ def test_audio_multi_output_stop_restores_a_physical_sink():
     assert result["fallback_sink"] == sinks[0]
     commands = [call.args[0] for call in run.call_args_list]
     assert commands.index(["pactl", "set-default-sink", sinks[0]]) < commands.index(["pactl", "unload-module", "77"])
+
+
+def test_bluetooth_audio_profiles_report_negotiated_pipewire_roles():
+    """Profile state should come from PipeWire rather than device-name guesses."""
+    from rpi_dashboard.services.audio import bluetooth_audio_profiles
+
+    cards = [
+        {
+            "name": "bluez_card.1C_D1_07_52_E1_1A",
+            "properties": {
+                "api.bluez5.address": "1C:D1:07:52:E1:1A",
+                "device.description": "Phone",
+            },
+            "profiles": {
+                "off": {"description": "Off", "available": "yes", "sinks": 0, "sources": 0},
+                "audio-gateway": {
+                    "description": "Audio Gateway",
+                    "available": "yes",
+                    "sinks": 0,
+                    "sources": 1,
+                },
+            },
+            "active_profile": "audio-gateway",
+        }
+    ]
+    with patch("rpi_dashboard.services.audio._run") as run:
+        run.return_value = MagicMock(returncode=0, stdout=json.dumps(cards), stderr="")
+        result = bluetooth_audio_profiles()
+
+    assert result["ok"] is True
+    assert result["cards"][0]["active_profile"] == "audio-gateway"
+    assert result["cards"][0]["profiles"][1]["sources"] == 1
+
+
+def test_set_bluetooth_audio_profile_validates_card_and_profile():
+    """Only a currently advertised profile on a BlueZ card may be selected."""
+    from rpi_dashboard.services.audio import audio_set_bluetooth_profile
+
+    state = {
+        "ok": True,
+        "cards": [
+            {
+                "name": "bluez_card.phone",
+                "profiles": [
+                    {"id": "audio-gateway", "available": "yes"},
+                    {"id": "off", "available": "yes"},
+                ],
+            }
+        ],
+    }
+    with patch("rpi_dashboard.services.audio.bluetooth_audio_profiles", return_value=state), \
+         patch("rpi_dashboard.services.audio._run", return_value=MagicMock(returncode=0, stdout="", stderr="")) as run:
+        result = audio_set_bluetooth_profile("bluez_card.phone", "audio-gateway")
+        missing = audio_set_bluetooth_profile("bluez_card.phone", "not-advertised")
+
+    assert result["ok"] is True
+    run.assert_called_once_with(
+        ["pactl", "set-card-profile", "bluez_card.phone", "audio-gateway"],
+        t=10,
+    )
+
+    assert missing["ok"] is False
+    assert missing["code"] == "profile_unavailable"
+
+
+def test_audio_set_mute_rejects_invalid_kind():
+    from rpi_dashboard.services.audio import audio_set_mute
+
+    assert audio_set_mute("card", "bluez_card.phone", True)["ok"] is False

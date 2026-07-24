@@ -1,5 +1,7 @@
 """Tests for the Bluetooth control center domain foundation."""
 
+import asyncio
+
 import pytest
 
 from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
@@ -168,6 +170,25 @@ async def test_scripted_operation_error_is_reported():
     assert operation.error is not None
     assert operation.error.code == "connection_failed"
     assert (await backend.state()).to_dict()["events"][-1]["type"] == "operation_failed"
+
+
+@pytest.mark.asyncio
+async def test_pending_pair_can_be_cancelled_without_late_success():
+    backend = FakeBluetoothBackend.one_adapter()
+    adapter = (await backend.state()).adapters[0]
+    device = fake_device(adapter.id, "DD:EE:FF:00:00:09")
+    backend.add_device(device)
+    backend.script_delay("pair", 0.05)
+
+    task = asyncio.create_task(backend.pair(adapter.id, device.key))
+    await asyncio.sleep(0)
+    pending = next(item for item in (await backend.state()).operations if item.state == "pending")
+    cancelled = await backend.cancel(pending.id)
+    result = await task
+
+    assert cancelled.state == "cancelled"
+    assert result.state == "cancelled"
+    assert backend._devices[device.key].paired is False
 
 
 @pytest.mark.asyncio

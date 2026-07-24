@@ -10,6 +10,7 @@ from rpi_dashboard.api import handlers
 from rpi_dashboard.services import devices
 from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
+from rpi_dashboard.services.bluetooth.fake import fake_device
 from rpi_dashboard.services.bluetooth.service import set_backend_for_tests
 from rpi_dashboard.services.bluetooth import service as bluetooth_service
 
@@ -38,6 +39,8 @@ def test_bt_state_handler_returns_adapter_aware_contract():
     assert len(result["adapters"]) == 2
     assert all("adapter_id" in device for device in result["devices"])
     assert "soundbar" in result["diagnostics"]
+    assert set(result["diagnostics"]["pc_capability_matrix"]) == {"windows", "linux"}
+    assert all("auto_connect" in device for device in result["devices"])
 
 
 def test_sync_facade_reuses_one_persistent_event_loop():
@@ -89,6 +92,106 @@ def test_bt_device_action_uses_adapter_and_device_key():
     updated = handlers.handle_bt_state({})
     disconnected = next(device for device in updated["devices"] if device["key"] == controller["key"])
     assert disconnected["connected"] is False
+
+
+def test_bt_device_profile_handler_is_adapter_scoped_and_validated():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    state = handlers.handle_bt_state({})
+    soundbar = next(device for device in state["devices"] if device["kind"] == "speaker")
+    profile_uuid = soundbar["uuids"][0]
+
+    result = handlers.handle_bt_device_profile(
+        parse_qs(
+            "action=connect"
+            f"&adapter_id={soundbar['adapter_id']}"
+            f"&device_key={soundbar['key']}"
+            f"&profile_uuid={profile_uuid}"
+        )
+    )
+    unavailable = handlers.handle_bt_device_profile(
+        parse_qs(
+            "action=connect"
+            f"&adapter_id={soundbar['adapter_id']}"
+            f"&device_key={soundbar['key']}"
+            "&profile_uuid=0000111e-0000-1000-8000-00805f9b34fb"
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["operation"]["type"] == "connect_profile"
+    assert result["operation"]["result"]["profile_uuid"] == profile_uuid
+    assert unavailable["ok"] is False
+    assert unavailable["code"] == "profile_unavailable"
+
+
+def test_bt_block_and_unblock_update_device_state():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = handlers.handle_bt_state({})["devices"][0]
+    query = (
+        f"adapter_id={device['adapter_id']}"
+        f"&device_key={device['key']}"
+    )
+
+    blocked = handlers.handle_bt_device_action(parse_qs(f"action=block&{query}"))
+    after_block = next(
+        item for item in handlers.handle_bt_state({})["devices"] if item["key"] == device["key"]
+    )
+    unblocked = handlers.handle_bt_device_action(parse_qs(f"action=unblock&{query}"))
+
+    assert blocked["ok"] is True
+    assert after_block["blocked"] is True
+    assert after_block["connected"] is False
+    assert unblocked["ok"] is True
+
+
+def test_bt_operation_handler_looks_up_and_rejects_completed_cancel():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = handlers.handle_bt_state({})["devices"][0]
+    completed = handlers.handle_bt_device_action(
+        parse_qs(
+            "action=disconnect"
+            f"&adapter_id={device['adapter_id']}"
+            f"&device_key={device['key']}"
+        )
+    )["operation"]
+
+    status = handlers.handle_bt_operation(
+        parse_qs(f"action=status&operation_id={completed['id']}")
+    )
+    cancelled = handlers.handle_bt_operation(
+        parse_qs(f"action=cancel&operation_id={completed['id']}")
+    )
+
+    assert status["ok"] is True
+    assert status["operation"]["state"] == "succeeded"
+    assert cancelled["ok"] is False
+    assert cancelled["code"] == "operation_not_cancellable"
+
+
+def test_bt_media_handler_requires_avrcp_and_validates_volume():
+    backend = FakeBluetoothBackend.one_adapter()
+    adapter = next(iter(backend._adapters.values()))
+    media_device = fake_device(
+        adapter.id,
+        "AA:BB:CC:DD:EE:FF",
+        uuids=("0000110c-0000-1000-8000-00805f9b34fb",),
+        paired=True,
+        trusted=True,
+    )
+    backend.add_device(media_device)
+    set_backend_for_tests(backend)
+    query = f"adapter_id={adapter.id}&device_key={media_device.key}"
+
+    played = handlers.handle_bt_media(parse_qs(f"action=play&{query}"))
+    invalid = handlers.handle_bt_media(parse_qs(f"action=volume&value=200&{query}"))
+
+    assert played["ok"] is True
+    assert played["operation"]["type"] == "media_play"
+    assert invalid["ok"] is False
+    assert invalid["code"] == "unsupported"
 
 
 def test_bt_adapter_power_handler_updates_adapter():

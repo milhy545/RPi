@@ -135,9 +135,12 @@ class Device:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize device state without merging adapters."""
+        from .capabilities import capability_summary
+
         data = asdict(self)
         data["uuids"] = list(self.uuids)
         data["kind_evidence"] = list(self.kind_evidence)
+        data["capabilities"] = capability_summary(self.uuids)
         return _drop_none(data)
 
 

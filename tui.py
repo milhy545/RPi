@@ -1293,6 +1293,97 @@ class RPiDashboard(App):
         except Exception as e:
             self.write_log(f"[ERROR] Bluetooth {action} failed: {e}")
 
+    def selected_bluetooth_target(self) -> dict:
+        """Return the adapter-scoped target behind the highlighted device row."""
+        bt_list = self.query_one("#list_bluetooth_devices", OptionList)
+        if bt_list.highlighted is None:
+            return {}
+        prompt = str(bt_list.get_option_at_index(bt_list.highlighted).prompt)
+        return dict(getattr(self, "_bt_target_by_prompt", {}).get(prompt, {}))
+
+    async def run_bluetooth_file_send(self) -> None:
+        """Send the newest Downloads file after a deliberate second key press."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        target = self.selected_bluetooth_target()
+        if not target.get("adapter_id") or not target.get("device_key"):
+            self.show_bluetooth_notice("Select an adapter-scoped Bluetooth device first.")
+            return
+        candidates = await asyncio.to_thread(bt_service.download_files)
+        files = candidates.get("files") or []
+        if not files:
+            self.show_bluetooth_notice("No eligible regular file exists in ~/Downloads.")
+            return
+        newest = files[0]
+        confirmation = (newest["path"], target["device_key"])
+        if getattr(self, "_bt_pending_file_send", None) != confirmation:
+            self._bt_pending_file_send = confirmation
+            self.show_bluetooth_notice(
+                f"Press F again to send {newest['name']} to the selected trusted device."
+            )
+            return
+        self._bt_pending_file_send = None
+        result = await asyncio.to_thread(
+            bt_service.send_file,
+            newest["path"],
+            adapter_id=target["adapter_id"],
+            device_key=target["device_key"],
+            mac=target.get("mac"),
+        )
+        self.show_bluetooth_notice(
+            "Transfer started."
+            if result.get("ok")
+            else f"Transfer failed: {result.get('error', 'unknown error')}"
+        )
+        await self.update_bluetooth_devices()
+
+    async def cancel_latest_bluetooth_transfer(self) -> None:
+        """Cancel the newest active OBEX transfer visible in the shared snapshot."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        state = getattr(self, "_bluetooth_state_snapshot", {})
+        transfers = (state.get("obex") or {}).get("transfers") or []
+        active = [
+            item
+            for item in transfers
+            if item.get("status") in {"queued", "starting", "active"}
+        ]
+        if not active:
+            self.show_bluetooth_notice("No active Bluetooth file transfer.")
+            return
+        result = await asyncio.to_thread(
+            bt_service.cancel_file_transfer,
+            active[-1].get("id", ""),
+        )
+        self.show_bluetooth_notice(
+            "Transfer cancelled."
+            if result.get("ok")
+            else f"Cancel failed: {result.get('error', 'unknown error')}"
+        )
+        await self.update_bluetooth_devices()
+
+    async def run_bluetooth_media_action(self, action: str) -> None:
+        """Run one capability-checked AVRCP action for the selected device."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        target = self.selected_bluetooth_target()
+        if not target.get("adapter_id") or not target.get("device_key"):
+            self.show_bluetooth_notice("Select an AVRCP-capable Bluetooth device first.")
+            return
+        result = await asyncio.to_thread(
+            bt_service.media_action,
+            action,
+            adapter_id=target["adapter_id"],
+            device_key=target["device_key"],
+            mac=target.get("mac"),
+        )
+        self.show_bluetooth_notice(
+            f"Media {action} sent."
+            if result.get("ok")
+            else f"Media action failed: {result.get('error', 'unknown error')}"
+        )
+        await self.update_bluetooth_devices()
+
     async def scan_wifi(self) -> None:
         self.write_log("[WIFI] Scanning available networks...")
         out = await self.run_sys_cmd("nmcli -t -f SSID dev wifi")
@@ -1453,6 +1544,15 @@ class RPiDashboard(App):
         api_app.router.add_route("*", "/bt/disconnect", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/remove", self.handle_registered_api_route)
         api_app.router.add_route("*", "/audio/multi-output", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/audio/bluetooth-profiles", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/audio/mute-state", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/device-profile", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/transfers", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/files", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/file-send", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/file-cancel", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/operation", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/media", self.handle_registered_api_route)
         api_app.router.add_route("*", "/devices/state", self.handle_registered_api_route)
         api_app.router.add_route("*", "/{tail:.*}", self.handle_legacy_webserver_proxy)
 
@@ -2038,7 +2138,29 @@ class RPiDashboard(App):
         if bluetooth_active and event.key in {"up", "down"}:
             event.stop()
             self.move_bluetooth_selection(-1 if event.key == "up" else 1)
-        elif bluetooth_active and event.key in {"s", "p", "t", "c", "d", "r", "x", "g", "m", "q"}:
+        elif bluetooth_active and event.key in {"space", "left_square_bracket", "right_square_bracket"}:
+            event.stop()
+            action = {
+                "left_square_bracket": "previous",
+                "right_square_bracket": "next",
+            }.get(event.key)
+            if action is None:
+                selected_key = getattr(self, "_bt_selected_device_key", "")
+                media = (
+                    (getattr(self, "_bluetooth_state_snapshot", {}).get("diagnostics") or {}).get("media")
+                    or {}
+                )
+                player = next(
+                    (
+                        item
+                        for item in media.get("players") or []
+                        if item.get("device_key") == selected_key
+                    ),
+                    {},
+                )
+                action = "pause" if player.get("status") == "playing" else "play"
+            asyncio.create_task(self.run_bluetooth_media_action(action))
+        elif bluetooth_active and event.key in {"s", "p", "t", "c", "d", "r", "x", "g", "m", "f", "k", "q"}:
             event.stop()
             if event.key == "s":
                 asyncio.create_task(self.scan_bluetooth())
@@ -2057,6 +2179,10 @@ class RPiDashboard(App):
                 self.show_bluetooth_notice("Adapter priority is planned; no adapter state was changed.")
             elif event.key == "m":
                 self.show_bluetooth_notice("More settings are available in the WebUI Expert mode.")
+            elif event.key == "f":
+                asyncio.create_task(self.run_bluetooth_file_send())
+            elif event.key == "k":
+                asyncio.create_task(self.cancel_latest_bluetooth_transfer())
             elif event.key == "q":
                 self.exit()
         elif event.key == "w":

@@ -12,11 +12,14 @@ MessageType = dbus_fast.MessageType
 from rpi_dashboard.services.bluetooth.bluez import ADAPTER1
 from rpi_dashboard.services.bluetooth.bluez import BATTERY1
 from rpi_dashboard.services.bluetooth.bluez import DEVICE1
+from rpi_dashboard.services.bluetooth.bluez import MEDIA_PLAYER1
+from rpi_dashboard.services.bluetooth.bluez import MEDIA_TRANSPORT1
 from rpi_dashboard.services.bluetooth.bluez import BlueZDbusBackend
 from rpi_dashboard.services.bluetooth.bluez import _adapters_from_managed
 from rpi_dashboard.services.bluetooth.bluez import _devices_from_managed
 from rpi_dashboard.services.bluetooth.bluez import _index_from_path
 from rpi_dashboard.services.bluetooth.bluez import _preferred_connect_profile
+from rpi_dashboard.services.bluetooth.bluez import _media_from_managed
 from rpi_dashboard.services.bluetooth.fake import fake_device
 from rpi_dashboard.services.bluetooth.fake import fake_adapter
 from rpi_dashboard.services.bluetooth.models import BluetoothState
@@ -123,6 +126,36 @@ def test_phone_prefers_explicit_a2dp_source_profile():
     )
 
     assert _preferred_connect_profile(phone) == "0000110a-0000-1000-8000-00805f9b34fb"
+
+
+def test_bluez_media_objects_are_scoped_to_owning_device():
+    adapter = fake_adapter(address="AA:BB:CC:00:00:01", index=0)
+    device = fake_device(adapter.id, "DD:EE:FF:00:00:09")
+    managed = {
+        f"{device.bluez_path}/player0": {
+            MEDIA_PLAYER1: {
+                "Name": Variant("s", "Phone Player"),
+                "Status": Variant("s", "playing"),
+                "Track": Variant("a{sv}", {"Title": Variant("s", "Song")}),
+            }
+        },
+        f"{device.bluez_path}/sep1/fd0": {
+            MEDIA_TRANSPORT1: {
+                "UUID": Variant("s", "0000110a-0000-1000-8000-00805f9b34fb"),
+                "State": Variant("s", "active"),
+                "Codec": Variant("y", 0),
+                "Volume": Variant("q", 96),
+                "Delay": Variant("q", 120),
+            }
+        },
+    }
+
+    media = _media_from_managed(managed, [device])
+
+    assert media["players"][0]["device_key"] == device.key
+    assert media["players"][0]["track"]["Title"] == "Song"
+    assert media["transports"][0]["volume"] == 96
+    assert media["transports"][0]["delay"] == 120
 
 
 def test_bluez_property_signal_is_bounded_and_adapter_scoped():
@@ -272,3 +305,132 @@ async def test_dbus_method_timeout_returns_structured_failure():
     assert operation.error.code == "backend_unavailable"
     assert backend._operations[-1] == operation
     assert backend._events[-1].type == "operation_failed"
+
+
+@pytest.mark.asyncio
+async def test_device_block_sets_adapter_scoped_bluez_property():
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            self.message = message
+            return SimpleNamespace(message_type=object())
+
+    adapter = fake_adapter(address="AA:BB:CC:00:00:01", index=0)
+    device = fake_device(adapter.id, "DD:EE:FF:00:00:09")
+    backend = BlueZDbusBackend(operation_timeout=0.2)
+
+    async def state():
+        return BluetoothState(
+            backend=BackendHealth(name="bluez-dbus"),
+            adapters=(adapter,),
+            devices=(device,),
+        )
+
+    bus = Bus()
+
+    async def connect():
+        return bus
+
+    backend.state = state
+    backend._connect = connect
+    operation = await backend.block(adapter.id, device.key)
+
+    assert operation.state == "succeeded"
+    assert bus.message.path == device.bluez_path
+    assert bus.message.member == "Set"
+    assert bus.message.signature == "ssv"
+    assert bus.message.body[0:2] == [DEVICE1, "Blocked"]
+    assert bus.message.body[2].value is True
+
+
+@pytest.mark.asyncio
+async def test_device_profile_operation_requires_advertised_uuid():
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            self.message = message
+            return SimpleNamespace(message_type=object())
+
+    adapter = fake_adapter(address="AA:BB:CC:00:00:01", index=0)
+    profile_uuid = "0000110b-0000-1000-8000-00805f9b34fb"
+    device = fake_device(adapter.id, "DD:EE:FF:00:00:09", uuids=(profile_uuid,))
+    backend = BlueZDbusBackend(operation_timeout=0.2)
+
+    async def state():
+        return BluetoothState(
+            backend=BackendHealth(name="bluez-dbus"),
+            adapters=(adapter,),
+            devices=(device,),
+        )
+
+    bus = Bus()
+
+    async def connect():
+        return bus
+
+    backend.state = state
+    backend._connect = connect
+
+    operation = await backend.connect_profile(adapter.id, device.key, profile_uuid.upper())
+    unavailable = await backend.connect_profile(
+        adapter.id,
+        device.key,
+        "0000111e-0000-1000-8000-00805f9b34fb",
+    )
+
+    assert operation.state == "succeeded"
+    assert bus.message.member == "ConnectProfile"
+    assert bus.message.signature == "s"
+    assert bus.message.body == [profile_uuid]
+    assert unavailable.state == "failed"
+    assert unavailable.error is not None
+    assert unavailable.error.code == "profile_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_bluez_serializes_conflicting_operations_per_target():
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class Bus:
+        connected = True
+
+        async def call(self, message):
+            entered.set()
+            await release.wait()
+            return SimpleNamespace(message_type=object())
+
+    backend = BlueZDbusBackend(operation_timeout=0.5)
+
+    async def connect():
+        return Bus()
+
+    backend._connect = connect
+    first_task = asyncio.create_task(
+        backend._call_method(
+            "connect",
+            "/org/bluez/hci0/dev_AA",
+            DEVICE1,
+            "Connect",
+            adapter_id="adapter-a",
+            device_key="adapter-a/AA",
+        )
+    )
+    await entered.wait()
+    conflict = await backend._call_method(
+        "disconnect",
+        "/org/bluez/hci0/dev_AA",
+        DEVICE1,
+        "Disconnect",
+        adapter_id="adapter-a",
+        device_key="adapter-a/AA",
+    )
+    release.set()
+    first = await first_task
+
+    assert first.state == "succeeded"
+    assert conflict.state == "failed"
+    assert conflict.error is not None
+    assert conflict.error.code == "operation_busy"

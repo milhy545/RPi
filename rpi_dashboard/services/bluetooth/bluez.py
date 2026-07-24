@@ -46,6 +46,8 @@ DBUS_PATH = "/org/freedesktop/DBus"
 ADAPTER1 = "org.bluez.Adapter1"
 DEVICE1 = "org.bluez.Device1"
 BATTERY1 = "org.bluez.Battery1"
+MEDIA_PLAYER1 = "org.bluez.MediaPlayer1"
+MEDIA_TRANSPORT1 = "org.bluez.MediaTransport1"
 SAMSUNG_SOUNDBAR_MAC = "24:4B:03:92:0B:8C"
 AUDIO_SOURCE_UUID = "0000110a-0000-1000-8000-00805f9b34fb"
 AUDIO_SINK_UUID = "0000110b-0000-1000-8000-00805f9b34fb"
@@ -70,6 +72,7 @@ class BlueZDbusBackend:
         self._events: deque[Event] = deque(maxlen=history_limit)
         self._event_queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=history_limit)
         self._subscriptions_bus: MessageBus | None = None
+        self._busy_targets: set[tuple[str, str | None]] = set()
 
     async def state(self) -> BluetoothState:
         """Return current BlueZ state, or fallback state when unavailable."""
@@ -209,6 +212,18 @@ class BlueZDbusBackend:
             device_key=device_key,
         )
 
+    async def block(self, adapter_id: str, device_key: str) -> Operation:
+        """Set Device1.Blocked true on the selected adapter relationship."""
+        return await self._set_device_boolean(
+            "block", adapter_id, device_key, "Blocked", True
+        )
+
+    async def unblock(self, adapter_id: str, device_key: str) -> Operation:
+        """Set Device1.Blocked false on the selected adapter relationship."""
+        return await self._set_device_boolean(
+            "unblock", adapter_id, device_key, "Blocked", False
+        )
+
     async def connect(self, adapter_id: str, device_key: str) -> Operation:
         """Connect a device, selecting A2DP explicitly for audio endpoints."""
         target = await self._device_target(adapter_id, device_key)
@@ -248,6 +263,106 @@ class BlueZDbusBackend:
         """Disconnect a device."""
         return await self._device_method("disconnect", adapter_id, device_key, "Disconnect")
 
+    async def connect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Connect one profile advertised by the selected device."""
+        return await self._device_profile_method(
+            "connect_profile",
+            adapter_id,
+            device_key,
+            profile_uuid,
+            "ConnectProfile",
+        )
+
+    async def disconnect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Disconnect one profile advertised by the selected device."""
+        return await self._device_profile_method(
+            "disconnect_profile",
+            adapter_id,
+            device_key,
+            profile_uuid,
+            "DisconnectProfile",
+        )
+
+    async def media_control(
+        self,
+        adapter_id: str,
+        device_key: str,
+        action: str,
+        value: int | None = None,
+    ) -> Operation:
+        """Control one BlueZ MediaPlayer1 or its MediaTransport1 volume."""
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                "media_control",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=target,
+            )
+        if target.use_fallback:
+            return await self._fallback_backend().media_control(
+                adapter_id, device_key, action, value
+            )
+        state = await self.state()
+        media = state.diagnostics.get("media") or {}
+        if action == "volume":
+            transport = next(
+                (
+                    item
+                    for item in media.get("transports", [])
+                    if item.get("device_key") == device_key
+                ),
+                None,
+            )
+            if transport is None or value is None or not 0 <= value <= 127:
+                return self._profile_failure(adapter_id, device_key, "AVRCP transport volume is unavailable")
+            return await self._call_properties_set(
+                "media_volume",
+                transport["path"],
+                MEDIA_TRANSPORT1,
+                "Volume",
+                Variant("q", value),
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+        members = {
+            "play": "Play",
+            "pause": "Pause",
+            "stop": "Stop",
+            "next": "Next",
+            "previous": "Previous",
+        }
+        member = members.get(action)
+        player = next(
+            (
+                item
+                for item in media.get("players", [])
+                if item.get("device_key") == device_key
+            ),
+            None,
+        )
+        if member is None or player is None:
+            return self._profile_failure(adapter_id, device_key, "AVRCP media player action is unavailable")
+        return await self._call_method(
+            f"media_{action}",
+            player["path"],
+            MEDIA_PLAYER1,
+            member,
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
+
     async def remove(self, adapter_id: str, device_key: str) -> Operation:
         """Remove a device from its adapter."""
         target = await self._device_target(adapter_id, device_key)
@@ -267,8 +382,24 @@ class BlueZDbusBackend:
         )
 
     async def cancel(self, operation_id: str) -> Operation:
-        """Cancel is only supported for selected BlueZ flows in later phases."""
-        error = BluetoothError("unsupported", "D-Bus cancel is not implemented for this operation")
+        """Return an explicit result for a known BlueZ operation lifecycle."""
+        operation = next((item for item in self._operations if item.id == operation_id), None)
+        if operation is None:
+            error = BluetoothError("operation_missing", "Bluetooth operation does not exist")
+        elif operation.state != "pending" or not operation.cancellable:
+            error = BluetoothError(
+                "operation_not_cancellable",
+                "Bluetooth operation is already complete or is not cancellable",
+                adapter_id=operation.adapter_id,
+                device_key=operation.device_key,
+            )
+        else:
+            error = BluetoothError(
+                "unsupported",
+                "This BlueZ operation has no safe cancellation method",
+                adapter_id=operation.adapter_id,
+                device_key=operation.device_key,
+            )
         return self._operation("cancel", state="failed", error=error)
 
     async def _state_from_bluez(self) -> BluetoothState:
@@ -289,16 +420,37 @@ class BlueZDbusBackend:
         managed = reply.body[0]
         adapters = _adapters_from_managed(managed)
         devices = hide_non_owner_duplicates(_devices_from_managed(managed, adapters))
+        diagnostics = _diagnostics(adapters, devices)
+        diagnostics["media"] = _media_from_managed(managed, devices)
         state = BluetoothState(
             backend=BackendHealth(name="bluez-dbus", degraded=False, available=True),
             adapters=tuple(adapters),
             devices=tuple(devices),
             operations=tuple(self._operations),
-            diagnostics=_diagnostics(adapters, devices),
+            diagnostics=diagnostics,
             events=tuple(self._events),
         )
         self._last_state = state
         return state
+
+    def _profile_failure(
+        self,
+        adapter_id: str,
+        device_key: str,
+        message: str,
+    ) -> Operation:
+        return self._operation(
+            "media_control",
+            adapter_id=adapter_id,
+            device_key=device_key,
+            state="failed",
+            error=BluetoothError(
+                "profile_unavailable",
+                message,
+                adapter_id=adapter_id,
+                device_key=device_key,
+            ),
+        )
 
     async def _adapter_method(
         self,
@@ -346,6 +498,84 @@ class BlueZDbusBackend:
             device_key=device_key,
         )
 
+    async def _set_device_boolean(
+        self,
+        operation_type: str,
+        adapter_id: str,
+        device_key: str,
+        prop: str,
+        value: bool,
+    ) -> Operation:
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=target,
+            )
+        if target.use_fallback:
+            return await getattr(self._fallback_backend(), operation_type)(
+                adapter_id, device_key
+            )
+        return await self._call_properties_set(
+            operation_type,
+            target.bluez_path,
+            DEVICE1,
+            prop,
+            Variant("b", value),
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
+
+    async def _device_profile_method(
+        self,
+        operation_type: str,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+        member: str,
+    ) -> Operation:
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=target,
+            )
+        normalized = profile_uuid.strip().lower()
+        advertised = {uuid.lower() for uuid in target.device.uuids}
+        if not normalized or normalized not in advertised:
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "profile_unavailable",
+                    "Profile is not advertised by this device",
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                ),
+            )
+        if target.use_fallback:
+            return await getattr(self._fallback_backend(), operation_type)(
+                adapter_id, device_key, normalized
+            )
+        return await self._call_method(
+            operation_type,
+            target.bluez_path,
+            DEVICE1,
+            member,
+            signature="s",
+            body=[normalized],
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
+
     async def _call_properties_set(
         self,
         operation_type: str,
@@ -380,6 +610,23 @@ class BlueZDbusBackend:
         adapter_id: str | None = None,
         device_key: str | None = None,
     ) -> Operation:
+        target = (adapter_id, device_key) if adapter_id is not None else None
+        if target is not None and target in self._busy_targets:
+            return self._operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "operation_busy",
+                    "Another operation is already active for this target",
+                    retryable=True,
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                ),
+            )
+        if target is not None:
+            self._busy_targets.add(target)
         try:
             bus = await self._connect()
             reply = await asyncio.wait_for(
@@ -435,6 +682,9 @@ class BlueZDbusBackend:
                 state="failed",
                 error=error,
             )
+        finally:
+            if target is not None:
+                self._busy_targets.discard(target)
 
     async def _adapter_target(self, adapter_id: str) -> Adapter | BluetoothError:
         state = await self.state()
@@ -676,6 +926,55 @@ def _preferred_connect_profile(device: Device) -> str | None:
     if device.icon == "phone" and AUDIO_SOURCE_UUID in uuids:
         return AUDIO_SOURCE_UUID
     return None
+
+
+def _media_from_managed(
+    managed: dict[str, Any],
+    devices: list[Device],
+) -> dict[str, list[dict[str, Any]]]:
+    """Map BlueZ AVRCP players/transports to adapter-scoped device identities."""
+    players: list[dict[str, Any]] = []
+    transports: list[dict[str, Any]] = []
+    for path, interfaces in managed.items():
+        owner = max(
+            (device for device in devices if path.startswith(f"{device.bluez_path}/")),
+            key=lambda device: len(device.bluez_path),
+            default=None,
+        )
+        if owner is None:
+            continue
+        player = interfaces.get(MEDIA_PLAYER1)
+        if player:
+            track = _variant_value(player.get("Track"), {})
+            players.append(
+                {
+                    "path": path,
+                    "adapter_id": owner.adapter_id,
+                    "device_key": owner.key,
+                    "name": _variant_value(player.get("Name"), ""),
+                    "status": _variant_value(player.get("Status"), "unknown"),
+                    "position": _variant_value(player.get("Position"), None),
+                    "track": {
+                        str(key): _variant_value(value, value)
+                        for key, value in (track.items() if isinstance(track, dict) else [])
+                    },
+                }
+            )
+        transport = interfaces.get(MEDIA_TRANSPORT1)
+        if transport:
+            transports.append(
+                {
+                    "path": path,
+                    "adapter_id": owner.adapter_id,
+                    "device_key": owner.key,
+                    "uuid": _variant_value(transport.get("UUID"), ""),
+                    "state": _variant_value(transport.get("State"), "unknown"),
+                    "codec": _variant_value(transport.get("Codec"), None),
+                    "volume": _variant_value(transport.get("Volume"), None),
+                    "delay": _variant_value(transport.get("Delay"), None),
+                }
+            )
+    return {"players": players, "transports": transports}
 
 
 def _adapters_from_managed(managed: dict[str, Any]) -> list[Adapter]:

@@ -14,8 +14,8 @@ const mockState = {
     { id: 'hci-b', address: 'BB:BB:BB:BB:BB:02', present: true, powered: true, discovering: false },
   ],
   devices: [
-    { key: 'soundbar', adapter_id: 'hci-a', address: '04:50:48:91:22:33', name: 'Samsung Soundbar', kind: 'speaker', connected: true, paired: true, present: true, rssi: -48, battery_percentage: null },
-    { key: 'headphones', adapter_id: 'hci-a', address: '04:50:48:91:22:44', name: 'Sony WH-1000XM4', kind: 'headphones', connected: false, paired: true, present: true, rssi: -55, battery_percentage: 88 },
+    { key: 'soundbar', adapter_id: 'hci-a', address: '04:50:48:91:22:33', name: 'Samsung Soundbar', kind: 'speaker', connected: true, paired: true, trusted: true, auto_connect: true, present: true, rssi: -48, battery_percentage: null, capabilities: { profiles: [{ id: 'a2dp-sink', label: 'Audio Sink', category: 'audio', direction: 'send', uuid: '0000110b-0000-1000-8000-00805f9b34fb' }], file_transfer: { object_push: false } } },
+    { key: 'headphones', adapter_id: 'hci-a', address: '04:50:48:91:22:44', name: 'Sony WH-1000XM4', kind: 'headphones', connected: false, paired: true, trusted: true, auto_connect: false, present: true, rssi: -55, battery_percentage: 88, capabilities: { profiles: [{ id: 'opp', label: 'Object Push', category: 'file_transfer', direction: 'bidirectional', uuid: '00001105-0000-1000-8000-00805f9b34fb' }], file_transfer: { object_push: true } } },
     { key: 'xbox', adapter_id: 'hci-b', address: '04:50:48:91:22:55', name: 'Xbox Controller', kind: 'gamepad', connected: true, paired: true, present: true, rssi: -40, battery_percentage: 72 },
     { key: 'keyboard', adapter_id: 'hci-b', address: '04:50:48:91:22:66', name: 'BT Keyboard', kind: 'keyboard', connected: false, paired: false, present: true, rssi: -58, battery_percentage: null },
   ],
@@ -112,6 +112,13 @@ async function assertViewport(page, name, width, height) {
     requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
     return json(route, { ok: true, result: 'device action ok' });
   });
+  await page.route('**/bt/device-profile**', route => json(route, { ok: true, result: 'profile action ok' }));
+  await page.route('**/bt/device-autoconnect**', route => json(route, { ok: true }));
+  await page.route('**/audio/bluetooth-profiles**', route => json(route, { ok: true, cards: [] }));
+  await page.route('**/bt/transfers**', route => json(route, { ok: true, receive_agent: true, transfers: [] }));
+  await page.route('**/bt/files**', route => json(route, { ok: true, files: [{ name: 'hello.txt', path: '/home/milhy777/Downloads/hello.txt', size: 5 }] }));
+  await page.route('**/bt/file-send**', route => json(route, { ok: true, transfer: { id: 'send-1', status: 'active' } }));
+  await page.route('**/bt/file-cancel**', route => json(route, { ok: true }));
   await page.route('**/bt/discoverable**', route => {
     requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
     return json(route, { ok: true, result: 'discoverability ok' });
@@ -177,10 +184,11 @@ async function assertViewport(page, name, width, height) {
   await page.click("button[onclick=\"btSelectedAction('pair')\"]");
   await page.locator('.bt-device-node', { hasText: 'Samsung Soundbar' }).click();
   await page.click("button[onclick=\"btSelectedAction('disconnect')\"]");
-  if (!(await page.locator('#bt-device-details button:has-text("Přesunout adaptér")').isDisabled())) {
-    throw new Error('Unsupported move-adapter control must be disabled');
-  }
+  await page.locator('#bt-device-details').getByText('Audio Sink').waitFor();
+  await page.click("button[onclick=\"btSelectedAction('block')\"]");
   await page.locator('.bt-device-node', { hasText: 'Sony WH-1000XM4' }).click();
+  await page.locator('#bt-device-details').getByText('Object Push').waitFor();
+  await page.click('#bt-device-details button:has-text("Send")');
   await page.click("button[onclick=\"btSelectedAction('connect')\"]");
   await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
   await page.click("button[onclick=\"btSelectedAction('trust')\"]");

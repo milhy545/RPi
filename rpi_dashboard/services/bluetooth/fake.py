@@ -228,6 +228,14 @@ class FakeBluetoothBackend:
         """Untrust a fake device."""
         return await self._device_operation("untrust", adapter_id, device_key)
 
+    async def block(self, adapter_id: str, device_key: str) -> Operation:
+        """Block a fake device."""
+        return await self._device_operation("block", adapter_id, device_key)
+
+    async def unblock(self, adapter_id: str, device_key: str) -> Operation:
+        """Unblock a fake device."""
+        return await self._device_operation("unblock", adapter_id, device_key)
+
     async def connect(self, adapter_id: str, device_key: str) -> Operation:
         """Connect a fake device."""
         return await self._device_operation("connect", adapter_id, device_key)
@@ -235,6 +243,76 @@ class FakeBluetoothBackend:
     async def disconnect(self, adapter_id: str, device_key: str) -> Operation:
         """Disconnect a fake device."""
         return await self._device_operation("disconnect", adapter_id, device_key)
+
+    async def connect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Connect an advertised fake profile."""
+        return await self._profile_operation("connect_profile", adapter_id, device_key, profile_uuid)
+
+    async def disconnect_profile(
+        self,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        """Disconnect an advertised fake profile."""
+        return await self._profile_operation("disconnect_profile", adapter_id, device_key, profile_uuid)
+
+    async def media_control(
+        self,
+        adapter_id: str,
+        device_key: str,
+        action: str,
+        value: int | None = None,
+    ) -> Operation:
+        """Exercise AVRCP capability validation without real media hardware."""
+        device = self._devices.get(device_key)
+        media_uuids = {
+            "0000110c-0000-1000-8000-00805f9b34fb",
+            "0000110e-0000-1000-8000-00805f9b34fb",
+        }
+        if device is None or device.adapter_id != adapter_id:
+            return self._record_operation(
+                f"media_{action}",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("device_missing", "Device is not present on selected adapter"),
+            )
+        if not media_uuids.intersection(uuid.lower() for uuid in device.uuids):
+            return self._record_operation(
+                f"media_{action}",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("profile_unavailable", "Device does not advertise AVRCP"),
+            )
+        if action not in {"play", "pause", "stop", "next", "previous", "volume"}:
+            return self._record_operation(
+                f"media_{action}",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("unsupported", "Unsupported media action"),
+            )
+        if action == "volume" and (value is None or not 0 <= value <= 127):
+            return self._record_operation(
+                "media_volume",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("unsupported", "AVRCP volume must be 0..127"),
+            )
+        return self._record_operation(
+            f"media_{action}",
+            adapter_id=adapter_id,
+            device_key=device_key,
+            state="succeeded",
+        )
 
     async def remove(self, adapter_id: str, device_key: str) -> Operation:
         """Mark a fake device absent."""
@@ -246,6 +324,14 @@ class FakeBluetoothBackend:
         if operation is None:
             error = BluetoothError("device_missing", "Operation does not exist")
             return self._record_operation("cancel", state="failed", error=error)
+        if operation.state != "pending" or not operation.cancellable:
+            error = BluetoothError(
+                "operation_not_cancellable",
+                "Operation is already complete or is not cancellable",
+                adapter_id=operation.adapter_id,
+                device_key=operation.device_key,
+            )
+            return self._record_operation("cancel", state="failed", error=error)
         cancelled = replace(
             operation,
             state="cancelled",
@@ -253,6 +339,7 @@ class FakeBluetoothBackend:
             error=BluetoothError("cancelled", "Operation cancelled"),
         )
         self._operations[operation_id] = cancelled
+        self._busy.discard((operation.adapter_id, operation.device_key))
         return cancelled
 
     async def _adapter_operation(
@@ -356,6 +443,35 @@ class FakeBluetoothBackend:
         self._devices[device_key] = _apply_device_operation(device, operation_type)
         return self._finish_operation(started, {"device_key": device_key})
 
+    async def _profile_operation(
+        self,
+        operation_type: str,
+        adapter_id: str,
+        device_key: str,
+        profile_uuid: str,
+    ) -> Operation:
+        device = self._devices.get(device_key)
+        if device is None or device.adapter_id != adapter_id:
+            return self._record_operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("device_missing", "Device is not present on selected adapter"),
+            )
+        normalized = profile_uuid.strip().lower()
+        advertised = {uuid.lower() for uuid in device.uuids}
+        if normalized not in advertised:
+            return self._record_operation(
+                operation_type,
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError("profile_unavailable", "Profile is not advertised by this device"),
+            )
+        started = self._start_operation(operation_type, adapter_id, device_key)
+        return self._finish_operation(started, {"profile_uuid": normalized})
+
     def _conflict(
         self,
         operation_type: str,
@@ -400,6 +516,9 @@ class FakeBluetoothBackend:
         delay = self._scripted_delays.get(operation.type)
         if delay:
             await asyncio.sleep(delay)
+        current = self._operations.get(operation.id)
+        if current is not None and current.state == "cancelled":
+            return current
         error = self._scripted_errors.pop(operation.type, None)
         if error is None:
             return None
@@ -643,6 +762,10 @@ def _apply_device_operation(device: Device, operation_type: str) -> Device:
         return replace(device, trusted=True)
     if operation_type == "untrust":
         return replace(device, trusted=False)
+    if operation_type == "block":
+        return replace(device, blocked=True, connected=False)
+    if operation_type == "unblock":
+        return replace(device, blocked=False)
     if operation_type == "connect":
         return replace(device, connected=True)
     if operation_type == "disconnect":

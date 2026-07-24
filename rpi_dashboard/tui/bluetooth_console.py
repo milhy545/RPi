@@ -46,6 +46,9 @@ BT_TEXT = {
         "io_devices": "IO DEVICES",
         "legend": "LEGEND",
         "more_settings": "More Settings",
+        "file_send": "Send newest Downloads file",
+        "file_cancel": "Cancel active transfer",
+        "media_keys": "Space Play/Pause | [ Previous | ] Next",
         "navigate": "Navigate",
         "no_audio_inputs": "No audio inputs",
         "no_audio_outputs": "No audio outputs",
@@ -120,6 +123,9 @@ BT_TEXT = {
         "io_devices": "IO ZARIZENI",
         "legend": "LEGENDA",
         "more_settings": "Dalsi Nastaveni",
+        "file_send": "Poslat nejnovejsi soubor z Downloads",
+        "file_cancel": "Zrusit aktivni prenos",
+        "media_keys": "Mezernik Play/Pause | [ Predchozi | ] Dalsi",
         "navigate": "Navigace",
         "no_audio_inputs": "Zadne audio vstupy",
         "no_audio_outputs": "Zadne audio vystupy",
@@ -430,6 +436,25 @@ def _diagnostics(state: dict[str, Any], facts: dict[str, str], language: str = "
     backend = state.get("backend") or {}
     running = backend.get("available", True) and not backend.get("degraded")
     controllers = ", ".join(f"hci{adapter.get('index', '?')}" for adapter in adapters) or "none"
+    selected_key = str(state.get("selected_device_key") or "")
+    selected = next(
+        (device for device in state.get("devices") or [] if device.get("key") == selected_key),
+        None,
+    )
+    profiles = ((selected or {}).get("capabilities") or {}).get("profiles") or []
+    profile_text = ", ".join(str(profile.get("id")) for profile in profiles[:4]) or "none"
+    auto_connect = (selected or {}).get("auto_connect")
+    obex = state.get("obex") or {}
+    transfers = obex.get("transfers") or []
+    active_transfers = len(
+        [item for item in transfers if item.get("status") in {"queued", "starting", "active"}]
+    )
+    media = (state.get("diagnostics") or {}).get("media") or {}
+    player = next(
+        (item for item in media.get("players") or [] if item.get("device_key") == selected_key),
+        None,
+    )
+    track = (player or {}).get("track") or {}
     return "\n".join(
         [
             f"[bold cyan]{_text(language, 'diagnostics')}[/]",
@@ -441,6 +466,10 @@ def _diagnostics(state: dict[str, Any], facts: dict[str, str], language: str = "
             f"{_text(language, 'uptime')}: {facts.get('uptime', '--')}",
             f"Kernel: {facts.get('kernel', '--')}",
             f"BlueZ: {facts.get('bluez', backend.get('name', '--'))}",
+            f"Selected profiles: {_ascii(profile_text, 52)}",
+            f"Selected auto connect: {'ON' if auto_connect else ('OFF' if auto_connect is not None else '--')}",
+            f"OBEX receive: {'READY' if obex.get('receive_agent') else 'OFF'} | active: {active_transfers}",
+            f"AVRCP: {(player or {}).get('status', '--')} | {_ascii(track.get('Title', ''), 34)}",
         ]
     )
 
@@ -516,6 +545,9 @@ def build_bluetooth_console(
             f"\\[X] {_text(language, 'remove')}",
             f"\\[G] {_text(language, 'adapter_priority')}",
             f"\\[M] {_text(language, 'more_settings')}",
+            f"\\[F] {_text(language, 'file_send')}",
+            f"\\[K] {_text(language, 'file_cancel')}",
+            _text(language, "media_keys"),
         ]
     )
     help_text = "\n".join(
@@ -565,7 +597,7 @@ def build_bluetooth_console(
             f"\\[C] {_text(language, 'connect')}  \\[D] {_text(language, 'disconnect_short')}",
             f"\\[T] {_text(language, 'trust')}  \\[R] {_text(language, 'refresh')}  "
             f"\\[X] {_text(language, 'remove_short')}  \\[G] {_text(language, 'priority')}  "
-            f"\\[M] {_text(language, 'settings')}",
+            f"\\[M] {_text(language, 'settings')}  \\[F] File  \\[K] Cancel",
         )
     )
     return BluetoothConsoleView(

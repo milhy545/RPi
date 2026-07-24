@@ -79,6 +79,25 @@ def handle_audio_multi_output(q: Dict[str, Any]) -> Dict[str, Any]:
     return audio.audio_multi_output(action, sinks)
 
 
+def handle_audio_bluetooth_profiles(q: Dict[str, Any]) -> Dict[str, Any]:
+    """List or select negotiated PipeWire Bluetooth card profiles."""
+    card = _get(q, "card")
+    profile = _get(q, "profile")
+    if not card and not profile:
+        return audio.bluetooth_audio_profiles()
+    if not card or not profile:
+        return {"ok": False, "error": "card and profile are required"}
+    return audio.audio_set_bluetooth_profile(card, profile)
+
+
+def handle_audio_mute(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set explicit sink/source mute state."""
+    kind = _get(q, "kind")
+    name = _get(q, "name")
+    muted = _get(q, "muted", "1") not in {"0", "false", "False", "off"}
+    return audio.audio_set_mute(kind, name, muted)
+
+
 # ─── Player Handlers ─────────────────────────────────────────────────
 
 def handle_mpv_play(q: Dict[str, Any]) -> Dict[str, Any]:
@@ -224,6 +243,69 @@ def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
         return {"ok": False, "error": "action required", "code": "unsupported"}
     return bluetooth_service.device_action(
         action,
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=_get(q, "mac") or None,
+    )
+
+
+def handle_bt_device_profile(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Connect or disconnect one profile advertised by a Bluetooth device."""
+    return bluetooth_service.device_profile_action(
+        _get(q, "action"),
+        _get(q, "profile_uuid"),
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=_get(q, "mac") or None,
+    )
+
+
+def handle_bt_transfers(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Return OBEX availability and bounded transfer progress."""
+    return bluetooth_service.obex_state()
+
+
+def handle_bt_files(q: Dict[str, Any]) -> Dict[str, Any]:
+    """List safe outbound candidates from the RPi Downloads directory."""
+    return bluetooth_service.download_files()
+
+
+def handle_bt_file_send(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Send one file from Downloads through adapter-scoped Object Push."""
+    return bluetooth_service.send_file(
+        _get(q, "path"),
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=_get(q, "mac") or None,
+    )
+
+
+def handle_bt_file_cancel(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Cancel one active OBEX transfer."""
+    return bluetooth_service.cancel_file_transfer(_get(q, "transfer_id"))
+
+
+def handle_bt_operation(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Look up or cancel one Bluetooth backend operation."""
+    action = _get(q, "action", "status")
+    operation_id = _get(q, "operation_id")
+    if action == "status":
+        return bluetooth_service.operation_status(operation_id)
+    if action == "cancel":
+        return bluetooth_service.cancel_operation(operation_id)
+    return {"ok": False, "code": "unsupported", "error": "action must be status or cancel"}
+
+
+def handle_bt_media(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Control an advertised BlueZ AVRCP player or transport volume."""
+    value_text = _get(q, "value")
+    try:
+        value = int(value_text) if value_text else None
+    except ValueError:
+        return {"ok": False, "code": "unsupported", "error": "value must be an integer"}
+    return bluetooth_service.media_action(
+        _get(q, "action"),
+        value=value,
         adapter_id=_get(q, "adapter_id") or None,
         device_key=_get(q, "device_key") or None,
         mac=_get(q, "mac") or None,
