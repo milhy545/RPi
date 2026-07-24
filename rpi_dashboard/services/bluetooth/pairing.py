@@ -55,8 +55,17 @@ class PairingAgent(ServiceInterface):
         passkey: int | None = None,
         service_uuid: str | None = None,
     ) -> dict[str, Any]:
-        if not self.expected_path or device != self.expected_path:
+        if self.expected_path and device != self.expected_path:
             raise DBusError("org.bluez.Error.Rejected", "Device is not the active pairing target")
+        if not self.expected_path:
+            self.challenge = {
+                "type": kind,
+                "device_path": device,
+                "passkey": passkey,
+                "service_uuid": service_uuid,
+                "state": "accepted",
+            }
+            return {"accepted": True}
         loop = asyncio.get_running_loop()
         self._response = loop.create_future()
         self.challenge = {

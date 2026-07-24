@@ -857,6 +857,19 @@ class BlueZDbusBackend:
             raise RuntimeError(
                 str(reply.body[0]) if reply.body else reply.error_name or "RegisterAgent failed"
             )
+        await asyncio.wait_for(
+            bus.call(
+                Message(
+                    destination=BLUEZ,
+                    path="/org/bluez",
+                    interface=AGENT_MANAGER1,
+                    member="RequestDefaultAgent",
+                    signature="o",
+                    body=[PAIRING_AGENT_PATH],
+                )
+            ),
+            timeout=self.operation_timeout,
+        )
         self._pairing_agent_bus = bus
 
     async def _connect(self) -> MessageBus:
