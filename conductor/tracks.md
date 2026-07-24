@@ -62,3 +62,5 @@
 - [ ] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
 - [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
 - [ ] **Track: mpv-eof-runtime-return_20260723** — Unify return-to-dashboard across all modes, MPV EOF, keyboard shortcut, and Xbox B hold | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
+
+- [ ] **Track: report_1784787193_bug** — Bug report | [Plan](./tracks/report_1784787193_bug/plan.md)
