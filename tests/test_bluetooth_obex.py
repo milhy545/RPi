@@ -31,6 +31,20 @@ def test_collision_safe_path_stays_in_downloads(tmp_path):
     assert destination.parent == tmp_path
 
 
+def test_transfer_limits_reject_oversize_and_low_disk(tmp_path, monkeypatch):
+    monkeypatch.setenv("RPI_BLUETOOTH_MAX_TRANSFER_BYTES", "10")
+    with pytest.raises(ValueError, match="configured limit"):
+        obex.validate_size_and_space(tmp_path, 11)
+
+    monkeypatch.setattr(
+        obex.shutil,
+        "disk_usage",
+        lambda _path: SimpleNamespace(total=100, used=99, free=1),
+    )
+    with pytest.raises(ValueError, match="insufficient free space"):
+        obex.validate_size_and_space(tmp_path, 5)
+
+
 def test_incoming_completion_is_atomic_and_collision_safe(tmp_path, monkeypatch):
     monkeypatch.setenv("RPI_BLUETOOTH_DOWNLOAD_DIR", str(tmp_path))
     manager = obex.BlueZObexManager()
@@ -84,6 +98,94 @@ async def test_start_send_passes_explicit_source_adapter(tmp_path):
     assert options["Target"].value == "opp"
     assert options["Source"].value == "11:22:33:44:55:66"
     assert transfer.status == "active"
+
+
+@pytest.mark.asyncio
+async def test_incoming_authorization_rejects_untrusted_sender(monkeypatch, tmp_path):
+    monkeypatch.setenv("RPI_BLUETOOTH_DOWNLOAD_DIR", str(tmp_path))
+    manager = obex.BlueZObexManager()
+    replies = [
+        {
+            "Session": SimpleNamespace(value="/session/1"),
+            "Name": SimpleNamespace(value="hello.txt"),
+            "Size": SimpleNamespace(value=5),
+        },
+        {
+            "Destination": SimpleNamespace(value="AA:BB:CC:DD:EE:FF"),
+            "Source": SimpleNamespace(value="11:22:33:44:55:66"),
+        },
+    ]
+
+    async def get_all(_path, _interface):
+        return replies.pop(0)
+
+    async def trusted_owner(_source, _address):
+        return False
+
+    manager._get_all = get_all
+    manager._trusted_owner = trusted_owner
+
+    with pytest.raises(obex.ObexError, match="not paired and trusted") as error:
+        await manager.authorize_incoming("/transfer/1")
+
+    assert error.value.code == "permission_denied"
+
+
+@pytest.mark.asyncio
+async def test_send_failure_is_retained_as_structured_history(tmp_path):
+    source = tmp_path / "hello.txt"
+    source.write_text("hello", encoding="utf-8")
+    manager = obex.BlueZObexManager()
+
+    async def fail_call(*_args, **_kwargs):
+        raise RuntimeError("remote OPP refused")
+
+    manager._call = fail_call
+
+    with pytest.raises(obex.ObexError, match="remote OPP refused") as error:
+        await manager.start_send("AA:BB:CC:DD:EE:FF", str(source), None)
+
+    assert error.value.code == "connection_failed"
+    history = manager.snapshot()["transfers"]
+    assert history[-1]["status"] == "failed"
+    assert "remote OPP refused" in history[-1]["error"]
+
+
+@pytest.mark.asyncio
+async def test_cancel_active_transfer_calls_bluez_and_cleans_session():
+    manager = obex.BlueZObexManager()
+    record = obex.ObexTransfer(
+        id="cancel-me",
+        direction="outbound",
+        address="AA:BB:CC:DD:EE:FF",
+        source_adapter=None,
+        name="hello.txt",
+        size=5,
+        status="active",
+        remote_path="/transfer/1",
+        session_path="/session/1",
+    )
+    manager._remember(record)
+    task = __import__("asyncio").create_task(_never())
+    manager._tasks[record.id] = task
+    calls = []
+
+    async def call(path, interface, member, **_kwargs):
+        calls.append((path, interface, member))
+        return SimpleNamespace(body=[])
+
+    async def remove_session(path):
+        calls.append((path, "session", "remove"))
+
+    manager._call = call
+    manager._remove_session = remove_session
+
+    cancelled = await manager.cancel(record.id)
+
+    assert cancelled.status == "cancelled"
+    assert task.cancelled() or task.cancelling()
+    assert ("/transfer/1", obex.OBEX_TRANSFER, "Cancel") in calls
+    assert ("/session/1", "session", "remove") in calls
 
 
 async def _never():

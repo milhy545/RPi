@@ -36,6 +36,7 @@ from .models import classify_device
 from .models import hide_non_owner_duplicates
 from .models import make_device_key
 from .models import normalize_address
+from .pairing import PairingAgent
 from .protocol import BluetoothBackend
 
 BLUEZ = "org.bluez"
@@ -48,6 +49,8 @@ DEVICE1 = "org.bluez.Device1"
 BATTERY1 = "org.bluez.Battery1"
 MEDIA_PLAYER1 = "org.bluez.MediaPlayer1"
 MEDIA_TRANSPORT1 = "org.bluez.MediaTransport1"
+AGENT_MANAGER1 = "org.bluez.AgentManager1"
+PAIRING_AGENT_PATH = "/org/rpidashboard/bluetooth_agent"
 SAMSUNG_SOUNDBAR_MAC = "24:4B:03:92:0B:8C"
 AUDIO_SOURCE_UUID = "0000110a-0000-1000-8000-00805f9b34fb"
 AUDIO_SINK_UUID = "0000110b-0000-1000-8000-00805f9b34fb"
@@ -73,6 +76,8 @@ class BlueZDbusBackend:
         self._event_queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=history_limit)
         self._subscriptions_bus: MessageBus | None = None
         self._busy_targets: set[tuple[str, str | None]] = set()
+        self._pairing_agent = PairingAgent(timeout=60.0)
+        self._pairing_agent_bus: MessageBus | None = None
 
     async def state(self) -> BluetoothState:
         """Return current BlueZ state, or fallback state when unavailable."""
@@ -159,24 +164,95 @@ class BlueZDbusBackend:
         return await self._adapter_method("stop_discovery", adapter_id, "StopDiscovery")
 
     async def pair(self, adapter_id: str, device_key: str) -> Operation:
-        """Pair through bluetoothctl, which supplies a headless BlueZ agent."""
-        if self.fallback is None:
-            error = BluetoothError(
-                "unsupported",
-                "Pairing requires a configured BlueZ agent",
-                adapter_id=adapter_id,
-                device_key=device_key,
-            )
+        """Pair through a bounded agent that accepts only the explicit target."""
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
             return self._operation(
                 "pair",
                 adapter_id=adapter_id,
                 device_key=device_key,
                 state="failed",
-                error=error,
+                error=target,
             )
-        operation = await self.fallback.pair(adapter_id, device_key)
-        self._remember_external_operation(operation)
-        return operation
+        if target.use_fallback:
+            operation = await self._fallback_backend().pair(adapter_id, device_key)
+            self._remember_external_operation(operation)
+            return operation
+        try:
+            await self._ensure_pairing_agent()
+        except Exception as exc:
+            return self._operation(
+                "pair",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "backend_unavailable",
+                    "BlueZ pairing agent registration failed",
+                    retryable=True,
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                    detail=str(exc),
+                ),
+            )
+        self._pairing_agent.prepare(target.bluez_path)
+        try:
+            return await self._call_method(
+                "pair",
+                target.bluez_path,
+                DEVICE1,
+                "Pair",
+                adapter_id=adapter_id,
+                device_key=device_key,
+            )
+        finally:
+            self._pairing_agent.clear()
+
+    def pairing_challenge(self) -> dict[str, Any] | None:
+        """Return the current visible agent challenge without changing it."""
+        challenge = self._pairing_agent.challenge
+        if challenge is None:
+            return None
+        adapter_id, device_key = self._identity_for_path(str(challenge.get("device_path", "")))
+        return {**challenge, "adapter_id": adapter_id, "device_key": device_key}
+
+    def respond_pairing(self, accepted: bool, value: str | int | None = None) -> bool:
+        """Resolve the current pairing challenge from a deliberate UI action."""
+        return self._pairing_agent.respond(accepted, value)
+
+    async def cancel_pairing(self, adapter_id: str, device_key: str) -> Operation:
+        """Reject the agent challenge and ask Device1 to cancel pairing."""
+        target = await self._device_target(adapter_id, device_key)
+        if isinstance(target, BluetoothError):
+            return self._operation(
+                "cancel_pairing",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=target,
+            )
+        self._pairing_agent.reject_pending("Pairing cancelled by user")
+        if target.use_fallback:
+            return self._operation(
+                "cancel_pairing",
+                adapter_id=adapter_id,
+                device_key=device_key,
+                state="failed",
+                error=BluetoothError(
+                    "unsupported",
+                    "Fallback pairing cancellation is unavailable",
+                    adapter_id=adapter_id,
+                    device_key=device_key,
+                ),
+            )
+        return await self._call_method(
+            "cancel_pairing",
+            target.bluez_path,
+            DEVICE1,
+            "CancelPairing",
+            adapter_id=adapter_id,
+            device_key=device_key,
+        )
 
     async def trust(self, adapter_id: str, device_key: str) -> Operation:
         """Set Device1.Trusted true."""
@@ -610,7 +686,11 @@ class BlueZDbusBackend:
         adapter_id: str | None = None,
         device_key: str | None = None,
     ) -> Operation:
-        target = (adapter_id, device_key) if adapter_id is not None else None
+        target = (
+            (adapter_id, device_key)
+            if adapter_id is not None and operation_type != "cancel_pairing"
+            else None
+        )
         if target is not None and target in self._busy_targets:
             return self._operation(
                 operation_type,
@@ -747,6 +827,30 @@ class BlueZDbusBackend:
             raise RuntimeError("Fallback backend is not configured")
         return self.fallback
 
+    async def _ensure_pairing_agent(self) -> None:
+        bus = await self._connect()
+        if self._pairing_agent_bus is bus:
+            return
+        bus.export(PAIRING_AGENT_PATH, self._pairing_agent)
+        reply = await asyncio.wait_for(
+            bus.call(
+                Message(
+                    destination=BLUEZ,
+                    path="/org/bluez",
+                    interface=AGENT_MANAGER1,
+                    member="RegisterAgent",
+                    signature="os",
+                    body=[PAIRING_AGENT_PATH, "KeyboardDisplay"],
+                )
+            ),
+            timeout=self.operation_timeout,
+        )
+        if reply.message_type is MessageType.ERROR and reply.error_name != "org.bluez.Error.AlreadyExists":
+            raise RuntimeError(
+                str(reply.body[0]) if reply.body else reply.error_name or "RegisterAgent failed"
+            )
+        self._pairing_agent_bus = bus
+
     async def _connect(self) -> MessageBus:
         if MessageBus is None or BusType is None:
             raise RuntimeError("dbus-fast is not installed")
@@ -755,10 +859,12 @@ class BlueZDbusBackend:
             self._bus.disconnect()
             self._bus = None
             self._subscriptions_bus = None
+            self._pairing_agent_bus = None
         if self._bus is None or not self._bus.connected:
             self._bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
             self._bus_loop = loop
             self._subscriptions_bus = None
+            self._pairing_agent_bus = None
         await self._ensure_signal_subscriptions(self._bus)
         return self._bus
 

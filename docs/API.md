@@ -149,43 +149,39 @@ Get devices state.
 }
 ```
 
-#### GET /bt/scan?seconds=<5>
-Scan Bluetooth devices.
+#### Adapter-aware Bluetooth API
 
-**Parameters**:
-- `seconds` (int): Scan duration
+`adapter_id` plus `device_key` is the authoritative device identity. A legacy
+`mac` is accepted only when it resolves to exactly one adapter relationship.
 
-**Response**:
-```json
-{
-  "ok": true,
-  "devices": [
-    {"mac": "00:00:00:00:00:00", "name": "Device", "type": "audio_output"}
-  ]
-}
-```
+| Endpoint | Parameters | Purpose |
+| --- | --- | --- |
+| `GET /bt/state` | none | Versioned adapters, devices, negotiated capabilities, bounded operations/events, media, OBEX, and settings |
+| `GET /bt/discovery` | `action=start|stop`, `adapter_id`, optional `seconds=1..60` | Bounded per-adapter discovery |
+| `GET /bt/adapter-power` | `adapter_id`, `powered=0|1` | Power one adapter |
+| `GET /bt/discoverable` | `adapter_id`, `discoverable=0|1`, optional `timeout` | Set bounded pair visibility |
+| `GET /bt/settings` | optional `auto_connect`, `discoverable_timeout`, `scan_mode` | Persist global policy |
+| `GET /bt/device-autoconnect` | `adapter_id`, `device_key`, `enabled=0|1` | Set per-device reconnect opt-out |
+| `GET /bt/device-action` | `action=connect|disconnect|trust|untrust|block|unblock|remove|pair`, identity | Run an adapter-scoped action; Pair starts the asynchronous lifecycle |
+| `GET /bt/device-profile` | `action=connect|disconnect`, `profile_uuid`, identity | Connect/disconnect an advertised BlueZ profile |
+| `GET /bt/operation` | `action=status|cancel`, `operation_id` | Inspect or request cancellation of a bounded backend operation |
+| `GET /bt/pairing` | `action=start|status|respond|cancel`, identity or `operation_id`; response may include `accepted` and `value` | Non-blocking confirmation/PIN/passkey pairing lifecycle |
+| `GET /bt/media` | `action=play|pause|stop|next|previous|volume`, identity, optional `value=0..127` | Capability-checked AVRCP player/transport action |
+| `GET /bt/transfers` | none | OBEX availability, receive-agent state, and bounded transfer history |
+| `GET /bt/files` | none | Safe outbound candidates from `~/Downloads` |
+| `GET /bt/file-send` | identity, `path` from `/bt/files` | Start adapter-selected Object Push |
+| `GET /bt/file-cancel` | `transfer_id` | Cancel an active transfer |
+| `GET /bt/device-hid` | identity, `enabled=0|1` | Fail-closed trusted-device HID opt-in boundary |
+| `GET /bt/diagnostics` | none | Bounded read-only failure, version, adapter, and resource report |
 
-#### GET /bt/pair?mac=<mac_address>
-Pair with Bluetooth device.
+Legacy `/bt/pair`, `/bt/trust`, `/bt/connect`, `/bt/disconnect`, and
+`/bt/remove` routes remain deterministic during migration. `/bt/pair` now
+returns a `pairing` lifecycle record rather than blocking an HTTP request while
+waiting for a user challenge.
 
-**Parameters**:
-- `mac` (string, required): Device MAC address
-
-**Response**:
-```json
-{"ok": true, "output": "Pairing successful"}
-```
-
-#### GET /bt/trust?mac=<mac_address>
-Trust Bluetooth device.
-
-**Parameters**:
-- `mac` (string, required): Device MAC address
-
-**Response**:
-```json
-{"ok": true, "output": "Trust successful"}
-```
+Audio routes used by Bluetooth are `/audio/bluetooth-profiles` for PipeWire card
+profile inspection/selection, `/audio/mute-state` for exact sink/source mute,
+and `/audio/multi-output` with `action=status|start|sync|stop|reconcile`.
 
 #### GET /wifi/status
 Get WiFi status.

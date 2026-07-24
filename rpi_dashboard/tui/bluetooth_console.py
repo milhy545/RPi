@@ -49,6 +49,8 @@ BT_TEXT = {
         "file_send": "Send newest Downloads file",
         "file_cancel": "Cancel active transfer",
         "media_keys": "Space Play/Pause | [ Previous | ] Next",
+        "failure_diagnostics": "Run bounded failure diagnostics",
+        "hid_toggle": "Toggle trusted HID boundary",
         "navigate": "Navigate",
         "no_audio_inputs": "No audio inputs",
         "no_audio_outputs": "No audio outputs",
@@ -58,6 +60,8 @@ BT_TEXT = {
         "none": "None",
         "not_present": "Not Present",
         "pair_new": "Pair New Device",
+        "pair_confirm": "Pair / Confirm Challenge",
+        "pair_cancel": "Cancel Pairing",
         "pair": "Pair",
         "paired": "Paired",
         "pairable": "Pairable",
@@ -126,6 +130,8 @@ BT_TEXT = {
         "file_send": "Poslat nejnovejsi soubor z Downloads",
         "file_cancel": "Zrusit aktivni prenos",
         "media_keys": "Mezernik Play/Pause | [ Predchozi | ] Dalsi",
+        "failure_diagnostics": "Spustit omezenou diagnostiku chyb",
+        "hid_toggle": "Prepnout trusted HID hranici",
         "navigate": "Navigace",
         "no_audio_inputs": "Zadne audio vstupy",
         "no_audio_outputs": "Zadne audio vystupy",
@@ -135,6 +141,8 @@ BT_TEXT = {
         "none": "Zadny",
         "not_present": "Nepritomen",
         "pair_new": "Parovat Nove Zarizeni",
+        "pair_confirm": "Parovat / Potvrdit Vyzvu",
+        "pair_cancel": "Zrusit Parovani",
         "pair": "Parovat",
         "paired": "Sparovano",
         "pairable": "Parovatelne",
@@ -455,6 +463,11 @@ def _diagnostics(state: dict[str, Any], facts: dict[str, str], language: str = "
         None,
     )
     track = (player or {}).get("track") or {}
+    failure_report = state.get("failure_diagnostics") or {}
+    failure_count = sum(
+        int(item.get("count", 0)) for item in failure_report.get("failure_classes") or []
+    )
+    hid = (state.get("diagnostics") or {}).get("hid_control") or {}
     return "\n".join(
         [
             f"[bold cyan]{_text(language, 'diagnostics')}[/]",
@@ -470,6 +483,8 @@ def _diagnostics(state: dict[str, Any], facts: dict[str, str], language: str = "
             f"Selected auto connect: {'ON' if auto_connect else ('OFF' if auto_connect is not None else '--')}",
             f"OBEX receive: {'READY' if obex.get('receive_agent') else 'OFF'} | active: {active_transfers}",
             f"AVRCP: {(player or {}).get('status', '--')} | {_ascii(track.get('Title', ''), 34)}",
+            f"Known boot-log failures: {failure_count if failure_report else '--'}",
+            f"Outbound HID: {'READY' if hid.get('available') else 'BLOCKED'}",
         ]
     )
 
@@ -538,7 +553,7 @@ def build_bluetooth_console(
         [
             f"[bold magenta]{_text(language, 'quick_actions')}[/]",
             f"\\[S] {_text(language, 'scan_all_adapters')}",
-            f"\\[P] {_text(language, 'pair_new')}",
+            f"\\[P] {_text(language, 'pair_confirm')}",
             f"\\[C] {_text(language, 'connect')}",
             f"\\[D] {_text(language, 'disconnect')}",
             f"\\[R] {_text(language, 'refresh_topology')}",
@@ -547,6 +562,9 @@ def build_bluetooth_console(
             f"\\[M] {_text(language, 'more_settings')}",
             f"\\[F] {_text(language, 'file_send')}",
             f"\\[K] {_text(language, 'file_cancel')}",
+            f"\\[O] {_text(language, 'pair_cancel')}",
+            f"\\[Y] {_text(language, 'failure_diagnostics')}",
+            f"\\[H] {_text(language, 'hid_toggle')}",
             _text(language, "media_keys"),
         ]
     )

@@ -14,6 +14,7 @@ from uuid import uuid4
 try:
     from dbus_fast import BusType, Message, MessageType, Variant
     from dbus_fast.aio import MessageBus
+    from dbus_fast.errors import DBusError
     from dbus_fast.service import ServiceInterface, method
 except ImportError:  # pragma: no cover - production dependency is locked
     BusType = None  # type: ignore[assignment,misc]
@@ -21,6 +22,7 @@ except ImportError:  # pragma: no cover - production dependency is locked
     MessageType = None  # type: ignore[assignment,misc]
     Variant = Any  # type: ignore[assignment,misc]
     MessageBus = None  # type: ignore[assignment,misc]
+    DBusError = RuntimeError  # type: ignore[assignment,misc]
     ServiceInterface = object  # type: ignore[assignment,misc]
     method = None  # type: ignore[assignment]
 
@@ -493,7 +495,17 @@ if method is not None:
             self,
             transfer: _DBUS_OBJECT_PATH,  # type: ignore[valid-type]
         ) -> _DBUS_STRING:  # type: ignore[valid-type]
-            return await self.manager.authorize_incoming(transfer)
+            try:
+                return await self.manager.authorize_incoming(transfer)
+            except ObexError as exc:
+                raise DBusError("org.bluez.obex.Error.Rejected", str(exc)) from exc
+            except Exception as exc:
+                raise DBusError("org.bluez.obex.Error.Failed", str(exc)) from exc
+
+        @method()
+        def Release(self) -> _DBUS_NOTHING:  # type: ignore[valid-type]
+            self.manager._agent_registered = False
+            return None
 
         @method()
         def Cancel(self) -> _DBUS_NOTHING:  # type: ignore[valid-type]

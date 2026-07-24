@@ -1,6 +1,7 @@
 """Tests for Bluetooth service facade and API handlers."""
 
 import asyncio
+import time
 from dataclasses import replace
 from urllib.parse import parse_qs
 
@@ -23,8 +24,18 @@ def reset_backend(monkeypatch, tmp_path):
     bluetooth_service._AUTO_CONNECT_FAILURES.clear()
     bluetooth_service._AUTO_CONNECT_NEXT_ATTEMPT.clear()
     bluetooth_service._MANUAL_DISCONNECT_UNTIL.clear()
+    for future in bluetooth_service._PAIRING_FUTURES.values():
+        future.cancel()
+    bluetooth_service._PAIRING_OPERATIONS.clear()
+    bluetooth_service._PAIRING_FUTURES.clear()
+    for _token, future in bluetooth_service._DISCOVERY_STOP_FUTURES.values():
+        future.cancel()
+    bluetooth_service._DISCOVERY_STOP_FUTURES.clear()
     set_backend_for_tests(None)
     yield
+    for future in bluetooth_service._PAIRING_FUTURES.values():
+        future.cancel()
+    bluetooth_service._PAIRING_FUTURES.clear()
     set_backend_for_tests(None)
 
 
@@ -69,6 +80,36 @@ def test_state_read_does_not_trigger_auto_connect(monkeypatch):
     result = handlers.handle_bt_state({})
 
     assert result["ok"] is True
+
+
+def test_discovery_is_bounded_per_adapter(monkeypatch):
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    adapter = next(iter(backend._adapters.values()))
+    scheduled = []
+    monkeypatch.setattr(
+        bluetooth_service,
+        "_schedule_discovery_stop",
+        lambda adapter_id, seconds: scheduled.append((adapter_id, seconds)),
+    )
+
+    result = handlers.handle_bt_discovery(
+        parse_qs(f"action=start&adapter_id={adapter.id}&seconds=7")
+    )
+
+    assert result["ok"] is True
+    assert result["discovery_timeout_seconds"] == 7
+    assert scheduled == [(adapter.id, 7)]
+
+
+def test_discovery_rejects_non_numeric_timeout():
+    result = handlers.handle_bt_discovery(parse_qs("action=start&seconds=forever"))
+
+    assert result == {
+        "ok": False,
+        "error": "seconds must be an integer",
+        "code": "unsupported",
+    }
 
 
 def test_bt_device_action_uses_adapter_and_device_key():
@@ -192,6 +233,133 @@ def test_bt_media_handler_requires_avrcp_and_validates_volume():
     assert played["operation"]["type"] == "media_play"
     assert invalid["ok"] is False
     assert invalid["code"] == "unsupported"
+
+
+def test_pairing_api_exposes_and_resolves_user_challenge():
+    class ChallengeBackend(FakeBluetoothBackend):
+        def __init__(self):
+            base = FakeBluetoothBackend.one_adapter()
+            super().__init__(adapters=base._adapters.values())
+            self.challenge = None
+            self.accepted = False
+
+        async def pair(self, adapter_id, device_key):
+            self.challenge = {
+                "type": "confirmation",
+                "state": "waiting_for_user",
+                "passkey": 123456,
+                "adapter_id": adapter_id,
+                "device_key": device_key,
+            }
+            for _ in range(100):
+                if self.accepted:
+                    break
+                await asyncio.sleep(0.005)
+            self.challenge = None
+            return await super().pair(adapter_id, device_key)
+
+        def pairing_challenge(self):
+            return self.challenge
+
+        def respond_pairing(self, accepted, value=None):
+            self.accepted = bool(accepted)
+            return True
+
+    backend = ChallengeBackend()
+    adapter = next(iter(backend._adapters.values()))
+    device = fake_device(adapter.id, "AA:BB:CC:DD:EE:FF")
+    backend.add_device(device)
+    set_backend_for_tests(backend)
+
+    started = handlers.handle_bt_pairing(
+        parse_qs(
+            "action=start"
+            f"&adapter_id={adapter.id}"
+            f"&device_key={device.key}"
+        )
+    )
+    operation_id = started["pairing"]["id"]
+    status = {}
+    for _ in range(50):
+        status = handlers.handle_bt_pairing(
+            parse_qs(f"action=status&operation_id={operation_id}")
+        )
+        if status.get("challenge"):
+            break
+        time.sleep(0.005)
+    response = handlers.handle_bt_pairing(
+        parse_qs(
+            f"action=respond&operation_id={operation_id}"
+            "&accepted=1"
+        )
+    )
+    for _ in range(50):
+        status = handlers.handle_bt_pairing(
+            parse_qs(f"action=status&operation_id={operation_id}")
+        )
+        if status["pairing"]["state"] != "pending":
+            break
+        time.sleep(0.005)
+
+    assert started["ok"] is True
+    assert response["ok"] is True
+    assert status["pairing"]["state"] == "succeeded"
+
+
+def test_legacy_pair_handler_uses_non_blocking_pairing_lifecycle():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+
+    result = handlers.handle_bt_pair(
+        parse_qs(
+            f"adapter_id={device.adapter_id}&device_key={device.key}"
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["pairing"]["state"] in {"pending", "succeeded"}
+    assert result["pairing"]["id"].startswith("pair-")
+    assert result["pairing"]["adapter_id"] == device.adapter_id
+
+
+def test_device_action_pair_uses_non_blocking_pairing_lifecycle():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+
+    result = handlers.handle_bt_device_action(
+        parse_qs(
+            f"action=pair&adapter_id={device.adapter_id}&device_key={device.key}"
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["pairing"]["state"] in {"pending", "succeeded"}
+    assert result["pairing"]["id"].startswith("pair-")
+
+
+def test_hid_control_requires_trusted_device_and_available_transport(monkeypatch):
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = handlers.handle_bt_state({})["devices"][0]
+    query = f"adapter_id={device['adapter_id']}&device_key={device['key']}"
+    monkeypatch.setattr(
+        "rpi_dashboard.services.bluetooth.hid.hid_transport_status",
+        lambda: {
+            "available": False,
+            "blockers": ["test transport absent"],
+            "enabled_by_default": False,
+        },
+    )
+
+    enabled = handlers.handle_bt_device_hid(parse_qs(f"enabled=1&{query}"))
+    disabled = handlers.handle_bt_device_hid(parse_qs(f"enabled=0&{query}"))
+
+    assert enabled["ok"] is False
+    assert enabled["code"] == "profile_unavailable"
+    assert disabled["ok"] is True
+    assert disabled["hid_control"] is False
 
 
 def test_bt_adapter_power_handler_updates_adapter():
@@ -387,6 +555,44 @@ def test_per_device_autoconnect_opt_out_blocks_reconnect():
     )
 
     assert backend._devices[device.key].connected is False
+
+
+def test_autoconnect_skips_an_absent_device():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    device = next(iter(backend._devices.values()))
+    backend._devices[device.key] = replace(device, connected=False, present=False)
+    bluetooth_service._save_settings({"auto_connect": True})
+
+    bluetooth_service._apply_auto_connect(
+        backend,
+        bluetooth_service._run(backend.state()),
+        force=True,
+    )
+
+    assert backend._devices[device.key].connected is False
+
+
+def test_autoconnect_reconnects_devices_on_two_owning_adapters():
+    backend = FakeBluetoothBackend.with_soundbar_and_controller()
+    set_backend_for_tests(backend)
+    owned = [
+        device
+        for device in backend._devices.values()
+        if device.paired and device.trusted and device.present
+    ]
+    assert len({device.adapter_id for device in owned}) == 2
+    for device in owned:
+        backend._devices[device.key] = replace(device, connected=False)
+    bluetooth_service._save_settings({"auto_connect": True})
+
+    bluetooth_service._apply_auto_connect(
+        backend,
+        bluetooth_service._run(backend.state()),
+        force=True,
+    )
+
+    assert all(backend._devices[device.key].connected for device in owned)
 
 
 def test_device_autoconnect_handler_persists_adapter_scoped_override():

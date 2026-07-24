@@ -174,8 +174,13 @@ def handle_bt_discovery(q: Dict[str, Any]) -> Dict[str, Any]:
     """Start or stop adapter-aware discovery."""
     adapter_id = _get(q, "adapter_id")
     action = _get(q, "action", "start")
+    raw_seconds = _get(q, "seconds", "")
+    try:
+        seconds = int(raw_seconds) if raw_seconds else None
+    except ValueError:
+        return {"ok": False, "error": "seconds must be an integer", "code": "unsupported"}
     if action == "start":
-        return bluetooth_service.start_discovery(adapter_id or None)
+        return bluetooth_service.start_discovery(adapter_id or None, seconds)
     if action == "stop":
         return bluetooth_service.stop_discovery(adapter_id or None)
     return {"ok": False, "error": "action must be start or stop", "code": "unsupported"}
@@ -236,11 +241,27 @@ def handle_bt_device_autoconnect(q: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def handle_bt_device_hid(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Enable or immediately disable optional trusted-device HID control."""
+    enabled = _get(q, "enabled", "0").lower() in {"1", "true", "on", "yes"}
+    return bluetooth_service.set_device_hid_control(
+        _get(q, "adapter_id") or None,
+        _get(q, "device_key") or None,
+        enabled,
+    )
+
+
 def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
     """Run an adapter-aware Bluetooth device action."""
     action = _get(q, "action")
     if not action:
         return {"ok": False, "error": "action required", "code": "unsupported"}
+    if action == "pair":
+        return bluetooth_service.start_pairing(
+            adapter_id=_get(q, "adapter_id") or None,
+            device_key=_get(q, "device_key") or None,
+            mac=_get(q, "mac") or None,
+        )
     return bluetooth_service.device_action(
         action,
         adapter_id=_get(q, "adapter_id") or None,
@@ -268,6 +289,11 @@ def handle_bt_transfers(q: Dict[str, Any]) -> Dict[str, Any]:
 def handle_bt_files(q: Dict[str, Any]) -> Dict[str, Any]:
     """List safe outbound candidates from the RPi Downloads directory."""
     return bluetooth_service.download_files()
+
+
+def handle_bt_diagnostics(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Collect bounded read-only Bluetooth failure and resource diagnostics."""
+    return bluetooth_service.bluetooth_diagnostics()
 
 
 def handle_bt_file_send(q: Dict[str, Any]) -> Dict[str, Any]:
@@ -312,14 +338,36 @@ def handle_bt_media(q: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def handle_bt_pairing(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Start, inspect, answer, or cancel one explicit pairing lifecycle."""
+    action = _get(q, "action", "status")
+    operation_id = _get(q, "operation_id")
+    if action == "start":
+        return bluetooth_service.start_pairing(
+            adapter_id=_get(q, "adapter_id") or None,
+            device_key=_get(q, "device_key") or None,
+            mac=_get(q, "mac") or None,
+        )
+    if action == "status":
+        return bluetooth_service.pairing_status(operation_id)
+    if action == "respond":
+        accepted = _get(q, "accepted", "0").lower() in {"1", "true", "yes", "on"}
+        return bluetooth_service.respond_pairing(
+            operation_id,
+            accepted,
+            _get(q, "value") or None,
+        )
+    if action == "cancel":
+        return bluetooth_service.cancel_pairing(operation_id)
+    return {"ok": False, "code": "unsupported", "error": "unsupported pairing action"}
+
+
 def handle_bt_pair(q: Dict[str, Any]) -> Dict[str, Any]:
-    """Pair Bluetooth device."""
-    mac = _get(q, "mac")
-    return bluetooth_service.device_action(
-        "pair",
+    """Start the non-blocking pairing lifecycle for legacy callers."""
+    return bluetooth_service.start_pairing(
         adapter_id=_get(q, "adapter_id") or None,
         device_key=_get(q, "device_key") or None,
-        mac=mac or None,
+        mac=_get(q, "mac") or None,
     )
 
 

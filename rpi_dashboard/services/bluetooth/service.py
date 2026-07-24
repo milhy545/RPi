@@ -10,6 +10,7 @@ import time
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .compat import legacy_state
 from .bluez import BlueZDbusBackend
@@ -27,16 +28,24 @@ _SETTINGS_LOCK = threading.Lock()
 _AUTO_CONNECT_LOCK = threading.Lock()
 _STARTUP_RECOVERY_LOCK = threading.Lock()
 _STARTUP_RECOVERY_STARTED = False
+_PAIRING_LOCK = threading.Lock()
+_PAIRING_OPERATIONS: dict[str, dict[str, Any]] = {}
+_PAIRING_FUTURES: dict[str, Any] = {}
+_AUDIO_RECONCILE_LOCK = threading.Lock()
+_AUDIO_RECONCILE_NEXT = 0.0
+_DISCOVERY_LOCK = threading.Lock()
+_DISCOVERY_STOP_FUTURES: dict[str, tuple[str, Any]] = {}
 _AUTO_CONNECT_LAST_ATTEMPT: dict[str, float] = {}
 _AUTO_CONNECT_FAILURES: dict[str, int] = {}
 _AUTO_CONNECT_NEXT_ATTEMPT: dict[str, float] = {}
 _MANUAL_DISCONNECT_UNTIL: dict[str, float] = {}
 _MANUAL_DISCONNECT_COOLDOWN = 60.0
 _DEFAULT_SETTINGS: dict[str, Any] = {
-    "auto_connect": False,
+    "auto_connect": True,
     "discoverable_timeout": 120,
     "scan_mode": "balanced",
     "device_auto_connect": {},
+    "device_hid_control": {},
 }
 
 
@@ -86,6 +95,7 @@ def _startup_recovery_worker(delay: float) -> None:
         if _RUNNER is not None:
             _RUNNER.submit(_watch_reconnect_events(backend))
             _RUNNER.submit(_start_obex_agent_safely())
+            _RUNNER.submit(_reconcile_audio_after_bluetooth_change(delay=1.5))
     except Exception:
         # Recovery is best-effort and must never take down the dashboard.
         return
@@ -122,14 +132,24 @@ def devices_compat_state() -> dict[str, Any]:
     return state
 
 
-def start_discovery(adapter_id: str | None = None) -> dict[str, Any]:
-    """Start discovery on a selected or uniquely resolved adapter."""
+def start_discovery(
+    adapter_id: str | None = None,
+    seconds: int | None = None,
+) -> dict[str, Any]:
+    """Start bounded discovery on a selected or uniquely resolved adapter."""
     state = _run(get_backend().state())
     adapter = _resolve_adapter(state, adapter_id)
     if isinstance(adapter, BluetoothError):
         return _error_response(adapter)
     operation = _run(get_backend().start_discovery(adapter.id))
-    return _operation_response(operation)
+    response = _operation_response(operation)
+    if operation.state == "succeeded":
+        settings = _load_settings()
+        default_seconds = 30 if settings.get("scan_mode") == "aggressive" else 15
+        duration = max(1, min(60, int(seconds if seconds is not None else default_seconds)))
+        _schedule_discovery_stop(adapter.id, duration)
+        response["discovery_timeout_seconds"] = duration
+    return response
 
 
 def stop_discovery(adapter_id: str | None = None) -> dict[str, Any]:
@@ -138,8 +158,55 @@ def stop_discovery(adapter_id: str | None = None) -> dict[str, Any]:
     adapter = _resolve_adapter(state, adapter_id)
     if isinstance(adapter, BluetoothError):
         return _error_response(adapter)
+    _cancel_discovery_stop(adapter.id)
     operation = _run(get_backend().stop_discovery(adapter.id))
     return _operation_response(operation)
+
+
+def _schedule_discovery_stop(adapter_id: str, seconds: int) -> None:
+    """Replace one adapter's pending timer without blocking a request thread."""
+    token = uuid4().hex
+    backend = get_backend()
+    assert _RUNNER is not None
+    future = _RUNNER.submit(
+        _stop_discovery_after(adapter_id, seconds, token, backend)
+    )
+    with _DISCOVERY_LOCK:
+        previous = _DISCOVERY_STOP_FUTURES.pop(adapter_id, None)
+        _DISCOVERY_STOP_FUTURES[adapter_id] = (token, future)
+    if previous is not None:
+        previous[1].cancel()
+
+
+def _cancel_discovery_stop(adapter_id: str) -> None:
+    with _DISCOVERY_LOCK:
+        pending = _DISCOVERY_STOP_FUTURES.pop(adapter_id, None)
+    if pending is not None:
+        pending[1].cancel()
+
+
+async def _stop_discovery_after(
+    adapter_id: str,
+    seconds: int,
+    token: str,
+    backend: Any,
+) -> None:
+    try:
+        await asyncio.sleep(seconds)
+        with _DISCOVERY_LOCK:
+            current = _DISCOVERY_STOP_FUTURES.get(adapter_id)
+            if current is None or current[0] != token:
+                return
+        await backend.stop_discovery(adapter_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        return
+    finally:
+        with _DISCOVERY_LOCK:
+            current = _DISCOVERY_STOP_FUTURES.get(adapter_id)
+            if current is not None and current[0] == token:
+                _DISCOVERY_STOP_FUTURES.pop(adapter_id, None)
 
 
 def set_adapter_power(adapter_id: str | None, powered: bool) -> dict[str, Any]:
@@ -237,6 +304,47 @@ def set_device_auto_connect(
     }
 
 
+def set_device_hid_control(
+    adapter_id: str | None,
+    device_key: str | None,
+    enabled: bool,
+) -> dict[str, Any]:
+    """Persist opt-in HID control only when trusted transport prerequisites exist."""
+    from .hid import hid_transport_status
+
+    if not adapter_id or not device_key:
+        return _error_response(BluetoothError("device_missing", "adapter_id and device_key are required"))
+    state = _run(get_backend().state())
+    target = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=None)
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    device = next(item for item in state.devices if item.key == device_key)
+    if enabled and (not device.paired or not device.trusted):
+        return _error_response(
+            BluetoothError("permission_denied", "HID control requires a paired and trusted device")
+        )
+    transport = hid_transport_status()
+    if enabled and not transport["available"]:
+        return _error_response(
+            BluetoothError(
+                "profile_unavailable",
+                "Outbound HID control is unavailable: " + "; ".join(transport["blockers"]),
+            )
+        )
+    settings = _load_settings()
+    policies = dict(settings.get("device_hid_control") or {})
+    policies[device_key] = bool(enabled)
+    settings["device_hid_control"] = policies
+    _save_settings(settings)
+    return {
+        "ok": True,
+        "adapter_id": adapter_id,
+        "device_key": device_key,
+        "hid_control": bool(enabled),
+        "transport": transport,
+    }
+
+
 def device_action(
     action: str,
     *,
@@ -297,6 +405,13 @@ def obex_state() -> dict[str, Any]:
     from .obex import get_manager
 
     return _run(get_manager().state())
+
+
+def bluetooth_diagnostics() -> dict[str, Any]:
+    """Run explicit bounded read-only Bluetooth/audio diagnostics."""
+    from .diagnostics import collect_diagnostics
+
+    return collect_diagnostics()
 
 
 def download_files() -> dict[str, Any]:
@@ -430,6 +545,143 @@ def media_action(
         get_backend().media_control(resolved_adapter, resolved_key, action, value)
     )
     return _operation_response(operation)
+
+
+def start_pairing(
+    *,
+    adapter_id: str | None = None,
+    device_key: str | None = None,
+    mac: str | None = None,
+) -> dict[str, Any]:
+    """Start one explicit pairing operation without blocking its UI request."""
+    backend = get_backend()
+    state = _run(backend.state())
+    target = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=mac)
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    resolved_adapter, resolved_key = target
+    with _PAIRING_LOCK:
+        active = next(
+            (
+                item
+                for item in _PAIRING_OPERATIONS.values()
+                if item["state"] == "pending"
+                and item["adapter_id"] == resolved_adapter
+                and item["device_key"] == resolved_key
+            ),
+            None,
+        )
+        if active is not None:
+            return {"ok": True, "pairing": dict(active), "deduplicated": True}
+        operation_id = f"pair-{uuid4().hex}"
+        record = {
+            "id": operation_id,
+            "state": "pending",
+            "adapter_id": resolved_adapter,
+            "device_key": resolved_key,
+            "started_at": time.time(),
+        }
+        _PAIRING_OPERATIONS[operation_id] = record
+        while len(_PAIRING_OPERATIONS) > 20:
+            oldest = next(iter(_PAIRING_OPERATIONS))
+            if oldest == operation_id:
+                break
+            _PAIRING_OPERATIONS.pop(oldest, None)
+            _PAIRING_FUTURES.pop(oldest, None)
+    assert _RUNNER is not None
+    future = _RUNNER.submit(
+        _pairing_worker(operation_id, resolved_adapter, resolved_key, backend)
+    )
+    with _PAIRING_LOCK:
+        _PAIRING_FUTURES[operation_id] = future
+    return {"ok": True, "pairing": dict(record)}
+
+
+async def _pairing_worker(
+    operation_id: str,
+    adapter_id: str,
+    device_key: str,
+    backend: Any,
+) -> None:
+    try:
+        operation = await backend.pair(adapter_id, device_key)
+        update = {
+            "state": "succeeded" if operation.state == "succeeded" else "failed",
+            "operation": operation.to_dict(),
+            "error": operation.error.message if operation.error else None,
+            "code": operation.error.code if operation.error else None,
+            "updated_at": time.time(),
+        }
+    except asyncio.CancelledError:
+        update = {"state": "cancelled", "updated_at": time.time()}
+    except Exception as exc:
+        update = {
+            "state": "failed",
+            "error": str(exc),
+            "code": "backend_unavailable",
+            "updated_at": time.time(),
+        }
+    with _PAIRING_LOCK:
+        if operation_id in _PAIRING_OPERATIONS:
+            _PAIRING_OPERATIONS[operation_id].update(update)
+
+
+def pairing_status(operation_id: str) -> dict[str, Any]:
+    """Return one pairing lifecycle record and its current user challenge."""
+    with _PAIRING_LOCK:
+        record = dict(_PAIRING_OPERATIONS.get(operation_id) or {})
+    if not record:
+        return _error_response(BluetoothError("operation_missing", "Pairing operation does not exist"))
+    challenge_getter = getattr(get_backend(), "pairing_challenge", None)
+    challenge = challenge_getter() if challenge_getter is not None else None
+    if challenge and (
+        challenge.get("adapter_id") != record["adapter_id"]
+        or challenge.get("device_key") != record["device_key"]
+    ):
+        challenge = None
+    return {"ok": True, "pairing": record, "challenge": challenge}
+
+
+def respond_pairing(
+    operation_id: str,
+    accepted: bool,
+    value: str | int | None = None,
+) -> dict[str, Any]:
+    """Resolve a visible pairing challenge for its exact pending target."""
+    status = pairing_status(operation_id)
+    if not status.get("ok"):
+        return status
+    if status["pairing"]["state"] != "pending" or not status.get("challenge"):
+        return _error_response(BluetoothError("operation_not_cancellable", "No pairing challenge is waiting"))
+    responder = getattr(get_backend(), "respond_pairing", None)
+    if responder is None or not responder(accepted, value):
+        return _error_response(BluetoothError("operation_busy", "Pairing challenge already changed"))
+    return {"ok": True, "accepted": accepted}
+
+
+def cancel_pairing(operation_id: str) -> dict[str, Any]:
+    """Cancel a pending pairing worker and Device1 pairing transaction."""
+    status = pairing_status(operation_id)
+    if not status.get("ok"):
+        return status
+    record = status["pairing"]
+    if record["state"] != "pending":
+        return _error_response(BluetoothError("operation_not_cancellable", "Pairing is already complete"))
+    canceller = getattr(get_backend(), "cancel_pairing", None)
+    operation = None
+    if canceller is not None:
+        operation = _run(canceller(record["adapter_id"], record["device_key"]))
+    with _PAIRING_LOCK:
+        future = _PAIRING_FUTURES.get(operation_id)
+        if future is not None:
+            future.cancel()
+        _PAIRING_OPERATIONS[operation_id].update(
+            {"state": "cancelled", "updated_at": time.time()}
+        )
+    response = {"ok": True, "pairing": dict(_PAIRING_OPERATIONS[operation_id])}
+    if operation is not None:
+        response["operation"] = operation.to_dict()
+    return response
 
 
 def cancel_operation(operation_id: str) -> dict[str, Any]:
@@ -721,20 +973,40 @@ async def _watch_reconnect_events(backend: Any) -> None:
                     continue
                 state = await backend.state()
                 await _apply_auto_connect_async(backend, state)
+                await _reconcile_audio_after_bluetooth_change(delay=0.5)
         except asyncio.CancelledError:
             raise
         except Exception:
             await asyncio.sleep(5.0)
 
 
+async def _reconcile_audio_after_bluetooth_change(*, delay: float) -> None:
+    """Debounce PipeWire route repair outside Bluetooth/UI request paths."""
+    global _AUDIO_RECONCILE_NEXT
+    now = time.monotonic()
+    with _AUDIO_RECONCILE_LOCK:
+        if now < _AUDIO_RECONCILE_NEXT:
+            return
+        _AUDIO_RECONCILE_NEXT = now + 5.0
+    if delay:
+        await asyncio.sleep(delay)
+    try:
+        from .. import audio
+
+        await asyncio.to_thread(audio.audio_multi_output, "reconcile")
+    except Exception:
+        return
+
+
 def _enrich_runtime_state(state: dict[str, Any]) -> None:
     settings = _load_settings()
     state["settings"] = settings
     policies = settings.get("device_auto_connect") or {}
+    hid_policies = settings.get("device_hid_control") or {}
     for device in state.get("devices") or []:
         key = device.get("key")
         device["auto_connect"] = bool(
-            policies.get(key, settings.get("auto_connect", False))
+            policies.get(key, settings.get("auto_connect", True))
         )
         with _AUTO_CONNECT_LOCK:
             remaining = max(
@@ -742,11 +1014,14 @@ def _enrich_runtime_state(state: dict[str, Any]) -> None:
                 _MANUAL_DISCONNECT_UNTIL.get(str(key), 0.0) - time.monotonic(),
             )
         device["manual_disconnect_cooldown_seconds"] = round(remaining, 1)
+        device["hid_control"] = bool(hid_policies.get(key, False))
     from .capabilities import pc_capability_matrix
     from .obex import get_manager
+    from .hid import hid_transport_status
 
     state.setdefault("diagnostics", {})["pc_capability_matrix"] = pc_capability_matrix()
     state["obex"] = get_manager().snapshot()
+    state.setdefault("diagnostics", {})["hid_control"] = hid_transport_status()
     _enrich_soundbar_audio_readiness(state)
     _enrich_controller_readiness(state)
 

@@ -113,12 +113,19 @@ async function assertViewport(page, name, width, height) {
     return json(route, { ok: true, result: 'device action ok' });
   });
   await page.route('**/bt/device-profile**', route => json(route, { ok: true, result: 'profile action ok' }));
+  await page.route('**/bt/pairing**', route => {
+    const action = new URL(route.request().url()).searchParams.get('action');
+    return json(route, action === 'start'
+      ? { ok: true, pairing: { id: 'pair-e2e', state: 'pending' } }
+      : { ok: true, pairing: { id: 'pair-e2e', state: 'succeeded' }, challenge: null });
+  });
   await page.route('**/bt/device-autoconnect**', route => json(route, { ok: true }));
   await page.route('**/audio/bluetooth-profiles**', route => json(route, { ok: true, cards: [] }));
   await page.route('**/bt/transfers**', route => json(route, { ok: true, receive_agent: true, transfers: [] }));
   await page.route('**/bt/files**', route => json(route, { ok: true, files: [{ name: 'hello.txt', path: '/home/milhy777/Downloads/hello.txt', size: 5 }] }));
   await page.route('**/bt/file-send**', route => json(route, { ok: true, transfer: { id: 'send-1', status: 'active' } }));
   await page.route('**/bt/file-cancel**', route => json(route, { ok: true }));
+  await page.route('**/bt/diagnostics**', route => json(route, { ok: true, failure_classes: [], resources: { process_rss: '10 MB', load_average: [0.2, 0.1, 0.1] } }));
   await page.route('**/bt/discoverable**', route => {
     requests.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
     return json(route, { ok: true, result: 'discoverability ok' });

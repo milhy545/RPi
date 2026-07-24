@@ -16,6 +16,7 @@ APT_PACKAGES=(
     git
     tmux
     fonts-terminus
+    bluez-obexd
     curl
     wget
     unzip

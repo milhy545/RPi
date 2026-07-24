@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 # Constants
@@ -18,6 +19,12 @@ _DLNAIN_MODE_FILE = os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
 AUDIO_STATE_CACHE_TTL = 0.75
 SILENT_WAV = "silent-48k.wav"
 MULTI_OUTPUT_SINK = "rpi_bt_multi_output"
+MULTI_OUTPUT_STATE_FILE = os.path.expanduser(
+    os.environ.get(
+        "RPI_BLUETOOTH_MULTI_OUTPUT_STATE_PATH",
+        "~/.config/rpi-dashboard/bluetooth-multi-output.json",
+    )
+)
 
 # Device names (from config or hardcoded for now)
 BT_SOUNDBAR_SINK = "bluez_output.00_00_00_00_00_00.a2dp_sink"
@@ -30,6 +37,7 @@ DLNA_SINK_KEYWORDS = ["gmrender", "gmediarender", "dlna"]
 # Cache
 _audio_state_cache: Dict[str, Any] = {}
 _audio_state_lock = threading.Lock()
+_multi_output_lock = threading.RLock()
 
 
 def _run(cmd: List[str], t: float = 5) -> subprocess.CompletedProcess:
@@ -272,19 +280,67 @@ def _multi_output_status() -> Dict[str, Any]:
         and str(loopback.get("source", "")).startswith("bluez_input.")
     ]
     active = bool(module and MULTI_OUTPUT_SINK in sink_names)
+    slaves = module["slaves"] if module else []
+    stale_slaves = [name for name in slaves if name not in available_sinks]
+    healthy = active and len(slaves) >= 2 and not stale_slaves
     return {
         "ok": True,
         "active": active,
         "module_id": module["id"] if module else None,
         "sink": MULTI_OUTPUT_SINK,
-        "slaves": module["slaves"] if module else [],
+        "slaves": slaves,
+        "healthy": healthy,
+        "stale_slaves": stale_slaves,
         "available_sinks": available_sinks,
         "input_sources": input_sources,
         "routed_inputs": routed_inputs,
         "unrouted_inputs": [source for source in input_sources if source not in routed_inputs],
         "input_pending": active and not input_sources,
         "default_sink": _get_default_sink(),
+        "intent": _load_multi_output_intent(),
     }
+
+
+def _load_multi_output_intent() -> Dict[str, Any]:
+    """Load persisted user intent; infer legacy active module once for migration."""
+    try:
+        data = json.loads(Path(MULTI_OUTPUT_STATE_FILE).read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return {
+                "enabled": bool(data.get("enabled")),
+                "slaves": [str(name) for name in data.get("slaves") or []],
+            }
+    except (OSError, ValueError, TypeError):
+        pass
+    module = _find_multi_output_module()
+    return {
+        "enabled": bool(module),
+        "slaves": list(module.get("slaves", [])) if module else [],
+        "inferred": bool(module),
+    }
+
+
+def _save_multi_output_intent(enabled: bool, slaves: List[str]) -> None:
+    path = Path(MULTI_OUTPUT_STATE_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({"enabled": bool(enabled), "slaves": list(slaves)}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def _physical_fallback_sink() -> Optional[str]:
+    """Choose a real sink before unloading an unavailable virtual default."""
+    return next(
+        (
+            item["name"]
+            for item in _pactl_lines("sinks")
+            if item["name"] != MULTI_OUTPUT_SINK and not item["name"].startswith("bluez_output.")
+        ),
+        None,
+    )
 
 
 def _attach_bluetooth_inputs() -> Tuple[List[str], List[str]]:
@@ -303,22 +359,57 @@ def _attach_bluetooth_inputs() -> Tuple[List[str], List[str]]:
 
 
 def audio_multi_output(action: str = "status", sinks: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Serialize reads and mutations of the dashboard-owned combine sink."""
+    with _multi_output_lock:
+        return _audio_multi_output(action, sinks)
+
+
+def _audio_multi_output(action: str = "status", sinks: Optional[List[str]] = None) -> Dict[str, Any]:
     """Manage one combined sink for all selected Bluetooth output devices."""
     action = (action or "status").strip().lower()
     if action == "status":
         return _multi_output_status()
-    if action not in {"start", "sync", "stop"}:
-        return {"ok": False, "error": "action must be status, start, sync, or stop"}
+    if action not in {"start", "sync", "stop", "reconcile"}:
+        return {"ok": False, "error": "action must be status, start, sync, stop, or reconcile"}
 
     module = _find_multi_output_module()
     available = _bluetooth_output_sinks()
+
+    if action == "reconcile":
+        intent = _load_multi_output_intent()
+        if not intent.get("enabled"):
+            return {**_multi_output_status(), "reconciled": False, "reason": "multi-output disabled"}
+        requested = [name for name in intent.get("slaves") or [] if name in available]
+        if len(requested) >= 2:
+            result = audio_multi_output("start", requested)
+            result.update({"reconciled": True, "reason": "requested outputs available"})
+            return result
+        for loopback in _find_loopbacks():
+            if loopback.get("sink") == MULTI_OUTPUT_SINK:
+                _stop_loopback(str(loopback["id"]))
+        fallback = available[0] if available else _physical_fallback_sink()
+        if fallback and _get_default_sink() == MULTI_OUTPUT_SINK:
+            _run(["pactl", "set-default-sink", fallback], t=5)
+        if module:
+            _run(["pactl", "unload-module", str(module["id"])], t=5)
+        result = _multi_output_status()
+        result.update(
+            {
+                "reconciled": True,
+                "waiting_for_outputs": True,
+                "fallback_sink": fallback,
+                "reason": "fewer than two requested Bluetooth outputs are available",
+                "intent": intent,
+            }
+        )
+        return result
 
     if action == "stop":
         for loopback in _find_loopbacks():
             if loopback.get("sink") == MULTI_OUTPUT_SINK:
                 _stop_loopback(str(loopback["id"]))
         fallback = next((name for name in available if name in (module or {}).get("slaves", [])), None)
-        fallback = fallback or (available[0] if available else None)
+        fallback = fallback or (available[0] if available else _physical_fallback_sink())
         if fallback:
             set_default = _run(["pactl", "set-default-sink", fallback], t=5)
             if set_default.returncode != 0:
@@ -327,6 +418,7 @@ def audio_multi_output(action: str = "status", sinks: Optional[List[str]] = None
             unloaded = _run(["pactl", "unload-module", str(module["id"])], t=5)
             if unloaded.returncode != 0:
                 return {"ok": False, "error": (unloaded.stderr or "failed to unload combine sink").strip()}
+        _save_multi_output_intent(False, [])
         result = _multi_output_status()
         result.update({"fallback_sink": fallback})
         return result
@@ -380,6 +472,8 @@ def audio_multi_output(action: str = "status", sinks: Optional[List[str]] = None
 
     attached, failed = _attach_bluetooth_inputs()
     result = _multi_output_status()
+    if result.get("active"):
+        _save_multi_output_intent(True, requested)
     result.update({"created": created, "attached_inputs": attached})
     if failed:
         result.update({"ok": False, "partial": True, "error": "failed to attach Bluetooth inputs", "failed_inputs": failed})
@@ -925,25 +1019,25 @@ def diagnose_bt_audio_stutter() -> Dict[str, Any]:
         # Check PipeWire quantum settings
         r = _run(["pw-metadata", "-n", "settings"], t=3)
         if r.returncode == 0:
-            for line in r.stdout.splitlines():
-                if "quantum" in line.lower():
-                    try:
-                        diagnostics["pipewire_quantum"] = int(line.split("=")[1].strip())
-                    except Exception:
-                        pass
-                if "rate" in line.lower() and "48000" in line:
-                    diagnostics["pipewire_rate"] = 48000
+            quantum = re.search(r"key:'clock\.quantum'\s+value:'(\d+)'", r.stdout)
+            rate = re.search(r"key:'clock\.rate'\s+value:'(\d+)'", r.stdout)
+            if quantum:
+                diagnostics["pipewire_quantum"] = int(quantum.group(1))
+            if rate:
+                diagnostics["pipewire_rate"] = int(rate.group(1))
     except Exception:
         pass
     
     try:
         # Check Wi-Fi frequency
-        r = _run(["iwconfig", "wlan0"], t=3)
+        r = _run(["iw", "dev", "wlan0", "link"], t=3)
         if r.returncode == 0:
             output = r.stdout.lower()
-            if "2.4ghz" in output or "2412" in output or "2437" in output:
+            frequency = re.search(r"freq:\s*(\d+)", output)
+            mhz = int(frequency.group(1)) if frequency else 0
+            if 2400 <= mhz < 2500:
                 diagnostics["wifi_frequency"] = "2.4ghz"
-            elif "5ghz" in output or "5180" in output or "5240" in output:
+            elif 4900 <= mhz < 5900:
                 diagnostics["wifi_frequency"] = "5ghz"
     except Exception:
         pass
@@ -961,13 +1055,13 @@ def diagnose_bt_audio_stutter() -> Dict[str, Any]:
             "1. Connect to 5GHz Wi-Fi network"
         )
         diagnostics["recommendations"].append(
-            "2. Increase PipeWire quantum to 1024"
+            "2. Keep PipeWire quantum at the measured stable baseline"
         )
         diagnostics["recommendations"].append(
             "3. Use wired Ethernet instead of Wi-Fi"
         )
     
-    if diagnostics["pipewire_quantum"] and diagnostics["pipewire_quantum"] < 512:
+    if diagnostics["pipewire_quantum"] and diagnostics["pipewire_quantum"] < 1024:
         diagnostics["recommendations"].append(
             f"Current quantum ({diagnostics['pipewire_quantum']}) is low. Try 1024."
         )
@@ -975,35 +1069,34 @@ def diagnose_bt_audio_stutter() -> Dict[str, Any]:
     return diagnostics
 
 
-def fix_bt_audio_stutter() -> Dict[str, Any]:
-    """Apply fixes for Bluetooth audio stutter.
-    
-    Attempts to:
-    1. Increase PipeWire quantum to 1024
-    2. Set appropriate buffer size
-    """
+def fix_bt_audio_stutter(*, apply: bool = False) -> Dict[str, Any]:
+    """Plan conservative PipeWire baseline changes; mutate only with apply=True."""
     fixes_applied = []
-    
-    try:
-        # Increase PipeWire quantum
-        r = _run(["pw-metadata", "-n", "settings", "0", "quantum", "1024"], t=3)
-        if r.returncode == 0:
-            fixes_applied.append("Set PipeWire quantum to 1024")
-    except Exception:
-        pass
-    
-    try:
-        # Set rate to 48000
-        r = _run(["pw-metadata", "-n", "settings", "0", "rate", "48000"], t=3)
-        if r.returncode == 0:
-            fixes_applied.append("Set PipeWire rate to 48000")
-    except Exception:
-        pass
-    
+    diagnostics = diagnose_bt_audio_stutter()
+    planned = []
+    if diagnostics.get("pipewire_quantum") is not None and diagnostics["pipewire_quantum"] < 1024:
+        planned.append(("quantum", "1024", "Set PipeWire quantum to 1024"))
+    if diagnostics.get("pipewire_rate") is not None and diagnostics["pipewire_rate"] != 48000:
+        planned.append(("rate", "48000", "Set PipeWire rate to 48000"))
+    if apply:
+        for key, value, label in planned:
+            try:
+                result = _run(["pw-metadata", "-n", "settings", "0", key, value], t=3)
+            except Exception:
+                continue
+            if result.returncode == 0:
+                fixes_applied.append(label)
     return {
-        "ok": len(fixes_applied) > 0,
+        "ok": True,
+        "applied": apply,
         "fixes_applied": fixes_applied,
-        "diagnostics": diagnose_bt_audio_stutter()
+        "planned_fixes": [label for _, _, label in planned],
+        "diagnostics": diagnostics,
+        "next_step": (
+            "Measure route-specific xruns, codec, and CPU load; the 1024/48000 baseline is already active."
+            if not planned
+            else "Apply only after reviewing the recorded baseline."
+        ),
     }
 
 

@@ -1260,6 +1260,9 @@ class RPiDashboard(App):
         await self.update_bluetooth_devices()
 
     async def run_bluetooth_action(self, action: str) -> None:
+        if action == "pair":
+            await self.run_bluetooth_pairing()
+            return
         try:
             bt_list = self.query_one("#list_bluetooth_devices", OptionList)
             if bt_list.highlighted is not None:
@@ -1381,6 +1384,149 @@ class RPiDashboard(App):
             f"Media {action} sent."
             if result.get("ok")
             else f"Media action failed: {result.get('error', 'unknown error')}"
+        )
+        await self.update_bluetooth_devices()
+
+    async def run_bluetooth_pairing(self) -> None:
+        """Start pairing, show a challenge, then require a deliberate confirm press."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        operation_id = getattr(self, "_bt_pairing_id", "")
+        if not operation_id:
+            target = self.selected_bluetooth_target()
+            if not target.get("adapter_id") or not target.get("device_key"):
+                self.show_bluetooth_notice("Select an adapter-scoped Bluetooth device first.")
+                return
+            result = await asyncio.to_thread(
+                bt_service.start_pairing,
+                adapter_id=target["adapter_id"],
+                device_key=target["device_key"],
+                mac=target.get("mac"),
+            )
+            if not result.get("ok"):
+                self.show_bluetooth_notice(f"Pairing failed: {result.get('error', 'unknown error')}")
+                return
+            self._bt_pairing_id = result["pairing"]["id"]
+            self._bt_pairing_challenge_key = ""
+            self.show_bluetooth_notice("Pairing started. Press P to inspect its challenge; O cancels.")
+            return
+        result = await asyncio.to_thread(bt_service.pairing_status, operation_id)
+        if not result.get("ok"):
+            self._bt_pairing_id = ""
+            self.show_bluetooth_notice(f"Pairing status failed: {result.get('error', 'unknown error')}")
+            return
+        pairing = result["pairing"]
+        if pairing["state"] != "pending":
+            self._bt_pairing_id = ""
+            self._bt_pairing_challenge_key = ""
+            self.show_bluetooth_notice(
+                "Pairing succeeded."
+                if pairing["state"] == "succeeded"
+                else f"Pairing {pairing['state']}: {pairing.get('error', '')}"
+            )
+            await self.update_bluetooth_devices()
+            return
+        challenge = result.get("challenge") or {}
+        challenge_type = challenge.get("type")
+        if challenge.get("state") == "display":
+            code = challenge.get("pin_code") or f"{int(challenge.get('passkey') or 0):06d}"
+            self.show_bluetooth_notice(f"Enter displayed Bluetooth code {code} on the remote device.")
+        elif challenge_type in {"confirmation", "authorization", "service"}:
+            challenge_key = (
+                f"{challenge_type}:"
+                f"{challenge.get('passkey') or challenge.get('service_uuid') or ''}"
+            )
+            if getattr(self, "_bt_pairing_challenge_key", "") != challenge_key:
+                self._bt_pairing_challenge_key = challenge_key
+                if challenge_type == "confirmation":
+                    code = f"{int(challenge.get('passkey') or 0):06d}"
+                    self.show_bluetooth_notice(
+                        f"Compare Bluetooth passkey {code}. Press P again to accept; O rejects."
+                    )
+                else:
+                    self.show_bluetooth_notice(
+                        f"Authorize Bluetooth {challenge_type}. Press P again to accept; O rejects."
+                    )
+                return
+            accepted = await asyncio.to_thread(
+                bt_service.respond_pairing,
+                operation_id,
+                True,
+                None,
+            )
+            self._bt_pairing_challenge_key = ""
+            code = f" {int(challenge.get('passkey') or 0):06d}" if challenge_type == "confirmation" else ""
+            self.show_bluetooth_notice(
+                f"Confirmed Bluetooth {challenge_type}{code}."
+                if accepted.get("ok")
+                else f"Confirmation failed: {accepted.get('error', 'unknown error')}"
+            )
+        elif challenge_type in {"pin_code", "passkey"}:
+            self.show_bluetooth_notice("This pairing requires text/numeric entry; finish it in the WebUI.")
+        else:
+            self.show_bluetooth_notice("Pairing is waiting for the remote device or BlueZ challenge.")
+
+    async def cancel_bluetooth_pairing(self) -> None:
+        """Cancel the pairing lifecycle started from the TUI."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        operation_id = getattr(self, "_bt_pairing_id", "")
+        if not operation_id:
+            self.show_bluetooth_notice("No pending pairing operation.")
+            return
+        result = await asyncio.to_thread(bt_service.cancel_pairing, operation_id)
+        self._bt_pairing_id = ""
+        self._bt_pairing_challenge_key = ""
+        self.show_bluetooth_notice(
+            "Pairing cancelled."
+            if result.get("ok")
+            else f"Pairing cancel failed: {result.get('error', 'unknown error')}"
+        )
+
+    async def run_bluetooth_diagnostics(self) -> None:
+        """Collect explicit bounded logs and resource evidence into the TUI panel."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        report = await asyncio.to_thread(bt_service.bluetooth_diagnostics)
+        state = dict(getattr(self, "_bluetooth_state_snapshot", {}))
+        state["failure_diagnostics"] = report
+        self._bluetooth_state_snapshot = state
+        self.render_bluetooth_console(
+            state,
+            getattr(self, "_bluetooth_devices_snapshot", []),
+            getattr(self, "_bluetooth_adapters_snapshot", []),
+        )
+        count = sum(int(item.get("count", 0)) for item in report.get("failure_classes") or [])
+        self.show_bluetooth_notice(f"Bounded diagnostics found {count} known failure log entries.")
+
+    async def toggle_bluetooth_hid(self) -> None:
+        """Toggle the selected trusted device HID policy; unavailable transport fails closed."""
+        from rpi_dashboard.services.bluetooth import service as bt_service
+
+        target = self.selected_bluetooth_target()
+        selected_key = target.get("device_key")
+        device = next(
+            (
+                item
+                for item in getattr(self, "_bluetooth_devices_snapshot", [])
+                if item.get("key") == selected_key
+            ),
+            {},
+        )
+        if not selected_key:
+            self.show_bluetooth_notice("Select a Bluetooth device first.")
+            return
+        enabled = not bool(device.get("hid_control"))
+        result = await asyncio.to_thread(
+            bt_service.set_device_hid_control,
+            target.get("adapter_id"),
+            selected_key,
+            enabled,
+        )
+        self.show_bluetooth_notice(
+            f"HID control {'enabled' if enabled else 'disabled'}."
+            if result.get("ok")
+            else f"HID control unavailable: {result.get('error', 'unknown error')}"
         )
         await self.update_bluetooth_devices()
 
@@ -1547,12 +1693,15 @@ class RPiDashboard(App):
         api_app.router.add_route("*", "/audio/bluetooth-profiles", self.handle_registered_api_route)
         api_app.router.add_route("*", "/audio/mute-state", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/device-profile", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/device-hid", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/transfers", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/files", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/diagnostics", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/file-send", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/file-cancel", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/operation", self.handle_registered_api_route)
         api_app.router.add_route("*", "/bt/media", self.handle_registered_api_route)
+        api_app.router.add_route("*", "/bt/pairing", self.handle_registered_api_route)
         api_app.router.add_route("*", "/devices/state", self.handle_registered_api_route)
         api_app.router.add_route("*", "/{tail:.*}", self.handle_legacy_webserver_proxy)
 
@@ -2160,13 +2309,14 @@ class RPiDashboard(App):
                 )
                 action = "pause" if player.get("status") == "playing" else "play"
             asyncio.create_task(self.run_bluetooth_media_action(action))
-        elif bluetooth_active and event.key in {"s", "p", "t", "c", "d", "r", "x", "g", "m", "f", "k", "q"}:
+        elif bluetooth_active and event.key in {"s", "p", "t", "c", "d", "r", "x", "g", "m", "f", "k", "o", "y", "h", "q"}:
             event.stop()
             if event.key == "s":
                 asyncio.create_task(self.scan_bluetooth())
-            elif event.key in {"p", "t", "c", "d", "x"}:
+            elif event.key == "p":
+                asyncio.create_task(self.run_bluetooth_action("pair"))
+            elif event.key in {"t", "c", "d", "x"}:
                 action = {
-                    "p": "pair",
                     "t": "trust",
                     "c": "connect",
                     "d": "disconnect",
@@ -2183,6 +2333,12 @@ class RPiDashboard(App):
                 asyncio.create_task(self.run_bluetooth_file_send())
             elif event.key == "k":
                 asyncio.create_task(self.cancel_latest_bluetooth_transfer())
+            elif event.key == "o":
+                asyncio.create_task(self.cancel_bluetooth_pairing())
+            elif event.key == "y":
+                asyncio.create_task(self.run_bluetooth_diagnostics())
+            elif event.key == "h":
+                asyncio.create_task(self.toggle_bluetooth_hid())
             elif event.key == "q":
                 self.exit()
         elif event.key == "w":

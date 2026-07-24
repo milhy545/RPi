@@ -94,6 +94,8 @@ def test_bluetooth_controls_call_real_settings_endpoints_and_confirm_destructive
 
     assert "'/bt/settings?auto_connect='" in app_js
     assert "'/bt/discoverable?adapter_id='" in app_js
-    assert "action==='pair'||action==='remove'" in app_js
+    assert "if(action==='pair')return btStartPairing" in app_js
+    assert "Start pairing with this device on the selected adapter?" in app_js
+    assert "if(action==='remove'&&!confirm" in app_js
     assert "onoff==='off'&&!confirm" in app_js
     assert "Auto Connect '+(on?'enabled':'disabled'),'info'" not in app_js

@@ -106,6 +106,37 @@ def test_fix_bt_audio_stutter():
         result = fix_bt_audio_stutter()
         assert "ok" in result
         assert "fixes_applied" in result
+        assert result["applied"] is False
+
+
+def test_bt_stutter_diagnostics_parse_real_pw_metadata_shape():
+    from rpi_dashboard.services.audio import diagnose_bt_audio_stutter
+
+    metadata = MagicMock(
+        returncode=0,
+        stdout="update: id:0 key:'clock.rate' value:'48000' type:''\n"
+        "update: id:0 key:'clock.quantum' value:'1024' type:''\n",
+    )
+    wifi = MagicMock(returncode=0, stdout="Not connected.\n")
+    with patch("rpi_dashboard.services.audio._run", side_effect=[metadata, wifi]):
+        result = diagnose_bt_audio_stutter()
+
+    assert result["pipewire_quantum"] == 1024
+    assert result["pipewire_rate"] == 48000
+
+
+def test_bt_stutter_fix_does_not_mutate_an_already_stable_baseline():
+    from rpi_dashboard.services.audio import fix_bt_audio_stutter
+
+    with patch(
+        "rpi_dashboard.services.audio.diagnose_bt_audio_stutter",
+        return_value={"pipewire_quantum": 1024, "pipewire_rate": 48000},
+    ), patch("rpi_dashboard.services.audio._run") as run:
+        result = fix_bt_audio_stutter(apply=True)
+
+    assert result["fixes_applied"] == []
+    assert "already active" in result["next_step"]
+    run.assert_not_called()
 
 
 def test_audio_multi_output_requires_two_bluetooth_sinks():
@@ -185,6 +216,80 @@ def test_audio_multi_output_stop_restores_a_physical_sink():
     assert result["fallback_sink"] == sinks[0]
     commands = [call.args[0] for call in run.call_args_list]
     assert commands.index(["pactl", "set-default-sink", sinks[0]]) < commands.index(["pactl", "unload-module", "77"])
+
+
+def test_audio_multi_output_reconcile_removes_stale_virtual_sink_but_keeps_intent():
+    """A disconnected speaker must not leave a dead combine sink as default."""
+    from rpi_dashboard.services.audio import MULTI_OUTPUT_SINK, audio_multi_output
+
+    intent = {
+        "enabled": True,
+        "slaves": ["bluez_output.soundbar.1", "bluez_output.tibo.1"],
+    }
+    module = {"id": "77", "slaves": intent["slaves"]}
+    run_result = MagicMock(returncode=0, stdout="", stderr="")
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=module), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=[]), \
+         patch("rpi_dashboard.services.audio._load_multi_output_intent", return_value=intent), \
+         patch("rpi_dashboard.services.audio._find_loopbacks", return_value=[]), \
+         patch("rpi_dashboard.services.audio._physical_fallback_sink", return_value="alsa_output.hdmi"), \
+         patch("rpi_dashboard.services.audio._get_default_sink", return_value=MULTI_OUTPUT_SINK), \
+         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": False}), \
+         patch("rpi_dashboard.services.audio._save_multi_output_intent") as save, \
+         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+        result = audio_multi_output("reconcile")
+
+    assert result["ok"] is True
+    assert result["waiting_for_outputs"] is True
+    assert result["intent"] == intent
+    save.assert_not_called()
+    commands = [call.args[0] for call in run.call_args_list]
+    assert commands.index(["pactl", "set-default-sink", "alsa_output.hdmi"]) < commands.index(
+        ["pactl", "unload-module", "77"]
+    )
+
+
+def test_audio_multi_output_reconcile_restores_route_when_both_outputs_return():
+    """Persisted output ownership should recreate the route after reconnect."""
+    from rpi_dashboard.services.audio import audio_multi_output
+
+    sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
+    intent = {"enabled": True, "slaves": sinks}
+    run_result = MagicMock(returncode=0, stdout="77\n", stderr="")
+    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio._load_multi_output_intent", return_value=intent), \
+         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=([], [])), \
+         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}), \
+         patch("rpi_dashboard.services.audio._save_multi_output_intent") as save, \
+         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+        result = audio_multi_output("reconcile")
+
+    assert result["ok"] is True
+    assert result["reconciled"] is True
+    assert result["reason"] == "requested outputs available"
+    save.assert_called_once_with(True, sinks)
+    commands = [call.args[0] for call in run.call_args_list]
+    assert [
+        "pactl", "load-module", "module-combine-sink",
+        "sink_name=rpi_bt_multi_output",
+        f"slaves={','.join(sinks)}",
+        "adjust_time=1",
+    ] in commands
+
+
+def test_audio_multi_output_status_never_mutates_pipewire():
+    """Polling state remains read-only even when the virtual route is stale."""
+    from rpi_dashboard.services.audio import audio_multi_output
+
+    with patch(
+        "rpi_dashboard.services.audio._multi_output_status",
+        return_value={"ok": True, "active": True, "healthy": False},
+    ), patch("rpi_dashboard.services.audio._run") as run:
+        result = audio_multi_output("status")
+
+    assert result == {"ok": True, "active": True, "healthy": False}
+    run.assert_not_called()
 
 
 def test_bluetooth_audio_profiles_report_negotiated_pipewire_roles():
