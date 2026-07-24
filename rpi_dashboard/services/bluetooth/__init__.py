@@ -21,6 +21,9 @@ from .service import set_backend_for_tests
 from .service import set_adapter_power
 from .service import start_discovery
 from .service import stop_discovery
+from .service import reset_all_devices
+from .service import get_adapter_recommendations
+from .service import set_phone_role
 
 __all__ = [
     "Adapter",
@@ -42,4 +45,7 @@ __all__ = [
     "set_adapter_power",
     "start_discovery",
     "stop_discovery",
+    "reset_all_devices",
+    "get_adapter_recommendations",
+    "set_phone_role",
 ]

@@ -90,3 +90,11 @@ pre{background:#161b22;padding:.6rem;border-radius:.3rem;overflow:auto;font-size
 .modal h3{margin-top:0;color:#c9d1d9}
 .modal select, .modal textarea{width:100%;margin-bottom:.8rem;box-sizing:border-box;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem}
 .modal textarea{height:100px;resize:vertical}
+.bt-wizard-card{max-width:640px!important;background:#161b22!important;color:#c9d1d9!important;border:1px solid #30363d;border-radius:12px;padding:20px}
+.bt-wizard-steps-indicator{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.step-badge{font-size:.75rem;padding:3px 9px;border-radius:12px;background:#21262d;color:#8b949e;border:1px solid #30363d}
+.step-badge.active{background:#1f6feb;color:#fff;border-color:#58a6ff;font-weight:600}
+.step-badge.done{background:#238636;color:#fff;border-color:#3fb950}
+.bt-wiz-step{display:flex;flex-direction:column;gap:12px}
+.bt-wiz-warning{background:rgba(210,153,34,0.15);border:1px solid #d29922;color:#e3b341;padding:10px;border-radius:8px;font-size:.85rem}
+

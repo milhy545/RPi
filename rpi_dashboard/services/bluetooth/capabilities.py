@@ -139,6 +139,89 @@ def capability_summary(uuids: tuple[str, ...] | list[str]) -> dict[str, Any]:
     }
 
 
+from pathlib import Path
+
+
+def detect_adapter_bus_type(index: int | None, bluez_path: str = "") -> str:
+    """Detect whether an adapter is USB or integrated UART via sysfs or path conventions."""
+    if index is not None:
+        sysfs_link = Path(f"/sys/class/bluetooth/hci{index}")
+        if sysfs_link.exists():
+            try:
+                target = str(sysfs_link.resolve())
+                if ".usb" in target.lower() or "/usb" in target.lower():
+                    return "usb"
+                if any(token in target.lower() for token in ("serial", "uart", "platform")):
+                    return "uart"
+            except Exception:
+                pass
+    path_lower = (bluez_path or "").lower()
+    if "hci1" in path_lower or "usb" in path_lower:
+        return "usb"
+    if "hci0" in path_lower:
+        return "uart"
+    return "unknown"
+
+
+def recommend_adapter_topology(adapters: list[dict[str, Any]]) -> dict[str, Any]:
+    """Recommend optimal adapter assignments for audio vs IO streams."""
+    if not adapters:
+        return {
+            "ok": False,
+            "error": "No Bluetooth adapters detected",
+            "recommended_audio_adapter": None,
+            "recommended_io_adapter": None,
+            "adapters": [],
+            "warning": "No active Bluetooth hardware available",
+        }
+
+    detected = []
+    for adapter in adapters:
+        idx = adapter.get("index")
+        bpath = adapter.get("bluez_path", "")
+        bus_type = adapter.get("hardware", {}).get("bus_type") or detect_adapter_bus_type(idx, bpath)
+        detected.append({
+            "id": adapter.get("id"),
+            "name": adapter.get("name") or adapter.get("alias") or (f"hci{idx}" if idx is not None else adapter.get("id")),
+            "index": idx,
+            "bus_type": bus_type,
+            "bus_label": "USB Dongle" if bus_type == "usb" else ("Integrated UART" if bus_type == "uart" else "Standard Adapter"),
+        })
+
+    usb_adapter = next((a for a in detected if a["bus_type"] == "usb"), None)
+    uart_adapter = next((a for a in detected if a["bus_type"] == "uart"), None)
+
+    if len(detected) >= 2 and usb_adapter and uart_adapter:
+        recommended_audio = usb_adapter["id"]
+        recommended_io = uart_adapter["id"]
+        warning = None
+    elif usb_adapter:
+        recommended_audio = usb_adapter["id"]
+        recommended_io = usb_adapter["id"]
+        warning = "Single USB adapter detected; used for both Audio and IO."
+    else:
+        first_id = detected[0]["id"]
+        recommended_audio = first_id
+        recommended_io = first_id
+        warning = "Only one (integrated UART) adapter detected. Simultaneous multi-speaker streaming may experience stuttering on RPi 3."
+
+    for item in detected:
+        roles = []
+        if item["id"] == recommended_audio:
+            roles.append("audio")
+        if item["id"] == recommended_io:
+            roles.append("io")
+        item["recommended_roles"] = roles
+
+    return {
+        "ok": True,
+        "recommended_audio_adapter": recommended_audio,
+        "recommended_io_adapter": recommended_io,
+        "adapters": detected,
+        "warning": warning,
+    }
+
+
 def pc_capability_matrix() -> dict[str, dict[str, dict[str, str]]]:
     """Return conservative OS prerequisites; live negotiation remains authoritative."""
     return {
@@ -187,3 +270,4 @@ def pc_capability_matrix() -> dict[str, dict[str, dict[str, str]]]:
             },
         },
     }
+

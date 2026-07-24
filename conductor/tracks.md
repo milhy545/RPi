@@ -64,3 +64,4 @@
 - [ ] **Track: mpv-eof-runtime-return_20260723** — Unify return-to-dashboard across all modes, MPV EOF, keyboard shortcut, and Xbox B hold | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
 
 - [ ] **Track: report_1784787193_bug** — Bug report | [Plan](./tracks/report_1784787193_bug/plan.md)
+- [x] **Track: bluetooth-setup-wizard_20260724** — Bluetooth Setup Wizard | [Plan](./tracks/bluetooth-setup-wizard_20260724/plan.md)

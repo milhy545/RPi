@@ -135,12 +135,20 @@ def devices_compat_state() -> dict[str, Any]:
 def start_discovery(
     adapter_id: str | None = None,
     seconds: int | None = None,
+    isolated: bool = False,
 ) -> dict[str, Any]:
     """Start bounded discovery on a selected or uniquely resolved adapter."""
     state = _run(get_backend().state())
     adapter = _resolve_adapter(state, adapter_id)
     if isinstance(adapter, BluetoothError):
         return _error_response(adapter)
+    if isolated:
+        for other in state.adapters:
+            if other.id != adapter.id and other.discovering:
+                try:
+                    stop_discovery(other.id)
+                except Exception:
+                    pass
     operation = _run(get_backend().start_discovery(adapter.id))
     response = _operation_response(operation)
     if operation.state == "succeeded":
@@ -398,6 +406,81 @@ def device_profile_action(
         runner(resolved_adapter_id, resolved_device_key, normalized)
     )
     return _operation_response(operation)
+
+
+def reset_all_devices() -> dict[str, Any]:
+    """Unpair all devices across all adapters and reset local Bluetooth state."""
+    state = _run(get_backend().state())
+    unpaired_keys = []
+    errors = []
+    for device in state.devices:
+        if device.paired or device.connected:
+            try:
+                op = _run(get_backend().remove(device.adapter_id, device.key))
+                if op.state == "succeeded":
+                    unpaired_keys.append(device.key)
+                else:
+                    errors.append(f"{device.key}: {op.error.message if op.error else op.state}")
+            except Exception as e:
+                errors.append(f"{device.key}: {str(e)}")
+
+    with _AUTO_CONNECT_LOCK:
+        _MANUAL_DISCONNECT_UNTIL.clear()
+
+    return {
+        "ok": True,
+        "unpaired_count": len(unpaired_keys),
+        "unpaired_devices": unpaired_keys,
+        "errors": errors,
+    }
+
+
+def get_adapter_recommendations() -> dict[str, Any]:
+    """Return optimal adapter recommendations for audio vs IO streams."""
+    state_dict = bluetooth_state()
+    adapters = state_dict.get("adapters", [])
+    from .capabilities import recommend_adapter_topology
+
+    return recommend_adapter_topology(adapters)
+
+
+def set_phone_role(
+    adapter_id: str | None = None,
+    device_key: str | None = None,
+    mac: str | None = None,
+    role: str = "source",
+) -> dict[str, Any]:
+    """Configure a phone device as an A2DP audio source or sink."""
+    if role not in {"source", "sink"}:
+        return _error_response(BluetoothError("invalid_role", "Role must be 'source' or 'sink'"))
+    state = _run(get_backend().state())
+    target = _resolve_device(state, adapter_id=adapter_id, device_key=device_key, mac=mac)
+    if isinstance(target, BluetoothError):
+        return _error_response(target)
+    resolved_adapter_id, resolved_device_key = target
+
+    target_uuid = (
+        "0000110a-0000-1000-8000-00805f9b34fb"
+        if role == "source"
+        else "0000110b-0000-1000-8000-00805f9b34fb"
+    )
+    runner = getattr(get_backend(), "connect_profile", None)
+    op_result = None
+    if runner is not None:
+        try:
+            op = _run(runner(resolved_adapter_id, resolved_device_key, target_uuid))
+            op_result = _operation_response(op)
+        except Exception:
+            pass
+
+    return {
+        "ok": True,
+        "adapter_id": resolved_adapter_id,
+        "device_key": resolved_device_key,
+        "role": role,
+        "target_uuid": target_uuid,
+        "profile_operation": op_result,
+    }
 
 
 def obex_state() -> dict[str, Any]:

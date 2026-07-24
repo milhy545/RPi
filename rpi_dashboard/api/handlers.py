@@ -251,6 +251,27 @@ def handle_bt_device_hid(q: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
+def handle_bt_reset(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Unpair all devices and reset local Bluetooth state."""
+    return bluetooth_service.reset_all_devices()
+
+
+def handle_bt_capabilities(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Return adapter hardware recommendations and topology capabilities."""
+    return bluetooth_service.get_adapter_recommendations()
+
+
+def handle_bt_phone_role(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Configure a phone device as an A2DP audio source or sink."""
+    role = _get(q, "role", "source").lower()
+    return bluetooth_service.set_phone_role(
+        adapter_id=_get(q, "adapter_id") or None,
+        device_key=_get(q, "device_key") or None,
+        mac=_get(q, "mac") or None,
+        role=role,
+    )
+
+
 def handle_bt_device_action(q: Dict[str, Any]) -> Dict[str, Any]:
     """Run an adapter-aware Bluetooth device action."""
     action = _get(q, "action")

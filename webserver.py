@@ -2085,6 +2085,9 @@ class H(BaseHTTPRequestHandler):
                 "/bt/operation",
                 "/bt/media",
                 "/bt/pairing",
+                "/bt/reset",
+                "/bt/capabilities",
+                "/bt/phone-role",
             }
             if path in registry_first:
                 handler = get_route(path)

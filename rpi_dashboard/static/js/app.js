@@ -575,3 +575,162 @@ if (document.readyState === 'loading') {
 } else {
     addThemeToggle();
 }
+
+// Bluetooth Setup Wizard Logic
+let BT_WIZARD = {
+    step: 1,
+    audioAdapter: null,
+    ioAdapter: null,
+    capabilities: null,
+    phoneRole: 'source'
+};
+
+async function btOpenWizard() {
+    BT_WIZARD.step = 1;
+    let modal = $('#bt-wizard-modal');
+    if (modal) modal.classList.add('show');
+    let cap = await api('/bt/capabilities');
+    if (cap && cap.ok) {
+        BT_WIZARD.capabilities = cap;
+        BT_WIZARD.audioAdapter = cap.recommended_audio_adapter;
+        BT_WIZARD.ioAdapter = cap.recommended_io_adapter;
+    }
+    btRenderWizardStep();
+}
+
+function btCloseWizard() {
+    let modal = $('#bt-wizard-modal');
+    if (modal) modal.classList.remove('show');
+}
+
+async function btWizardNext() {
+    if (BT_WIZARD.step === 1) {
+        msg('Vynulování Bluetooth zařízení...', 'info');
+        let r = await api('/bt/reset');
+        if (r.ok) {
+            msg('Bluetooth stav byl úspěšně vynulován.', 'ok');
+            BT_WIZARD.step = 2;
+        } else {
+            msg(r.error || 'Vynulování se nepodařilo', 'err');
+            return;
+        }
+    } else if (BT_WIZARD.step === 2) {
+        let selAudio = $('#bt-wiz-select-audio');
+        let selIO = $('#bt-wiz-select-io');
+        if (selAudio) BT_WIZARD.audioAdapter = selAudio.value;
+        if (selIO) BT_WIZARD.ioAdapter = selIO.value;
+        BT_WIZARD.step = 3;
+        await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.ioAdapter || ''));
+    } else if (BT_WIZARD.step === 3) {
+        BT_WIZARD.step = 4;
+        await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+    } else if (BT_WIZARD.step === 4) {
+        BT_WIZARD.step = 5;
+    } else if (BT_WIZARD.step === 5) {
+        msg('Bluetooth Setup Wizard dokončen!', 'ok');
+        btCloseWizard();
+        bluetoothRefresh();
+        return;
+    }
+    btRenderWizardStep();
+}
+
+function btWizardPrev() {
+    if (BT_WIZARD.step > 1) {
+        BT_WIZARD.step--;
+        btRenderWizardStep();
+    }
+}
+
+function btRenderWizardStep() {
+    let body = $('#bt-wizard-body');
+    let prevBtn = $('#bt-wiz-btn-prev');
+    let nextBtn = $('#bt-wiz-btn-next');
+    if (!body) return;
+
+    for (let i = 1; i <= 5; i++) {
+        let badge = $('.step-badge.step-' + i);
+        if (badge) {
+            badge.classList.toggle('active', BT_WIZARD.step === i);
+            badge.classList.toggle('done', BT_WIZARD.step > i);
+        }
+    }
+
+    if (prevBtn) prevBtn.style.visibility = BT_WIZARD.step > 1 ? 'visible' : 'hidden';
+    if (nextBtn) nextBtn.textContent = BT_WIZARD.step === 5 ? 'Dokončit' : (BT_WIZARD.step === 1 ? 'Vynulovat & Pokračovat →' : 'Pokračovat →');
+
+    if (BT_WIZARD.step === 1) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 1: Vynulování stavu Bluetooth (Reset)</h4><div class="bt-wiz-warning">⚠️ <b>Upozornění:</b> Tento krok zruší párování (unpair) všech připojených i spárovaných Bluetooth zařízení na všech adaptérech. Tím zajistíme čistý stav pro optimalizované rozdělení zátěže (load-balancing).</div><p style="font-size:0.88rem;color:#8b949e;margin-top:10px;">RPi 3 má interní adaptér přetížený sběrnicí UART. Pro plynulé audio na dvou reproduktorech přesuneme zvukové streamy na USB dongle.</p></div>';
+    } else if (BT_WIZARD.step === 2) {
+        let caps = BT_WIZARD.capabilities || {};
+        let adapters = caps.adapters || [];
+        let warnHtml = caps.warning ? '<div class="bt-wiz-warning" style="margin-bottom:12px;">⚠️ ' + esc(caps.warning) + '</div>' : '';
+        let optionsHtml = adapters.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + ' (' + esc(a.bus_label) + ')</option>').join('');
+
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 2: Výběr Adaptérů pro Audio a I/O</h4>' + warnHtml + '<p style="font-size:0.88rem;color:#8b949e;">Systém automaticky detekoval dostupné adaptéry a doporučuje následující rozdělení:</p><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;"><div><label style="font-weight:600;display:block;margin-bottom:4px;">Audio Adaptér (Zvuk & Streamování):</label><select id="bt-wiz-select-audio" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;color:#fff;border-radius:6px;">' + optionsHtml + '</select><span style="font-size:0.8rem;color:#3fb950;">Doporučeno: USB Dongle (vyšší šířka pásma)</span></div><div><label style="font-weight:600;display:block;margin-bottom:4px;">I/O Adaptér (Gamepady, Klávesnice, IoT):</label><select id="bt-wiz-select-io" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;color:#fff;border-radius:6px;">' + optionsHtml + '</select><span style="font-size:0.8rem;color:#8b949e;">Doporučeno: Interní UART</span></div></div></div>';
+        setTimeout(() => {
+            let selAudio = $('#bt-wiz-select-audio');
+            let selIO = $('#bt-wiz-select-io');
+            if (selAudio && BT_WIZARD.audioAdapter) selAudio.value = BT_WIZARD.audioAdapter;
+            if (selIO && BT_WIZARD.ioAdapter) selIO.value = BT_WIZARD.ioAdapter;
+        }, 50);
+    } else if (BT_WIZARD.step === 3) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 3: Párování I/O Zařízení (Gamepady, Klávesnice)</h4><p style="font-size:0.88rem;color:#8b949e;">I/O adaptér (<b>' + esc(BT_WIZARD.ioAdapter || '') + '</b>) skenuje okolí. Zapněte párovací režim na ovladači nebo klávesnici.</p><div style="display:flex;gap:10px;margin-top:10px;"><button type="button" class="bt-primary" onclick="btWizardScanIo()" style="padding:6px 14px;">🔍 Skenovat I/O Zařízení</button></div><div id="bt-wiz-io-devices" style="margin-top:12px;max-height:160px;overflow-y:auto;background:#0d1117;padding:8px;border-radius:6px;border:1px solid #30363d;"><em>Vyhledávání zařízení...</em></div></div>';
+        btWizardPopulateIoDevices();
+    } else if (BT_WIZARD.step === 4) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 4: Párování Audio Zařízení (Reproduktory, Soundbar, Telefon)</h4><p style="font-size:0.88rem;color:#8b949e;">Audio adaptér (<b>' + esc(BT_WIZARD.audioAdapter || '') + '</b>) je v režimu vyhledávání. Zapněte párovací režim na reproduktoru nebo telefonu.</p><div style="display:flex;gap:10px;margin-top:10px;"><button type="button" class="bt-primary" onclick="btWizardScanAudio()" style="padding:6px 14px;">🔍 Skenovat Audio Zařízení</button></div><div id="bt-wiz-audio-devices" style="margin-top:12px;max-height:160px;overflow-y:auto;background:#0d1117;padding:8px;border-radius:6px;border:1px solid #30363d;"><em>Vyhledávání zařízení...</em></div><div style="margin-top:12px;padding:10px;background:#161b22;border:1px solid #30363d;border-radius:6px;"><label style="font-weight:600;font-size:0.88rem;display:block;">Role Připojeného Telefonu (A2DP):</label><select id="bt-wiz-phone-role" onchange="btWizardSetPhoneRole(this.value)" style="margin-top:4px;padding:6px;width:100%;background:#0d1117;color:#fff;border:1px solid #30363d;border-radius:4px;"><option value="source" selected>Zdroj Audia (Telefon vysílá hudbu do RPi / Soundbaru)</option><option value="sink">Příjemce Audia (RPi vysílá hudbu do Telefonu / Sluchátek)</option></select></div></div>';
+        btWizardPopulateAudioDevices();
+    } else if (BT_WIZARD.step === 5) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 5: Souhrn Nastavení Topologie</h4><p style="font-size:0.88rem;color:#3fb950;">✅ Optimalizace rozdělení zátěže Bluetooth byla úspěšně nakonfigurována.</p><div style="background:#0d1117;padding:12px;border:1px solid #30363d;border-radius:8px;display:flex;flex-direction:column;gap:8px;"><div><b>Audio Streamy:</b> Spárováno na USB adaptér (<code>' + esc(BT_WIZARD.audioAdapter || '') + '</code>)</div><div><b>I/O Zařízení:</b> Spárováno na interní UART adaptér (<code>' + esc(BT_WIZARD.ioAdapter || '') + '</code>)</div><div><b>Role Telefonu:</b> ' + esc(BT_WIZARD.phoneRole === 'source' ? 'Zdroj Audia (A2DP Source)' : 'Příjemce Audia (A2DP Sink)') + '</div></div><p style="font-size:0.85rem;color:#8b949e;margin-top:10px;">Kliknutím na Dokončit zavřete průvodce a zaktualizujete zobrazení topologie.</p></div>';
+    }
+}
+
+async function btWizardScanIo() {
+    await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.ioAdapter || ''));
+    btWizardPopulateIoDevices();
+}
+
+async function btWizardScanAudio() {
+    await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+    btWizardPopulateAudioDevices();
+}
+
+async function btWizardPopulateIoDevices() {
+    let container = $('#bt-wiz-io-devices');
+    if (!container) return;
+    let state = await api('/bt/state');
+    let devices = (state.devices || []).filter(d => d.adapter_id === BT_WIZARD.ioAdapter);
+    if (!devices.length) {
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na I/O adaptéru. Ujistěte se, že zařízení vysílá.</em>';
+        return;
+    }
+    container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');
+}
+
+async function btWizardPopulateAudioDevices() {
+    let container = $('#bt-wiz-audio-devices');
+    if (!container) return;
+    let state = await api('/bt/state');
+    let devices = (state.devices || []).filter(d => d.adapter_id === BT_WIZARD.audioAdapter);
+    if (!devices.length) {
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na Audio adaptéru. Ujistěte se, že reproduktor/telefon vysílá.</em>';
+        return;
+    }
+    container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');
+}
+
+async function btWizardPairDevice(adapterId, deviceKey) {
+    msg('Párování zařízení...', 'info');
+    let r = await api('/bt/device-action?action=pair&adapter_id=' + encodeURIComponent(adapterId) + '&device_key=' + encodeURIComponent(deviceKey));
+    if (r.ok) {
+        msg('Párování zahájeno.', 'ok');
+    } else {
+        msg(r.error || 'Párování selhalo', 'err');
+    }
+}
+
+async function btWizardSetPhoneRole(role) {
+    BT_WIZARD.phoneRole = role;
+    await api('/bt/phone-role?role=' + encodeURIComponent(role) + '&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+}
+
