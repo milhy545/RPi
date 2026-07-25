@@ -250,12 +250,14 @@ def _find_loopback(source: str, sink: str) -> Optional[str]:
 
 
 def _bluetooth_output_sinks() -> List[str]:
-    """Return physical Bluetooth output sinks currently exposed by PipeWire."""
+    """Return physical output sinks (Bluetooth, HDMI, USB) currently exposed by PipeWire."""
+    valid_prefixes = ("bluez_output.", "alsa_output.platform-3f902000.hdmi", "alsa_output.platform-hdmi", "alsa_output.usb-")
     return [
         item["name"]
         for item in _pactl_lines("sinks")
-        if item["name"].startswith("bluez_output.") and item["name"] != MULTI_OUTPUT_SINK
+        if item["name"] != MULTI_OUTPUT_SINK and any(item["name"].startswith(p) for p in valid_prefixes)
     ]
+
 
 
 def _bluetooth_input_sources() -> List[str]:
@@ -487,7 +489,7 @@ def _start_loopback(source: str, sink: str, rate: int = 48000, channels: int = 2
               f"rate={rate}", f"channels={channels}",
               "channel_map=front-left,front-right",
               "source_dont_move=true", "sink_dont_move=true",
-              "latency_msec=20", "remix=true"], t=10)
+              "latency_msec=50", "remix=true"], t=10)
     if r.returncode == 0:
         try:
             return int(r.stdout.strip())

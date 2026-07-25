@@ -164,8 +164,7 @@ def mpv_start(url, q=None, resume=False):
     import subprocess as _sp
     _sp.run(["pactl","set-card-profile","alsa_card.platform-3f902000.hdmi","output:hdmi-stereo"],
             capture_output=True, timeout=3)
-    _sp.run(["pactl","set-default-sink","alsa_output.platform-3f902000.hdmi.hdmi-stereo"],
-            capture_output=True, timeout=3)
+
     if not resume and mpv_ipc_socket_live():
         save_mpv_resume_memory()
     mpv_stop(); _mq=q or _mq

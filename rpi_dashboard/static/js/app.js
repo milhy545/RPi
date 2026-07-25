@@ -252,7 +252,7 @@ sources.forEach(s=>{
 });
 
 // Render as patchbay
-mixerHtml+='<div style="display:flex;gap:1rem;align-items:stretch;min-height:200px">';
+mixerHtml+='<div style="display:flex;gap:1rem;align-items:stretch;min-height:200px;height:100%">';
 
 // Left column: inputs
 mixerHtml+='<div style="flex:0 0 140px;display:flex;flex-direction:column;gap:.5rem;justify-content:center">';
@@ -266,7 +266,7 @@ inNodes.forEach(n=>{
 mixerHtml+='</div>';
 
 // Middle: connections visual
-mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative" aria-hidden="true">';
+mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:200px;height:100%;box-sizing:border-box" aria-hidden="true">';
 mixerHtml+='<svg style="width:100%;height:100%;position:absolute;top:0;left:0;overflow:visible" viewBox="0 0 200 200" preserveAspectRatio="none">';
 
 // Defs for animated gradient
