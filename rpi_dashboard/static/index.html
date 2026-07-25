@@ -9,28 +9,69 @@
     <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body>
-    <div id="topbar">
-        <h1 id="app-title">RPi-TV</h1>
-        <div style="display:flex;gap:.5rem;align-items:center">
-            <button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer">💬 Feedback</button>
-            <div id="lang-switch">
-                <button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button>
-                <button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button>
+    <div id="webui-app" class="webui-app mode-basic theme-dark">
+        <!-- TOPBAR -->
+        <header class="app-topbar">
+            <div class="app-brand">
+                <span>🍓</span>
+                <span>RPi Control Center</span>
             </div>
-        </div>
-    </div>
-    <div id="security-banner"></div>
-    <div id="toast"></div>
-    
-    <div class="tabs">
-        <button id="tab-player" class="tab active" data-t="player" data-i18n="player" data-icon="🎬" onclick="sw('player')">🎬 Player</button>
-        <button id="tab-apps" class="tab" data-t="apps" data-i18n="apps" data-icon="🚀" onclick="sw('apps')">🚀 Apps</button>
-        <button id="tab-cec" class="tab" data-t="cec" data-i18n="cec" data-icon="📺" onclick="sw('cec')">📺 CEC</button>
-        <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
-        <button id="tab-bluetooth" class="tab" data-t="bluetooth" data-i18n="bluetooth" data-icon="🎮" onclick="sw('bluetooth')">🎮 Bluetooth</button>
-        <button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
-        <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
-    </div>
+            
+            <nav class="app-tabs-horizontal" id="app-tabs-h">
+                <button id="tab-player" class="app-tab-btn tab active" data-t="player" data-i18n="player" onclick="sw('player')">🎬 Player</button>
+                <button id="tab-apps" class="app-tab-btn tab" data-t="apps" data-i18n="apps" onclick="sw('apps')">🚀 Apps</button>
+                <button id="tab-cec" class="app-tab-btn tab" data-t="cec" data-i18n="cec" onclick="sw('cec')">📺 CEC</button>
+                <button id="tab-audio" class="app-tab-btn tab" data-t="audio" data-i18n="audio" onclick="sw('audio');taRefresh()">🔊 Audio</button>
+                <button id="tab-bluetooth" class="app-tab-btn tab" data-t="bluetooth" data-i18n="bluetooth" onclick="sw('bluetooth')">🎮 Bluetooth</button>
+                <button id="tab-devices" class="app-tab-btn tab" data-t="devices" data-i18n="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
+                <button id="tab-terminal" class="app-tab-btn tab" data-t="terminal" data-i18n="terminal" onclick="sw('terminal')">💻 Terminal</button>
+            </nav>
+
+            <div class="app-controls">
+                <button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.25rem .5rem;border-radius:999px;border:1px solid var(--app-border);background:var(--app-panel-2);color:var(--app-text);cursor:pointer">💬 Feedback</button>
+                <div class="app-mode-switch">
+                    <button id="mode-btn-basic" onclick="appSetMode('basic')" class="active">Basic</button>
+                    <button id="mode-btn-expert" onclick="appSetMode('expert')">Expert</button>
+                </div>
+                <div id="lang-switch">
+                    <button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button>
+                    <button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <!-- EXPERT LEFT SIDEBAR -->
+            <aside class="app-sidebar-left">
+                <nav class="app-nav-vertical">
+                    <a class="app-nav-item active" data-t="player" onclick="sw('player')">
+                        <span>🎬</span> <span>Player</span>
+                    </a>
+                    <a class="app-nav-item" data-t="apps" onclick="sw('apps')">
+                        <span>🚀</span> <span>Apps</span>
+                    </a>
+                    <a class="app-nav-item" data-t="cec" onclick="sw('cec')">
+                        <span>📺</span> <span>CEC</span>
+                    </a>
+                    <a class="app-nav-item" data-t="audio" onclick="sw('audio');taRefresh()">
+                        <span>🔊</span> <span>Audio</span>
+                    </a>
+                    <a class="app-nav-item" data-t="bluetooth" onclick="sw('bluetooth')">
+                        <span>🎮</span> <span>Bluetooth</span>
+                    </a>
+                    <a class="app-nav-item" data-t="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">
+                        <span>🧩</span> <span>Devices</span>
+                    </a>
+                    <a class="app-nav-item" data-t="terminal" onclick="sw('terminal')">
+                        <span>💻</span> <span>Terminal</span>
+                    </a>
+                </nav>
+            </aside>
+
+            <!-- MAIN CONTENT AREA -->
+            <main class="app-content">
+                <div id="security-banner"></div>
+                <div id="toast"></div>
 
     <!-- Player Panel -->
     <div id="p-player" class="pnl active">
@@ -165,6 +206,33 @@
 
     <!-- Audio Panel -->
     <div id="p-audio" class="pnl">
+        <div class="audio-topology-container">
+            <div class="audio-topology-header">
+                <div>
+                    <h3 style="margin:0;font-size:1.1rem;color:var(--app-text)">🎵 Audio Flow Topology</h3>
+                    <div class="media-meta">Direct audio routing from active sources to physical outputs. Click a source then output in Basic mode, or drag & drop in Expert mode.</div>
+                </div>
+                <div class="row">
+                    <button class="app-tab-btn" onclick="taRefresh()" data-icon="🔄">🔄 Sync Flow</button>
+                </div>
+            </div>
+            <div class="audio-flow-canvas" id="audio-flow-canvas">
+                <div class="audio-sources-col" id="audio-topo-sources">
+                    <!-- Dynamic source nodes -->
+                </div>
+                <div class="audio-engine-col">
+                    <div class="pipewire-engine-card">
+                        <div>⚡</div>
+                        <div>PipeWire</div>
+                        <div style="font-size:0.65rem;opacity:0.8">48kHz float32</div>
+                    </div>
+                </div>
+                <div class="audio-sinks-col" id="audio-topo-sinks">
+                    <!-- Dynamic sink nodes -->
+                </div>
+            </div>
+        </div>
+
         <div class="sec">
             <div class="media-head">
                 <div>
@@ -450,6 +518,21 @@
                 <button id="bt-wiz-btn-next" type="button" class="bt-primary" onclick="btWizardNext()" style="padding:6px 16px;border-radius:6px;cursor:pointer;">Pokračovat →</button>
             </div>
         </div>
+            </main>
+        </div>
+
+        <!-- STATUSBAR FOOTER -->
+        <footer class="app-statusbar">
+            <div class="app-status-pills">
+                <span class="app-status-pill ok" id="sb-service">● Service Running</span>
+                <span class="app-status-pill" id="sb-bt">📶 Bluetooth Ready</span>
+                <span class="app-status-pill" id="sb-audio">🔊 Audio HDMI</span>
+            </div>
+            <div class="app-status-pills">
+                <span id="sb-cpu">CPU: --</span>
+                <span id="sb-ram">RAM: --</span>
+            </div>
+        </footer>
     </div>
 
     <link rel="stylesheet" href="/static/vendor/xterm.min.css">
