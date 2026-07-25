@@ -815,34 +815,48 @@ def get_audio_matrix() -> Dict[str, Any]:
 
 def audio_matrix_link(out_n: str, in_n: str, state: str) -> Dict[str, Any]:
     """Link or unlink audio nodes in the matrix."""
-    is_dlna = "-uuid:" in in_n
+    if state == "1":
+        # Check if loopback module is already loaded
+        r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
+        if f"source={out_n}" in r.stdout and f"sink={in_n}" in r.stdout:
+            return {"ok": True, "out": "already linked via loopback"}
 
-    if is_dlna:
-        if state == "1":
-            r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
-            if f"source={out_n}" in r.stdout and f"sink={in_n}" in r.stdout:
-                return {"ok": True, "out": "already linked via loopback"}
-            cmd = ["pactl", "load-module", "module-loopback", f"source={out_n}", f"sink={in_n}"]
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            return {"ok": r.returncode == 0, "out": r.stdout.strip()[:200]}
-        else:
-            r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
-            unloaded = False
-            for line in r.stdout.splitlines():
-                if "module-loopback" in line and f"source={out_n}" in line and f"sink={in_n}" in line:
-                    mod_id = line.split()[0]
-                    subprocess.run(["pactl", "unload-module", mod_id])
-                    unloaded = True
-            return {"ok": True, "out": "unloaded" if unloaded else "not found"}
+        # Try loading module-loopback for reliable audio routing between source & sink nodes
+        cmd = ["pactl", "load-module", "module-loopback", f"source={out_n}", f"sink={in_n}"]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode == 0:
+            return {"ok": True, "out": f"loopback module loaded: {r.stdout.strip()[:200]}"}
 
-    cmd = ["pw-link", out_n, in_n] if state == "1" else ["pw-link", "-d", out_n, in_n]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=1.5)
-        out_str = (r.stdout + r.stderr).strip()
-        ok = (r.returncode == 0) or ("File exists" in out_str and state == "1")
-        return {"ok": ok, "out": out_str[:200]}
-    except subprocess.TimeoutExpired:
-        return {"ok": True, "out": "already linked"}
+        # Fallback to direct pw-link for raw PipeWire port-level connections
+        cmd = ["pw-link", out_n, in_n]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            out_str = (r.stdout + r.stderr).strip()
+            ok = (r.returncode == 0) or ("File exists" in out_str)
+            return {"ok": ok, "out": out_str[:200]}
+        except subprocess.TimeoutExpired:
+            return {"ok": True, "out": "already linked"}
+    else:
+        # Unlink: unload matching module-loopback if present
+        unloaded = False
+        r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
+        for line in r.stdout.splitlines():
+            if "module-loopback" in line and f"source={out_n}" in line and f"sink={in_n}" in line:
+                mod_id = line.split()[0]
+                subprocess.run(["pactl", "unload-module", mod_id], capture_output=True, text=True)
+                unloaded = True
+
+        # Also try pw-link -d for direct port connections
+        cmd = ["pw-link", "-d", out_n, in_n]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+            out_str = (r.stdout + r.stderr).strip()
+            pw_ok = (r.returncode == 0)
+        except subprocess.TimeoutExpired:
+            pw_ok = True
+            out_str = "unlinked"
+
+        return {"ok": unloaded or pw_ok, "out": "unloaded" if unloaded else out_str[:200]}
 
 
 def audio_set_volume(kind: str, name: str, volume: int) -> Dict[str, Any]:

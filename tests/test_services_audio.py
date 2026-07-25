@@ -88,6 +88,32 @@ def test_get_audio_matrix():
         assert "links" in result
 
 
+def test_audio_matrix_link():
+    """Test audio matrix linking via module-loopback and fallback."""
+    from rpi_dashboard.services.audio import audio_matrix_link
+    with patch("subprocess.run") as mock_run:
+        # Mock module check (not loaded) and pactl load-module success
+        mock_run.side_effect = [
+            MagicMock(stdout="", returncode=0),
+            MagicMock(stdout="12345", returncode=0),
+        ]
+        res = audio_matrix_link("src_node", "snk_node", "1")
+        assert res["ok"] is True
+        assert "loopback module loaded" in res["out"]
+
+    with patch("subprocess.run") as mock_run:
+        # Mock unlinking: pactl list modules contains loopback
+        mock_run.side_effect = [
+            MagicMock(stdout="12345 module-loopback source=src_node sink=snk_node", returncode=0),
+            MagicMock(stdout="", returncode=0),
+            MagicMock(stdout="", returncode=0),
+        ]
+        res = audio_matrix_link("src_node", "snk_node", "0")
+        assert res["ok"] is True
+        assert res["out"] == "unloaded"
+
+
+
 def test_diagnose_bt_audio_stutter():
     """Test BT audio stutter diagnostics."""
     from rpi_dashboard.services.audio import diagnose_bt_audio_stutter

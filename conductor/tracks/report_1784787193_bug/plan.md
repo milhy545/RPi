@@ -8,4 +8,4 @@ Description: zadny vstup krome prehravace nehraje z HDMI po zaskrtnuti v audio m
 ## Tasks
 | # | Description | Owner | Status |
 |---|-------------|-------|--------|
-| 1 | Investigate and resolve the report | agent | ⏳ Pending |
+| 1 | Investigate and resolve the report | agent | [x] Complete |

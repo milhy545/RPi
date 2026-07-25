@@ -63,7 +63,7 @@
 - [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
 - [ ] **Track: mpv-eof-runtime-return_20260723** — Unify return-to-dashboard across all modes, MPV EOF, keyboard shortcut, and Xbox B hold | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
 
-- [ ] **Track: report_1784787193_bug** — Bug report | [Plan](./tracks/report_1784787193_bug/plan.md)
+- [x] **Track: report_1784787193_bug** — HDMI Audio Mixer Routing Fix — module-loopback for non-player sources | [Plan](./tracks/report_1784787193_bug/plan.md)
 - [x] **Track: bluetooth-setup-wizard_20260724** — Bluetooth Setup Wizard | [Plan](./tracks/bluetooth-setup-wizard_20260724/plan.md)
 - [x] **Track: multi-output-audio-mpv_20260725** — Multi-Output Audio Distribution for BT Source (Realme 8) & MPV Player | [Plan](./tracks/multi-output-audio-mpv_20260725/plan.md)
 
