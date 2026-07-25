@@ -79,11 +79,11 @@ prepare_candidate() {
   if [[ -n "$(git status --porcelain)" ]]; then
     local backup
     backup="ci-dirty-backup-$(date +%Y%m%d-%H%M%S)"
-    echo "Dirty worktree detected; stashing as $backup"
+    echo "Dirty worktree detected; stashing as $backup" >&2
     git stash push -u -m "$backup" >/dev/null
   fi
 
-  echo "Checking out candidate $source_sha"
+  echo "Checking out candidate $source_sha" >&2
   git checkout -B "$BRANCH" FETCH_HEAD
   printf '%s\n' "$source_sha"
 }
