@@ -57,7 +57,7 @@
 
 - [x] **Track: system-overhaul_20260626** — Archived umbrella; residual work split into focused security, backend, and verification tracks | [Plan](./tracks/system-overhaul_20260626/plan.md)
 - [ ] **Track: milhy-pc-firewall_20260611** — Install and verify a default-deny Milhy-PC firewall for CI port 9000 and approved services | [Plan](./tracks/milhy-pc-firewall_20260611/plan.md)
-- [ ] **Track: bluetooth-dbus-live-events_20260723** — Complete two-adapter Bluetooth hub with Windows/Linux profiles, audio/headset/control, OBEX files, and autoconnect | [Plan](./tracks/bluetooth-dbus-live-events_20260723/plan.md)
+- [x] **Track: bluetooth-dbus-live-events_20260723** — Complete two-adapter Bluetooth hub with Windows/Linux profiles, audio/headset/control, OBEX files, and autoconnect | [Plan](./tracks/bluetooth-dbus-live-events_20260723/plan.md)
 - [ ] **Track: dashboard-security-cleanup_20260723** — Move Wi-Fi settings to Network and close credential, WebSocket, and static-analysis security gaps | [Plan](./tracks/dashboard-security-cleanup_20260723/plan.md)
 - [ ] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
 - [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)

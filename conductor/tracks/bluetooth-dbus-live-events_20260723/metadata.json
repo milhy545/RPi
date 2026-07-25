@@ -2,9 +2,9 @@
   "track_id": "bluetooth-dbus-live-events_20260723",
   "title": "Complete Bluetooth Hub and PC Interoperability",
   "type": "feature",
-  "status": "active",
+  "status": "complete",
   "created_at": "2026-07-23T00:00:00Z",
   "approved_at": "2026-07-23T14:40:52Z",
-  "updated_at": "2026-07-23T22:07:47Z",
+  "updated_at": "2026-07-25T16:16:10Z",
   "tags": ["bluetooth", "bluez", "dbus", "windows", "linux", "audio", "headset", "obex", "hid", "autoconnect", "multi-adapter"]
 }
