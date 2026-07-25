@@ -489,7 +489,7 @@ def _start_loopback(source: str, sink: str, rate: int = 48000, channels: int = 2
               f"rate={rate}", f"channels={channels}",
               "channel_map=front-left,front-right",
               "source_dont_move=true", "sink_dont_move=true",
-              "latency_msec=50", "remix=true"], t=10)
+              "remix=true"], t=10)
     if r.returncode == 0:
         try:
             return int(r.stdout.strip())

@@ -422,3 +422,36 @@ pre{background:#161b22;padding:.6rem;border-radius:.3rem;overflow:auto;font-size
   box-shadow: 0 0 16px color-mix(in srgb, var(--app-cyan) 25%, transparent);
 }
 
+
+.audio-topo-lines {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+.audio-topo-lines path {
+    fill: none;
+    stroke: #3fb950;
+    stroke-width: 3px;
+    opacity: 0.7;
+    transition: all 0.3s ease;
+}
+.audio-node-card {
+    position: relative;
+    z-index: 2;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.audio-node-card.drag-over {
+    border-color: #58a6ff;
+    box-shadow: 0 0 10px rgba(88,166,255,0.4);
+    transform: scale(1.02);
+}
+.audio-node-card[draggable="true"] {
+    cursor: grab;
+}
+.audio-node-card[draggable="true"]:active {
+    cursor: grabbing;
+}
+.mode-expert .audio-node-card {
+    cursor: grab;
+}

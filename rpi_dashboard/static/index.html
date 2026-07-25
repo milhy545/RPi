@@ -217,11 +217,12 @@
                 </div>
             </div>
             <div class="audio-flow-canvas" id="audio-flow-canvas">
+                <svg id="audio-topo-lines" class="audio-topo-lines" aria-hidden="true"></svg>
                 <div class="audio-sources-col" id="audio-topo-sources">
                     <!-- Dynamic source nodes -->
                 </div>
                 <div class="audio-engine-col">
-                    <div class="pipewire-engine-card">
+                    <div class="pipewire-engine-card" id="audio-engine-node">
                         <div>⚡</div>
                         <div>PipeWire</div>
                         <div style="font-size:0.65rem;opacity:0.8">48kHz float32</div>
