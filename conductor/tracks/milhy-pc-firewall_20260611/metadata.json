@@ -2,10 +2,17 @@
   "track_id": "milhy-pc-firewall_20260611",
   "title": "Milhy-PC Firewall Rules",
   "type": "security",
-  "status": "planned",
+  "status": "implementation",
   "created": "2026-06-11T00:00:00Z",
-  "updated": "2026-06-11T00:00:00Z",
+  "updated": "2026-07-26T00:00:00Z",
   "priority": "high",
   "tags": ["firewall", "nftables", "security", "tailscale"],
-  "dependencies": []
+  "dependencies": [],
+  "implementation_notes": {
+    "setup_script": "/tmp/milhy-pc-firewall-setup.sh",
+    "test_script": "/tmp/test-milhy-pc-firewall.sh",
+    "protected_ports": [9000, 9108, 9200],
+    "allowed_interface": "tailscale0",
+    "systemd_service": "milhy-pc-firewall.service"
+  }
 }

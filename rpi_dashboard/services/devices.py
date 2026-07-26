@@ -364,14 +364,26 @@ def wifi_scan() -> Dict[str, Any]:
 
 
 def wifi_connect(ssid: str, password: str = "") -> Dict[str, Any]:
-    """Connect to a WiFi network."""
+    """Connect to a WiFi network.
+    
+    Security fix: Uses stdin instead of command line arguments to prevent
+    password exposure in process listings (ps aux, /proc/*/cmdline).
+    """
     try:
         if password:
-            cmd = ["nmcli", "dev", "wifi", "connect", ssid, "password", password]
+            # Use stdin to pass password securely (not visible in argv)
+            cmd = ["nmcli", "--pass-stdin", "dev", "wifi", "connect", ssid]
+            r = subprocess.run(
+                cmd,
+                input=password,
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
         else:
             cmd = ["nmcli", "dev", "wifi", "connect", ssid]
-
-        r = _run(cmd, t=15)
+            r = _run(cmd, t=15)
+        
         return {"ok": r.returncode == 0, "output": r.stdout.strip()[:200]}
     except Exception as e:
         return {"ok": False, "error": str(e)}

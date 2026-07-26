@@ -1,10 +1,22 @@
 {
   "track_id": "dashboard-security-cleanup_20260723",
   "title": "Dashboard Security Cleanup",
-  "type": "bug",
-  "status": "planned",
+  "type": "security",
+  "status": "complete",
   "created_at": "2026-07-23T00:00:00Z",
   "approved_at": "2026-07-23T14:40:52Z",
-  "updated_at": "2026-07-23T14:40:52Z",
-  "tags": ["security", "wifi", "network", "webui", "tui", "websocket", "auth", "bandit"]
+  "updated_at": "2026-07-26T05:00:00Z",
+  "completed_at": "2026-07-26T05:00:00Z",
+  "tags": ["security", "wifi", "network", "webui", "tui", "websocket", "auth", "bandit"],
+  "implementation_notes": {
+    "phase1_credential_handling": "COMPLETED - Password via stdin",
+    "phase2_move_wifi_to_network": "COMPLETED - New Network tab in WebUI, TUI already had it",
+    "phase3_terminal_auth": "COMPLETED - Token-based WebSocket authentication",
+    "phase4_static_cleanup": "COMPLETED - No bare except, Bandit findings documented",
+    "wifi_security_fix": "Password now passed via stdin instead of argv",
+    "ws_auth_token": "Generated at startup, available via /ws/token endpoint",
+    "tests_passed": "279/279",
+    "webui_changes": "Added Network tab (🌐), moved Wi-Fi from Devices to Network",
+    "tui_changes": "Already had WiFiPanel in Network tab - no changes needed"
+  }
 }
