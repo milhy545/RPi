@@ -21,6 +21,7 @@ from config import (
 from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route
 from rpi_dashboard.services import devices as devices_service
+from rpi_dashboard.services import return_service
 # URL metadata cache for faster playback
 URL_CACHE_FILE = os.path.join(os.path.expanduser("~"), "rpi-dashboard", "url-cache.json")
 URL_CACHE_TTL = 3600 * 24  # 24 hours
@@ -2699,6 +2700,22 @@ class H(BaseHTTPRequestHandler):
             client_ip=self.client_address[0]
             filename=_save_report({**report, "timestamp": int(time.time())}, client_ip)
             return self.sj(201,{"ok":True,"file": filename})
+        # Handle return to dashboard via POST /return
+        if self.path == "/return":
+            try:
+                data = {}
+                if ln > 0:
+                    try:
+                        data = json.loads(body)
+                    except Exception:
+                        data = {}
+                reason = data.get("reason", "unknown")
+                source = data.get("source", "webapi")
+                ok = return_service.return_to_dashboard(reason, source)
+                self.sj(200, {"ok": ok})
+            except Exception as e:
+                self.sj(500, {"error": str(e)})
+            return
         # Existing deprecated endpoint handling
         u=(parse_qs(body).get("url")or[""])[0].strip()
         if not u: return self.st(400,page())

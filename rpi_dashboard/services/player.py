@@ -10,6 +10,7 @@ import socket
 import subprocess
 import sys
 import time
+from . import return_service
 from typing import Any, Dict, Optional
 
 # Constants
@@ -269,13 +270,11 @@ def mpv_auto_return_on_eof() -> Dict[str, Any]:
     def on_eof():
         # Save resume memory
         save_mpv_resume_memory()
-        # Stop mpv
-        mpv_stop()
-        print("[INFO] mpv EOF reached, returning to dashboard", file=sys.stderr)
+        # Return to dashboard via the return service
+        from . import return_service
+        return_service.return_to_dashboard(reason="eof", source="mpv_eof")
     
     return {"ok": mpv_listen_for_eof(callback=on_eof)}
-
-
 def cleanup_stale_mpv_socket() -> None:
     """Remove stale mpv socket file."""
     try:

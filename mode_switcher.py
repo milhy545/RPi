@@ -166,6 +166,21 @@ class ModeSwitcher:
                         break
                     await asyncio.sleep(0.1)
 
+    def request_stop(self) -> bool:
+        """Request stopping of the currently running subprocess.
+        This method can be called from another thread or context to
+        request termination of the active process.
+
+        Returns:
+            True if a process was terminated, False if no process was
+            running.
+        """
+        if self.active_process is not None and self.active_process.poll() is None:
+            self.log_buffer.write('[SYSTEM] Requesting stop of active process via request_stop.')
+            self.active_process.terminate()
+            return True
+        return False
+
     def _handle_sigterm(self):
         if self._loop is None:
             if self.state == ModeSwitcherState.IDLE:

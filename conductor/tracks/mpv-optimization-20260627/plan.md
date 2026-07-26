@@ -38,18 +38,14 @@
 
 ## Implementation Notes
 
-### URL Cache
-- File: `~/rpi-dashboard/url-cache.json`
-- TTL: 24 hours
-- Cache hit: <100ms (instant)
+- **URL Cache**: File: `~/rpi-dashboard/url-cache.json`, TTL: 24 hours, Cache hit: <100ms
+- **Socket Pool**: Max size: 3 connections, Auto-reconnect on failure, Health check before reuse, Stats: `/pool/stats` endpoint
+- **Bugs Fixed During Development**:
+  - Reset Matrix button now works (added 'reset' action to audio/route/alexa-bt endpoint)
+  - Bluetooth scan timeout increased from 2s to 5s
+- **Tests**: All 284 tests pass
 
-### Socket Pool
-- Max size: 3 connections
-- Auto-reconnect on failure
-- Health check before reuse
-- Stats: `/pool/stats` endpoint
+## Completion
 
-### Performance Impact
-- **Cache Miss:** ~5-10s (yt-dlp)
-- **Cache Hit:** <100ms
-- **Socket Reuse:** ~50% faster IPC commands
+Track completed on 2026-07-26. All phase1 tasks are finished. The next optimizations (async preloading, dynamic core pinning, memory optimization) are planned for future iterations.
+

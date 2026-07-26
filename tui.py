@@ -769,6 +769,9 @@ class RPiDashboard(App):
         }
         self._settings_cache_ttl = 10.0
         self.mode_switcher = ModeSwitcher(self)
+        from rpi_dashboard.services import return_service
+        return_service.set_mode_switcher(self.mode_switcher)
+        return_service.start_xbox_listener()
         self.apply_language()
         
         self.write_log(self.tr("loaded"))

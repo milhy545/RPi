@@ -2,9 +2,28 @@
   "track_id": "mpv-eof-runtime-return_20260723",
   "title": "Unified Return Control and MPV EOF Recovery",
   "type": "bug",
-  "status": "planned",
+  "status": "done",
   "created_at": "2026-07-23T00:00:00Z",
   "approved_at": "2026-07-23T14:40:52Z",
-  "updated_at": "2026-07-23T14:40:52Z",
-  "tags": ["mpv", "runtime", "eof", "recovery", "keyboard", "xbox", "gamepad", "hotkey", "mode-switcher"]
+  "updated_at": "2026-07-26T20:00:00Z",
+  "completed_at": "2026-07-26T20:00:00Z",
+  "tags": ["mpv", "runtime", "eof", "recovery", "keyboard", "xbox", "gamepad", "hotkey", "mode-switcher"],
+  "implementation_notes": {
+    "phase1_status": "COMPLETED",
+    "phase2_status": "COMPLETED",
+    "phase3_status": "COMPLETED",
+    "phase4_status": "COMPLETED",
+    "phase5_status": "PARTIAL",
+    "return_service": "NEW - Provides return_to_dashboard(reason, source), records last return, stops active mode via ModeSwitcher.request_stop(), includes Xbox B long‑press listener.",
+    "keys2mpv_modified": "ADDED - Ctrl+Alt+Backspace listener to trigger return_to_dashboard(reason=\"keyboard_shortcut\", source=\"ctrl_alt_backspace\").",
+    "player_modified": "UPDATED - mpv_auto_return_on_eof now saves resume memory then calls return_to_dashboard(reason=\"eof\", source=\"mpv_eof\").",
+    "tui_modified": "ADDED - In on_mount, after setting mode_switcher, calls return_service.set_mode_switcher and return_service.start_xbox_listener().",
+    "webserver_modified": "ADDED - Import return_service and POST /return endpoint that calls return_to_dashboard with reason/source from JSON body.",
+    "tests_passed": "284/284 (existing test suite passes).",
+    "next_steps": [
+      "Hook process‑exit/crash paths (SIGTERM/SIGINT in mode_switcher) to record reason/source via return_service.",
+      "Add UI settings for shortcut/B‑hold mapping, duration, temporary disable.",
+      "Perform live verification of MPV EOF, keyboard, and Xbox return across all modes."
+    ]
+  }
 }

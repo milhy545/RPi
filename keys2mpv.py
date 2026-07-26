@@ -2,6 +2,7 @@
 """
 keys2mpv — Multimedia keyboard daemon for RPi.
 Reads /dev/input/event2 directly, sends commands to mpv via IPC.
+Also handles global hotkeys like Ctrl+Alt+Backspace to return to dashboard.
 Works independently of TUI/webserver — runs as background service.
 """
 import json
@@ -10,6 +11,8 @@ import signal
 import socket
 import struct
 import sys
+
+from rpi_dashboard.services import return_service
 
 INPUT_DEV = "/dev/input/event2"
 SOCKETS = ["/tmp/rpi-mpv.sock", "/tmp/mpv-socket"]
@@ -23,6 +26,11 @@ KEYMAP = {
     115: (["add", "volume", "5"], "🔊  Vol+5"),    # reversed
     113: (["set", "mute", "yes"], "🔇  Mute"),
 }
+
+# Keycodes for modifiers we care about for Ctrl+Alt+Backspace
+CTRL_KEYS = {29, 97}          # Left Ctrl (29), Right Ctrl (97)
+ALT_KEYS = {56, 100}          # Left Alt (56), Right Alt (100, AltGr)
+BACKSPACE_KEY = 14
 
 def find_socket():
     """Find active mpv IPC socket."""
@@ -79,15 +87,38 @@ def main():
     
     print(f"keys2mpv: Listening on {INPUT_DEV}")
     print(f"keys2mpv: Sockets: {SOCKETS}")
+    print("keys2mpv: Listening for Ctrl+Alt+Backspace to return to dashboard")
     print("keys2mpv: Press Ctrl+C or kill to stop")
+    
+    # Track state of modifier keys
+    ctrl_pressed = False
+    alt_pressed = False
     
     with open(INPUT_DEV, 'rb') as f:
         while True:
             data = f.read(24)
             if len(data) == 24:
                 _, _, ev_type, ev_code, ev_value = struct.unpack('llHHi', data)
-                if ev_type == 1 and ev_value == 1:  # Key press (down only)
-                    if ev_code in KEYMAP:
+                if ev_type == 1:  # Key event
+                    if ev_code in CTRL_KEYS:
+                        ctrl_pressed = (ev_value == 1)  # 1 = press, 0 = release
+                    elif ev_code in ALT_KEYS:
+                        alt_pressed = (ev_value == 1)
+                    elif ev_code == BACKSPACE_KEY and ev_value == 1:  # Backspace pressed
+                        if ctrl_pressed and alt_pressed:
+                            # Trigger return to dashboard
+                            try:
+                                return_service.return_to_dashboard(
+                                    reason="keyboard_shortcut",
+                                    source="ctrl_alt_backspace"
+                                )
+                                print("keys2mpv: Ctrl+Alt+Backspace -> return to dashboard")
+                            except Exception as e:
+                                print(f"keys2mpv: Error triggering return: {e}")
+                            # Do not send Backspace to mpv
+                            continue
+                    # If we get here and it's a key press (down) and in KEYMAP, send to mpv
+                    if ev_value == 1 and ev_code in KEYMAP:
                         cmd, label = KEYMAP[ev_code]
                         ok = mpv_cmd(cmd)
                         if ok:
