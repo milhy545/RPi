@@ -123,7 +123,7 @@ def _xbox_listener_loop() -> None:
     """Background thread to monitor Xbox B button presses."""
     BTN_EAST = 0x12e  # from linux/input.h
     # Map file descriptor to press timestamp (or None if not pressed)
-    press_times: Dict[int, float] = {}
+    press_times: Dict[int, Optional[float]] = {}
     # Map file descriptor to device path for cleanup/reporting
     fd_to_path: Dict[int, str] = {}
     # Rescan interval for hotplug (seconds)
@@ -197,8 +197,8 @@ def _xbox_listener_loop() -> None:
             continue
         rlist, _, _ = select.select(list(fd_to_path.keys()), [], [], 0.1)
         for fd in rlist:
-            path = fd_to_path.get(fd)
-            if path is None:
+            device_path: Optional[str] = fd_to_path.get(fd)
+            if device_path is None:
                 continue
             try:
                 data = os.read(fd, 24)  # size of struct input_event
