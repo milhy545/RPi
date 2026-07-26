@@ -25,7 +25,7 @@
 - [x] **Track: audio-devices-age-routes** — Promote Audio, add Devices, and add YouTube age diagnostics | [Plan](./tracks/audio-devices-age-routes_20260613/plan.md)
 - [x] **Track: project-docs-reference** — Complete project documentation reference | [Plan](./tracks/project-docs-reference_20260613/plan.md)
 - [x] **Track: webui-bilingual-i18n** — Add Czech/English WebUI switch with flags | [Plan](./tracks/webui-bilingual-i18n_20260613/plan.md)
-- [ ] **Track: webui-czech-completion** — Add missing EN/CZ translations in WebUI — planned, not yet completed | [Plan](./tracks/webui-czech-completion_20260613/plan.md)
+- [x] **Track: webui-czech-completion** — Add missing EN/CZ translations in WebUI — completed | [Plan](./tracks/webui-czech-completion_20260613/plan.md)
 - [x] **Track: player-preview-clipboard** — Player thumbnail and clipboard paste | [Plan](./tracks/player-preview-clipboard_20260613/plan.md)
 - [ ] **Track: android-share-app** — Android share-target app — planned, not yet implemented | [Plan](./tracks/android-share-app_20260613/plan.md)
 - [ ] **Track: smart-home-integrations** — Alexa, Google Home, Home Assistant integrations — planned, not yet implemented | [Plan](./tracks/smart-home-integrations_20260613/plan.md)
@@ -43,6 +43,7 @@
 - [x] **Track: friendly-webui-ports-hostnames** — Friendly WebUI ports and hostnames | [Plan](./tracks/friendly-webui-ports-hostnames_20260616/plan.md)
 - [x] **Track: http-https-fallback-banner** — HTTP fallback with HTTPS clipboard banner | [Plan](./tracks/http-https-fallback-banner_20260616/plan.md)
 - [x] **Track: remove-kodi-tab** — Remove Kodi tab from WebUI | [Plan](./tracks/remove-kodi-tab_20260616/plan.md)
+- [ ] **Track: mpv-optimization-20260627** — Optimize video loading and MPV startup for faster playback | [Plan](./tracks/mpv-optimization-20260627/plan.md)
 
 - [x] **Track: report_1782888036_feature** — Audio Matrix Patchbay (DLNA loopback support) | [Plan](./tracks/report_1782888036_feature/plan.md)
 
