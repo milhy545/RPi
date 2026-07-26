@@ -225,13 +225,13 @@ def bluetooth_scan_devices(seconds: int = 5) -> Dict[str, Any]:
     """Scan for Bluetooth devices."""
     try:
         seconds = max(2, min(12, int(seconds or 5)))
-        # Start discovery
-        _run(["bluetoothctl", "scan", "on"], t=2)
+        # Start discovery (increase timeout to 5s for slow adapters)
+        _run(["bluetoothctl", "scan", "on"], t=5)
         # Wait for scan
         import time
         time.sleep(seconds)
         # Stop discovery
-        _run(["bluetoothctl", "scan", "off"], t=2)
+        _run(["bluetoothctl", "scan", "off"], t=5)
         # Get scanned devices
         devices = _bt_scanned_devices()
         paired = _bt_paired_devices()

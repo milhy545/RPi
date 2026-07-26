@@ -21,6 +21,9 @@ from config import (
 from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route
 from rpi_dashboard.services import devices as devices_service
+# URL metadata cache for faster playback
+URL_CACHE_FILE = os.path.join(os.path.expanduser("~"), "rpi-dashboard", "url-cache.json")
+URL_CACHE_TTL = 3600 * 24  # 24 hours
 HTTPS_CERT_DIR = os.path.join(os.path.expanduser("~"), ".config", "rpi-dashboard", "https")
 HTTPS_CERT_FILE = os.path.join(HTTPS_CERT_DIR, "webui.crt")
 HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
@@ -54,9 +57,41 @@ def yt_id(u: str) -> str:
     """Extract YouTube video ID from URL."""
     m=YT_RE.search(norm(u)); return m.group(1) if m else ""
 
+class _URLCache:
+    """Simple file-based cache for resolved YouTube URLs to avoid repeated yt-dlp calls."""
+    def __init__(self):
+        self._file = URL_CACHE_FILE
+        self._ttl = URL_CACHE_TTL
+        self._data = self._load()
+    def _load(self):
+        try:
+            if os.path.exists(self._file):
+                with open(self._file) as f: return json.load(f)
+        except Exception: pass
+        return {}
+    def _save(self):
+        try:
+            os.makedirs(os.path.dirname(self._file), exist_ok=True)
+            with open(self._file, "w") as f: json.dump(self._data, f)
+        except Exception: pass
+    def get(self, vid):
+        e = self._data.get(vid)
+        if e and time.time() - e.get("t", 0) < self._ttl:
+            return e.get("m")
+        if e: del self._data[vid]; self._save()
+        return None
+    def put(self, vid, meta):
+        self._data[vid] = {"m": meta, "t": time.time()}
+        self._save()
+_url_cache = _URLCache()
+
 def resolve(url, q=None):
     vid=yt_id(url)
     if not vid: return norm(url), {"title": url[:50]}
+    # Check cache first for instant playback
+    cached = _url_cache.get(vid)
+    if cached and cached.get("url"):
+        return cached["url"], cached.get("meta", {})
     fmt=QUALITY.get(q or DQ, QUALITY[DQ])
     try: import yt_dlp as youtube_dl
     except Exception as e: return url, {"error":str(e)}
@@ -73,7 +108,10 @@ def resolve(url, q=None):
         fmts.sort(key=lambda f:(f.get("height") or 0), reverse=True)
         if fmts: surl=fmts[0].get("url")
     if not surl: raise RuntimeError("No playable URL")
-    return surl, {"id":vid,"title":info.get("title",f"YT {vid}"),"h":info.get("height"),"dur":info.get("duration")}
+    meta = {"id":vid,"title":info.get("title",f"YT {vid}"),"h":info.get("height"),"dur":info.get("duration")}
+    # Cache the resolved URL and metadata
+    _url_cache.put(vid, {"url": surl, "meta": meta})
+    return surl, meta
 
 def kodi_rpc(m, p=None, t=3):
     r={"jsonrpc":"2.0","method":m,"id":1}
@@ -100,10 +138,75 @@ def kodi_rpc(m, p=None, t=3):
 
 _mpv=None; _mq=DQ; _mtitle=""; _murl=""
 
+class _MPVSocketPool:
+    """Pool of reusable Unix socket connections to mpv IPC."""
+    def __init__(self, path=MSOCK, max_size=3, timeout=2.0):
+        self._path = path
+        self._max_size = max_size
+        self._timeout = timeout
+        self._pool = []  # Available sockets
+        self._in_use = set()  # Currently in use
+    def _create_socket(self):
+        """Create a new socket connection."""
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(self._timeout)
+        s.connect(self._path)
+        return s
+    def get(self):
+        """Get a socket from the pool, or create a new one."""
+        # Try to reuse an existing socket
+        while self._pool:
+            s = self._pool.pop()
+            try:
+                # Test if socket is still alive
+                s.settimeout(0.1)
+                s.recv(1, socket.MSG_PEEK)
+                s.settimeout(self._timeout)
+                self._in_use.add(id(s))
+                return s
+            except (socket.timeout, BlockingIOError):
+                # Socket timed out waiting for data - it's alive but idle
+                self._in_use.add(id(s))
+                s.settimeout(self._timeout)
+                return s
+            except Exception:
+                # Socket is dead, close it
+                try: s.close()
+                except: pass
+        # Create new socket if pool is empty
+        try:
+            s = self._create_socket()
+            self._in_use.add(id(s))
+            return s
+        except Exception:
+            return None
+    def put(self, s):
+        """Return a socket to the pool for reuse."""
+        if s is None: return
+        self._in_use.discard(id(s))
+        if len(self._pool) < self._max_size:
+            self._pool.append(s)
+        else:
+            try: s.close()
+            except: pass
+    def close_all(self):
+        """Close all sockets in the pool."""
+        for s in self._pool:
+            try: s.close()
+            except: pass
+        self._pool.clear()
+        self._in_use.clear()
+    def stats(self):
+        """Return pool statistics."""
+        return {"available": len(self._pool), "in_use": len(self._in_use), "max_size": self._max_size}
+
+_mpv_pool = _MPVSocketPool()
+
 def mcmd(*a):
     if not os.path.exists(MSOCK): return {"error":"not running"}
+    s = _mpv_pool.get()
+    if s is None: return {"error":"connection failed"}
     try:
-        s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.connect(MSOCK); s.settimeout(2)
         s.sendall((json.dumps({"command":list(a)})+"\n").encode())
         d=b""
         while True:
@@ -111,8 +214,12 @@ def mcmd(*a):
             if not c: break
             d+=c
             if b"\n" in d: break
-        s.close(); return json.loads(d.decode().strip().split("\n")[-1])
-    except Exception as e: return {"error":str(e)}
+        _mpv_pool.put(s)
+        return json.loads(d.decode().strip().split("\n")[-1])
+    except Exception as e:
+        try: s.close()
+        except: pass
+        return {"error":str(e)}
 
 def mget(p): return mcmd("get_property",p)
 
@@ -795,6 +902,36 @@ def audio_matrix_link(out_n, in_n, state):
         return {"ok": True, "out": "already linked"}
 
 
+def audio_matrix_reset():
+    """Reset audio matrix: disconnect all custom links and unload loopback modules."""
+    import subprocess
+    disconnected = 0
+    unloaded = 0
+    # 1) Unload all module-loopback (DLNA routing)
+    try:
+        r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True, timeout=3)
+        for line in r.stdout.splitlines():
+            if "module-loopback" in line:
+                mod_id = line.split()[0]
+                subprocess.run(["pactl", "unload-module", mod_id], capture_output=True, timeout=3)
+                unloaded += 1
+    except Exception:
+        pass
+    # 2) Disconnect all PipeWire links between audio nodes
+    try:
+        matrix = get_audio_matrix()
+        for link in matrix.get("links", []):
+            out_id, in_id = link
+            try:
+                subprocess.run(["pw-link", "-d", str(out_id), str(in_id)], capture_output=True, timeout=1)
+                disconnected += 1
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return {"ok": True, "out": f"Reset done: {disconnected} links disconnected, {unloaded} loopbacks unloaded"}
+
+
 def audio_set_volume(kind, name, volume):
     if kind not in ("sink", "source"): return {"ok":False,"error":"kind must be sink or source"}
     if not name: return {"ok":False,"error":"name required"}
@@ -1209,6 +1346,8 @@ def audio_route_alexa_bt(action):
                 f"source={USB_ALEXA_SRC}",f"sink={BT_SOUNDBAR_SINK}","rate=48000","channels=2",
                 "channel_map=front-left,front-right","source_dont_move=true","sink_dont_move=true","latency_msec=20","remix=true"], t=10)
         return {"ok":r.returncode==0,"route":"alexa_to_bt","on":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
+    if action=="reset":
+        return audio_matrix_reset()
     return {"ok":False,"error":"bad action"}
 
 # ── Devices, Wi-Fi, and YouTube diagnostics ───────────────────────────
@@ -2169,6 +2308,10 @@ class H(BaseHTTPRequestHandler):
                 else:
                     self.sj(200,{"ok":True,"memory":"mpv not running"})
             elif path=="/ws/token": self.sj(200,{"token":WS_AUTH_TOKEN})
+            elif path=="/cache/stats": self.sj(200,{"entries":len(_url_cache._data),"ttl_hours":URL_CACHE_TTL//3600})
+            elif path=="/cache/clear": _url_cache._data={};_url_cache._save();self.sj(200,{"ok":True,"message":"Cache cleared"})
+            elif path=="/pool/stats": self.sj(200,_mpv_pool.stats())
+            elif path=="/pool/clear": _mpv_pool.close_all();self.sj(200,{"ok":True,"message":"Pool cleared"})
             elif path=="/cec/send":
                 c=(q.get("c")or[""])[0].strip()
                 if not c: return self.sj(400,{"error":"no cmd"})
@@ -2788,19 +2931,42 @@ def start_https_server(port=HTTPS_PORT, label="HTTPS"):
 
 def mpv_ipc_query(command, path=MSOCK, quiet=True):
     """Send a JSON command to mpv IPC socket and return the parsed JSON response.
+    Uses socket pool for connection reuse when using default path.
     Returns None on failure. Expected stale-socket errors stay quiet by default.
     """
     if not os.path.exists(path) or not stat.S_ISSOCK(os.stat(path).st_mode):
         return None
+    # Use pool for default path, direct connection for custom paths
+    use_pool = (path == MSOCK)
+    s = _mpv_pool.get() if use_pool else None
+    if s is None and use_pool:
+        # Pool exhausted or failed, fall back to direct connection
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(1.0)
+            s.connect(path)
+        except Exception:
+            s = None
+    elif s is None and not use_pool:
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(1.0)
+            s.connect(path)
+        except Exception:
+            s = None
+    if s is None:
+        return None
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1.0)
-        s.connect(path)
         s.sendall((json.dumps(command) + "\n").encode('utf-8'))
         data = s.recv(SOCKET_RECV_SIZE)
-        s.close()
+        if use_pool:
+            _mpv_pool.put(s)
+        else:
+            s.close()
         return json.loads(data.decode('utf-8'))
     except Exception as e:
+        try: s.close()
+        except: pass
         if not quiet:
             print(f"[mpv_ipc_query] {type(e).__name__}: {e}", file=sys.stderr)
         return None
