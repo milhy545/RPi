@@ -1,0 +1,21 @@
+{
+  "id": "mpv-optimization-20260627",
+  "title": "MPV Optimization for Faster Video Playback",
+  "type": "performance",
+  "status": "approved",
+  "priority": "high",
+  "created": "2026-07-27",
+  "created_by": "agent",
+  "description": "Optimize RPi Dashboard video playback performance, reducing time from click to video from 5+ minutes to < 2 minutes",
+  "acceptance_criteria": [
+    "Video content visible within 120 seconds of playback initiation",
+    "Memory usage <300 MiB at peak playback",
+    "CPU usage <35% during startup phase",
+    "No regression in existing functionality (CEC controls, audio routing, WebUI)",
+    "TUI mode switching remains < 500ms"
+  ],
+  "dependencies": [
+    "rpi-dashboard/current-state"
+  ],
+  "assignee": "development-team"
+}

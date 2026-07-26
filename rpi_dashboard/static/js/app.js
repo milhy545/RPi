@@ -211,140 +211,91 @@ function badge(on,label){return '<span class="badge '+(on?'ok':'err')+'">'+label
 let taVolTimers={};
 function taSetVolDebounced(kind,name,v){let key=kind+':'+name;clearTimeout(taVolTimers[key]);taVolTimers[key]=setTimeout(()=>taSetVol(kind,name,v),250)}
 function meter(v,kind,name){let n=(v==null?0:v);if(!kind||!name)return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>';let id='vol-'+kind+'-'+esc(name).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);return '<div style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0"><input type="range" id="'+id+'" min="0" max="150" value="'+n+'" step="1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="this.nextElementSibling.textContent=this.value+\'%\'; taSetVolDebounced(\''+kind+'\',\''+jsarg(name)+'\',this.value)" onchange="taSetVol(\''+kind+'\',\''+jsarg(name)+'\',this.value)" ontouchstart="event.stopPropagation()"><span style="min-width:36px;font-size:.8em;text-align:right">'+(v==null?'—':v+'%')+'</span><button onclick="taMute(\''+kind+'\',\''+jsarg(name)+'\')" style="font-size:.75em;padding:2px 6px" title="Mute/unmute">🔇</button></div>'}
-function shortName(n){let s=(n||'').replace('alsa_output.platform-3f902000.hdmi.hdmi-stereo','HDMI').replace('alsa_output.platform-3f00b840.mailbox.stereo-fallback','Aux (3.5mm Jack)').replace('alsa_output.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.analog-stereo','USB audio output').replace('alsa_input.usb-C-Media_Electronics_Inc._USB_PnP_Sound_Device-00.mono-fallback','Alexa USB input').replace('alsa_input.usb-XING_WEI_2.4G_USB_USB_Composite_Device-00.mono-fallback','Remote microphone');if(s.startsWith('bluez_output.'))s='BT Soundbar';if(s.includes('-uuid:'))s='DLNA ' + s.split('-uuid:')[0];return s}
+function shortName(n){let s=(n||'').replace('alsa_output.platform-3f902000.hdmi.hdmi-stereo','HDMI').replace('alsa_output.platform-3f00b840.mailbox.stereo-fallback','HDMI / Jack');if(s.includes('combined'))return 'Spojený výstup';if(s.includes('bluez_output.24_4B_03_92_0B_8C'))return 'Samsung Soundbar';if(s.includes('bluez_output.FC_58_FA_29_BA_47'))return 'Tibo Sphere 2';if(s.startsWith('bluez_output.'))return 'BT: '+s.split('.')[1].replace(/_/g,':').substr(9);if(s.includes('-uuid:'))s='DLNA '+s.split('-uuid:')[0];return s}
 function deviceCard(icon,title,d,isDefault){let ok=d&&d.present;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let kind=String((d&&d.type)||'').includes('input')?'source':'sink';return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+defBadge+'</h4>'+meter(d&&d.volume,kind,d.name)+'<div class="media-meta">'+esc(shortName((d&&d.name)||'not detected'))+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
 function btSoundbarCard(d,isDefault){let ok=d&&d.present,paired=d&&d.paired;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+defBadge+'</h4>'+meter(d&&d.volume,'sink',d.name);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+jsarg(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
 function dlnaOutputCard(d,selected,connected,keepalive){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let connectBtns='';if(selected){if(connected){connectBtns='<button onclick="taDlnaDisconnect()" class="danger" style="font-size:.8em">⏹ Disconnect</button>'}else{connectBtns='<button onclick="taDlnaConnect()" style="font-size:.8em">🔌 Connect</button>'}}let kaBadge='';let hasDlnaKeepalive=keepalive&&d&&d.name&&keepalive.some(k=>k===d.name);if(hasDlnaKeepalive){kaBadge='<span class="badge ok" style="font-size:.65em;margin-left:.3rem">KEEPALIVE</span>'}let status=connected?badge(true,'CONNECTED'):(ok?badge(ok,'NOT CONNECTED'):badge(false,'NOT CONNECTED'));let h='<div class="media-card"><h4>📡 DLNA Output '+status+kaBadge+'</h4>'+meter(d&&d.volume,'sink',d.name)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem;gap:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button>'+connectBtns+'</div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
 function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));let dl=r.dlna_connected;let dly=lat.dlna_output_offset_ms||0;lines.push('DLNA delay offset: '+dly+' ms'+(dl&&dly?' (active, mpv audio-delay set)':''));return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
-async function taRefresh(){let r=await api('/audio/state');if(r.error){msg(r.error,'err');return}let d=r.devices||{};let sources=r.sources||[];let inputs=r.sink_inputs||[];let lat=r.latency||{};let outHtml='';let ds=r.default_sink||'';if(d.hdmi&&d.hdmi.present)outHtml+=deviceCard('📺','HDMI',d.hdmi,ds.includes('hdmi'));outHtml+=btSoundbarCard(d.bt_soundbar||{},ds.includes('bluez'));outHtml+=dlnaOutputCard(d.dlna_output||{},lat.selected_dlna_renderer,r.dlna_connected,r.keepalive);if(d.usb_output&&d.usb_output.present)outHtml+=deviceCard('🔌','USB Output',d.usb_output,ds.includes('usb'));$('#ta-sinks').innerHTML=outHtml;let srcHtml='';sources.forEach(s=>{let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));let title=s.type==='usb_input'?'Alexa USB Input':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));srcHtml+=deviceCard(icon,title,s)});$('#ta-sources').innerHTML=srcHtml;dlnaRendererRefresh();let mixerHtml='';let realInputs=inputs.filter(i=>!i.keepalive);
-// Build pipe-map: source_name -> [{sink, format}]
-let pipeMap={};
-let activeSinks=new Set();
-realInputs.forEach(i=>{
-  let src=i.client&&parseInt(i.client)?('stream-'+i.id):'system';
-  // Try to identify source by sink name
-  let sn=i.sink||'';
-  let sinkLabel=shortName(sn);
-  if(!pipeMap[sinkLabel])pipeMap[sinkLabel]=[];
-  pipeMap[sinkLabel].push({id:i.id,format:i.format||'unknown',raw:i});
-  activeSinks.add(sinkLabel);
-});
-
-// Build output nodes from devices
-let outNodes=[];
-ds=r.default_sink||'';
-if(d.hdmi&&d.hdmi.present)outNodes.push({icon:'📺',label:'HDMI',name:'HDMI',active:ds.includes('hdmi'),streams:pipeMap['HDMI']||[]});
-outNodes.push({icon:'🔊',label:'BT Soundbar',name:'BT Soundbar',active:ds.includes('bluez'),streams:pipeMap['BT Soundbar']||[]});
-outNodes.push({icon:'📡',label:'DLNA Output',name:'DLNA Output',active:ds.includes('WiiMu')||ds.includes('LinkPlayer'),streams:pipeMap['DLNA Output']||[]});
-if(d.usb_output&&d.usb_output.present)outNodes.push({icon:'🔌',label:'USB Output',name:'USB Output',active:ds.includes('usb'),streams:pipeMap['USB Output']||[]});
-
-// Build input nodes from sources
-let inNodes=[];
-// Ensure System/Media always exists if there's an internal stream that is not a physical input
-let hasSystemStreams = realInputs.some(i => !sources.some(s => s.id === i.client));
-if(hasSystemStreams || sources.length === 0) {
-  inNodes.push({icon:'🎵',label:'System / Media',active:hasSystemStreams,system:true});
+async function taRefresh(){
+    let r=await api('/audio/state');
+    if(r.error){msg(r.error,'err');return}
+    renderAudioTopology(r);
+    taMatrixRefresh();
+    // Update dlna latency input if it exists
+    let latInput = $('#ta-lat-dlna-offset');
+    if(latInput && r.latency) latInput.value = r.latency.dlna_output_offset_ms || 0;
 }
-
-sources.forEach(s=>{
-  let icon=s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='dlna_input'?'📡':'🔊'));
-  let title=s.type==='usb_input'?'Alexa USB':(s.type==='remote_input'?'Remote Mic':(s.type==='dlna_input'?'DLNA Input':'Other'));
-  inNodes.push({icon:icon,label:title,active:s.state==='RUNNING',raw:s});
-});
-
-// Render as patchbay
-mixerHtml+='<div style="display:flex;gap:1rem;align-items:stretch;min-height:200px;height:100%">';
-
-// Left column: inputs
-mixerHtml+='<div style="flex:0 0 140px;display:flex;flex-direction:column;gap:.5rem;justify-content:center">';
-mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">INPUTS</div>';
-inNodes.forEach(n=>{
-  let border=n.active?'border-color:#3fb950;box-shadow: 0 0 8px rgba(63,185,80,0.2)':'border-color:#30363d';
-  let color=n.active?'color:#e6edf3':'color:#8b949e';
-  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.4rem .5rem;font-size:.8rem;display:flex;align-items:center;gap:.4rem;background:#161b22;transition:all 0.3s ease;'+color+'">';
-  mixerHtml+=n.icon+' <span>'+esc(n.label)+'</span>'+(n.active?'<span style="color:#3fb950;margin-left:auto;font-size:0.6rem;animation:pulse 2s infinite">●</span>':'')+'</div>';
-});
-mixerHtml+='</div>';
-
-// Middle: connections visual
-mixerHtml+='<div style="flex:1;display:flex;align-items:center;justify-content:center;position:relative;min-height:200px;height:100%;box-sizing:border-box" aria-hidden="true">';
-mixerHtml+='<svg style="width:100%;height:100%;position:absolute;top:0;left:0;overflow:visible" viewBox="0 0 200 200" preserveAspectRatio="none">';
-
-// Defs for animated gradient
-mixerHtml+='<defs><linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#238636" stop-opacity="0.3"/><stop offset="50%" stop-color="#3fb950" stop-opacity="1"/><stop offset="100%" stop-color="#238636" stop-opacity="0.3"/></linearGradient></defs>';
-mixerHtml+='<style>@keyframes flow { to { stroke-dashoffset: -20; } } @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } } .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }</style>';
-
-let activeOutputs=outNodes.filter(o=>o.streams.length>0);
-let totalOut=outNodes.length;
-let totalIn=inNodes.length;
-
-activeOutputs.forEach((o,oi)=>{
-  let yOut=30+((oi+0.5)/totalOut)*140;
-
-  o.streams.forEach(s=>{
-    // Determine which input this stream belongs to
-    let srcIdx = 0; // Default to first (System/Media)
-    if (!inNodes[0].system) {
-        // If System/Media is not there, we fallback
-        srcIdx = inNodes.findIndex(n=>n.label.includes('Alexa')||n.label.includes('DLNA'));
-        if(srcIdx<0)srcIdx=0;
-    }
-
-    // Try to be smarter - if it's the loopback module for Alexa, match the Alexa node
-    if (s.raw && s.raw.client && s.raw.client !== 'system') {
-        let matchedIdx = inNodes.findIndex(n => !n.system && n.raw && n.raw.id && s.raw.client.toString().includes(n.raw.id.toString()));
-        if (matchedIdx >= 0) srcIdx = matchedIdx;
-    }
-
-    let yIn=30+((srcIdx+0.5)/totalIn)*140;
-
-    // Smooth bezier curve
-    let path = `M 10 ${yIn} C 100 ${yIn}, 100 ${yOut}, 190 ${yOut}`;
-
-    // Background path
-    mixerHtml+=`<path d="${path}" fill="none" stroke="#238636" stroke-width="3" opacity="0.2"/>`;
-    // Animated overlay path
-    mixerHtml+=`<path d="${path}" fill="none" stroke="url(#flowGrad)" stroke-width="3" stroke-dasharray="10,10" style="animation: flow 1s linear infinite" />`;
-  });
-});
-mixerHtml+='</svg>';
-
-// Screen reader only summary for accessibility
-mixerHtml+='<div class="sr-only">Active audio routes: '+activeOutputs.map(o=>o.label+' has '+o.streams.length+' streams').join(', ')+'</div>';
-
-mixerHtml+='<div style="position:relative;z-index:1;font-size:.75rem;color:#8b949e;text-align:center;background:#0d1117;padding:0.2rem 0.6rem;border-radius:10px;border:1px solid #30363d">'+activeOutputs.length+' active route'+(activeOutputs.length!==1?'s':'')+'</div>';
-mixerHtml+='</div>';
-
-// Right column: outputs
-mixerHtml+='<div style="flex:0 0 160px;display:flex;flex-direction:column;gap:.5rem;justify-content:center">';
-mixerHtml+='<div style="font-size:.7rem;color:#8b949e;text-align:center;margin-bottom:.2rem">OUTPUTS</div>';
-outNodes.forEach(n=>{
-  let streams=n.streams;
-  let hasStreams=streams.length>0;
-  let border=hasStreams?'border-color:#3fb950;box-shadow: 0 0 8px rgba(63,185,80,0.15)':(n.active?'border-color:#1f6feb':'border-color:#30363d');
-  let bg=hasStreams?'background:#0d1117':'background:#161b22';
-  let color=hasStreams?'color:#e6edf3':'color:#8b949e';
-  mixerHtml+='<div style="border:1px solid '+border+';border-radius:6px;padding:.4rem .5rem;font-size:.8rem;transition:all 0.3s ease;'+bg+';'+color+'">';
-  mixerHtml+='<div style="display:flex;align-items:center">'+n.icon+' <span style="margin-left:.4rem">'+esc(n.label)+'</span>'+(hasStreams?' <span style="color:#3fb950;margin-left:auto;font-size:.7rem;animation:pulse 2s infinite">▶ '+streams.length+'</span>':'')+'</div>';
-  if(hasStreams){mixerHtml+='<div style="font-size:.65rem;color:#8b949e;margin-top:.3rem;border-top:1px dashed #30363d;padding-top:.2rem">'+streams.map(s=>esc(s.format)).join(', ')+'</div>'}
-  mixerHtml+='</div>';
-});
-mixerHtml+='</div>';
-mixerHtml+='</div>';
-// Summary line
-let totalStreams=realInputs.length;
-mixerHtml+='<div style="font-size:.7rem;color:#8b949e;margin-top:.4rem;text-align:center">'+totalStreams+' active stream'+(totalStreams!==1?'s':'')+' · Default: '+esc(shortName(ds||'—'))+'</div>';
-$('#ta-mixer').innerHTML=mixerHtml;renderAudioTopology(r);routesRefresh();taMatrixRefresh();$('#ta-default').textContent=shortName(r.default_sink||'—');$('#ta-lat-dlna-offset').value=lat.dlna_output_offset_ms||0;$('#ta-summary').innerHTML=taHumanSummary(r);$('#ta-raw').textContent=JSON.stringify(r,null,2)}
 let topoSelectedSource=null;
-function renderAudioTopology(r){let srcCol=$('#audio-topo-sources'),snkCol=$('#audio-topo-sinks');if(!srcCol||!snkCol)return;let sources=(r&&r.sources)||[],sinks=(r&&r.sinks)||[],defSink=(r&&r.default_sink)||'';let srcHtml='';if(sources.length===0){srcHtml='<div class="media-meta">No active sources</div>'}else{sources.forEach(s=>{let isPriority=s.type==='usb_input'||(s.name&&s.name.includes('mpv'));let isSel=topoSelectedSource===s.name;srcHtml+='<div class="audio-node-card '+(isPriority?'priority':'')+' '+(isSel?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="source" onclick="audioSelectSource(\''+jsarg(s.name)+'\')" draggable="true" ondragstart="audioDragStart(event,\''+jsarg(s.name)+'\')">';srcHtml+='<div class="audio-node-header"><span>'+(isPriority?'🎬':'🎙️')+' '+esc(shortName(s.name))+'</span><span class="badge ok">ACTIVE</span></div>';srcHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · Vol: '+(s.volume!==null?s.volume+'%':'100%')+'</div></div>'})}srcCol.innerHTML=srcHtml;let snkHtml='';if(sinks.length===0){snkHtml='<div class="media-meta">No active sinks</div>'}else{sinks.forEach(s=>{let isDef=s.name===defSink;snkHtml+='<div class="audio-node-card '+(isDef?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="sink" onclick="audioSelectSink(\''+jsarg(s.name)+'\')" ondragover="audioDragOver(event)" ondragleave="audioDragLeave(event)" ondrop="audioDrop(event,\''+jsarg(s.name)+'\')">';snkHtml+='<div class="audio-node-header"><span>'+(s.type==='hdmi'?'📺':s.type==='bt'?'🔈':'📡')+' '+esc(shortName(s.name))+'</span>'+(isDef?'<span class="badge ok">DEFAULT</span>':'')+'</div>';snkHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · State: '+esc(s.state||'IDLE')+'</div>';if(s.volume!==null){snkHtml+='<div class="audio-node-vol" onmousedown="event.stopPropagation()"><span style="font-size:0.7rem;color:var(--app-muted)">Vol:</span><input type="range" min="0" max="150" value="'+s.volume+'" onchange="taVol(\''+s.type+'\',\''+jsarg(s.name)+'\',this.value)"></div>'}snkHtml+='</div>'})}snkCol.innerHTML=snkHtml}
+function renderAudioTopology(r){
+    let srcCol=$('#audio-topo-sources'), snkCol=$('#audio-topo-sinks');
+    if(!srcCol||!snkCol)return;
+    let sources=(r&&r.sources)||[], sinks=(r&&r.sinks)||[], defSink=(r&&r.default_sink)||'';
+    let d = (r && r.devices) || {};
+    // Add disconnected/known sinks for topology UI
+    let knownSinks = [];
+    if(d.hdmi) knownSinks.push({id: 'hdmi', name: d.hdmi.name || 'HDMI', type: 'hdmi', state: d.hdmi.present ? 'ACTIVE' : 'MISSING', volume: d.hdmi.volume, present: d.hdmi.present});
+    if(d.bt_soundbar) knownSinks.push({id: 'bt', name: d.bt_soundbar.name || 'BT Soundbar', type: 'bt', state: d.bt_soundbar.present ? 'ACTIVE' : 'DISCONNECTED', volume: d.bt_soundbar.volume, present: d.bt_soundbar.present, mac: d.bt_soundbar.mac, paired: d.bt_soundbar.paired});
+    if(d.dlna_output) knownSinks.push({id: 'dlna', name: d.dlna_output.name || 'DLNA Output', type: 'dlna_output', state: r.dlna_connected ? 'CONNECTED' : 'DISCONNECTED', volume: d.dlna_output.volume, present: d.dlna_output.present});
+    if(d.combined) knownSinks.push({id: 'combined', name: d.combined.name || 'Spojený výstup', type: 'combined', state: d.combined.present ? 'ACTIVE' : 'DISCONNECTED', volume: d.combined.volume, present: d.combined.present});
+
+    // Merge knownSinks into sinks, avoiding duplicates by type
+    knownSinks.forEach(ks => {
+        if(!sinks.some(s => s.type === ks.type || (s.name && s.name.includes(ks.name)))) {
+            sinks.push(ks);
+        }
+    });
+
+    // Add "System / Media" as a virtual source always
+    sources.unshift({id: 'system', name: 'system', type: 'system', state: 'RUNNING', volume: null});
+
+    let srcHtml='';
+    if(sources.length===0){
+        srcHtml='<div class="media-meta">No active sources</div>';
+    }else{
+        sources.forEach(s=>{
+            let isPriority = s.type==='usb_input' || s.name.includes('mpv');
+            let isSel = topoSelectedSource===s.name;
+            let icon = s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='system'?'🎵':'🔊'));
+            srcHtml+='<div class="audio-node-card '+(isPriority?'priority':'')+' '+(isSel?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="source" onclick="audioSelectSource(\''+jsarg(s.name)+'\')" draggable="true" ondragstart="audioDragStart(event,\''+jsarg(s.name)+'\')">';
+            srcHtml+='<div class="audio-node-header"><span>'+icon+' '+esc(shortName(s.name))+'</span><span class="badge ok">ACTIVE</span></div>';
+            srcHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · Vol: '+(s.volume!==null?s.volume+'%':'100%')+'</div></div>';
+        })
+    }
+    srcCol.innerHTML=srcHtml;
+
+    let snkHtml='';
+    if(sinks.length===0){
+        snkHtml='<div class="media-meta">No active sinks</div>';
+    }else{
+        sinks.forEach(s=>{
+            let isDef = s.name===defSink;
+            let icon = s.name.includes('hdmi')?'📺':(s.name.includes('bluez')?'🔈':(s.name.includes('WiiMu')||s.name.includes('LinkPlayer')?'📡':'🔌'));
+            snkHtml+='<div class="audio-node-card '+(isDef?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="sink" onclick="audioSelectSink(\''+jsarg(s.name)+'\')" ondragover="audioDragOver(event)" ondragleave="audioDragLeave(event)" ondrop="audioDrop(event,\''+jsarg(s.name)+'\')">';
+            snkHtml+='<div class="audio-node-header"><span>'+icon+' '+esc(shortName(s.name))+'</span>'+(isDef?'<span class="badge ok">DEFAULT</span>':'')+'</div>';
+            let badgeClass = (s.state === 'DISCONNECTED' || s.state === 'MISSING') ? 'err' : 'ok';
+            snkHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · State: <span class="badge '+badgeClass+'">'+esc(s.state||'IDLE')+'</span></div>';
+            if (s.state === 'DISCONNECTED' && s.type === 'bt') {
+                snkHtml+='<div style="margin-top: 0.5rem;"><button onclick="taBtConnect(\''+jsarg(s.mac||'')+'\')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; background: #1f6feb; border: none; border-radius: 4px; color: white;">🔌 Connect BT</button></div>';
+            }
+            if (s.state === 'DISCONNECTED' && s.type === 'dlna_output') {
+                snkHtml+='<div style="margin-top: 0.5rem;"><button onclick="taDlnaScan()" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; background: #238636; border: none; border-radius: 4px; color: white;">🔍 Scan DLNA</button></div>';
+            }
+            if(s.volume!==null && s.present !== false){
+                snkHtml+='<div class="audio-node-vol" onmousedown="event.stopPropagation()"><span style="font-size:0.7rem;color:var(--app-muted)">Vol:</span><input type="range" min="0" max="150" value="'+s.volume+'" onchange="taVol(\''+s.type+'\',\''+jsarg(s.name)+'\',this.value)"></div>';
+            }
+            snkHtml+='</div>';
+        })
+    }
+    snkCol.innerHTML=snkHtml;
+}
 function audioDragStart(e,name){e.dataTransfer.setData('text/plain',name);e.target.style.opacity='0.5';setTimeout(()=>e.target.style.opacity='1',100);}
 function audioDragOver(e){e.preventDefault();let c=e.target.closest('.audio-node-card');if(c)c.classList.add('drag-over');}
 function audioDragLeave(e){let c=e.target.closest('.audio-node-card');if(c)c.classList.remove('drag-over');}
-function audioDrop(e,snkName){e.preventDefault();let c=e.target.closest('.audio-node-card');if(c)c.classList.remove('drag-over');let srcName=e.dataTransfer.getData('text/plain');if(srcName&&snkName)taMatrixLink(srcName,snkName,true);}
+function audioDrop(e,snkName){e.preventDefault();let c=e.target.closest('.audio-node-card');if(c)c.classList.remove('drag-over');let srcName=e.dataTransfer.getData('text/plain');if(srcName==='system'){msg('Setting default sink: '+shortName(snkName),'info');api('/audio/default-sink?name='+encodeURIComponent(snkName)).then(r=>{msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);});return;}if(srcName&&snkName)taMatrixLink(srcName,snkName,true);}
 let currentAudioMatrix = null;
 
 function audioSelectSource(srcName){topoSelectedSource=(topoSelectedSource===srcName)?null:srcName;msg(topoSelectedSource?'Source selected. Now click an Output sink to link.':'Source deselected','info');taRefresh()}
-async function audioSelectSink(snkName){if(!topoSelectedSource){msg('Setting default sink: '+shortName(snkName),'info');let r=await api('/audio/default?sink='+encodeURIComponent(snkName));msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);return}let srcName=topoSelectedSource;topoSelectedSource=null;let isLinked=false;if(currentAudioMatrix&&currentAudioMatrix.links){let sNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===srcName);let eNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===snkName);if(sNode&&eNode){isLinked=currentAudioMatrix.links.some(l=>l[0]===sNode.id&&l[1]===eNode.id);}}taMatrixLink(srcName,snkName,!isLinked);}
+async function audioSelectSink(snkName){if(!topoSelectedSource){msg('Setting default sink: '+shortName(snkName),'info');let r=await api('/audio/default-sink?name='+encodeURIComponent(snkName));msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);return}let srcName=topoSelectedSource;topoSelectedSource=null;if(srcName==='system'){msg('Setting default sink: '+shortName(snkName),'info');let r=await api('/audio/default-sink?name='+encodeURIComponent(snkName));msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);return}let isLinked=false;if(currentAudioMatrix&&currentAudioMatrix.links){let sNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===srcName);let eNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===snkName);if(sNode&&eNode){isLinked=currentAudioMatrix.links.some(l=>l[0]===sNode.id&&l[1]===eNode.id);}}taMatrixLink(srcName,snkName,!isLinked);}
 async function taMatrixRefresh(){let r=await api('/audio/matrix');if(!r.nodes)return;currentAudioMatrix=r;drawAudioTopoLines();}
 function drawAudioTopoLines(){let svg=$('#audio-topo-lines');if(!svg||!currentAudioMatrix)return;let html='';let nodes=currentAudioMatrix.nodes;let links=currentAudioMatrix.links;links.forEach(l=>{let outN=nodes[l[0]];let inN=nodes[l[1]];if(!outN||!inN)return;let outEl=$('#node-'+outN.id);let inEl=$('#node-'+inN.id);if(!outEl||!inEl)return;let engineEl=$('#audio-engine-node');if(!engineEl)return;let sBox=outEl.getBoundingClientRect();let eBox=inEl.getBoundingClientRect();let mBox=engineEl.getBoundingClientRect();let svgBox=svg.getBoundingClientRect();let x1=sBox.right-svgBox.left;let y1=sBox.top+sBox.height/2-svgBox.top;let x2=mBox.left-svgBox.left+mBox.width/2;let y2=mBox.top+mBox.height/2-svgBox.top;let x3=eBox.left-svgBox.left;let y3=eBox.top+eBox.height/2-svgBox.top;html+=`<path d="M${x1},${y1} C${x1+40},${y1} ${x2-40},${y2} ${x2},${y2} C${x2+40},${y2} ${x3-40},${y3} ${x3},${y3}" />`;});svg.innerHTML=html;}
 window.addEventListener('resize', drawAudioTopoLines);
@@ -520,40 +471,40 @@ const ThemeManager = {
     accents: ['blue', 'green', 'purple', 'orange', 'pink'],
     currentTheme: localStorage.getItem('theme') || 'dark',
     currentAccent: localStorage.getItem('accent') || 'blue',
-    
+
     init() {
         this.applyTheme(this.currentTheme);
         this.applyAccent(this.currentAccent);
-        
+
         // Detect system preference
         if (!localStorage.getItem('theme')) {
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             this.setTheme(prefersDark ? 'dark' : 'light');
         }
     },
-    
+
     setTheme(theme) {
         if (!this.themes.includes(theme)) return;
         this.currentTheme = theme;
         localStorage.setItem('theme', theme);
         this.applyTheme(theme);
     },
-    
+
     applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
     },
-    
+
     setAccent(accent) {
         if (!this.accents.includes(accent)) return;
         this.currentAccent = accent;
         localStorage.setItem('accent', accent);
         this.applyAccent(accent);
     },
-    
+
     applyAccent(accent) {
         document.documentElement.setAttribute('data-accent', accent);
     },
-    
+
     toggle() {
         this.setTheme(this.currentTheme === 'dark' ? 'light' : 'dark');
     }
@@ -568,7 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function addThemeToggle() {
     const topbar = document.getElementById('topbar');
     if (!topbar) return;
-    
+
     const themeBtn = document.createElement('button');
     themeBtn.className = 'lang-btn';
     themeBtn.title = 'Toggle theme';
@@ -576,7 +527,7 @@ function addThemeToggle() {
     themeBtn.innerHTML = '🌓';
     themeBtn.onclick = () => ThemeManager.toggle();
     themeBtn.style.cssText = 'font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer';
-    
+
     const langSwitch = document.getElementById('lang-switch');
     if (langSwitch) {
         langSwitch.parentNode.insertBefore(themeBtn, langSwitch);

@@ -16,7 +16,7 @@
                 <span>🍓</span>
                 <span>RPi Control Center</span>
             </div>
-            
+
             <nav class="app-tabs-horizontal" id="app-tabs-h">
                 <button id="tab-player" class="app-tab-btn tab active" data-t="player" data-i18n="player" onclick="sw('player')">🎬 Player</button>
                 <button id="tab-apps" class="app-tab-btn tab" data-t="apps" data-i18n="apps" onclick="sw('apps')">🚀 Apps</button>
@@ -234,60 +234,29 @@
             </div>
         </div>
 
-        <div class="sec">
-            <div class="media-head">
+        <!-- Modern Audio Controls Below Topology -->
+        <div class="audio-controls" style="display:flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+            <div style="display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px;">
                 <div>
-                    <h3 data-i18n="audioTitle" data-tip="sectionAudio">Audio & Media</h3>
-                    <div class="media-meta" data-i18n="audioDesc">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div>
+                    <div style="font-weight: 500; margin-bottom: 0.2rem;" data-i18n="dlnaLatency">DLNA Latency Compensation</div>
+                    <div style="font-size: 0.72rem; color: #8b949e;">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio.</div>
                 </div>
-                <div class="row">
-                    <button onclick="taSwitch('bt')">🎧 BT</button>
-                    <button onclick="taSwitch('hdmi')">📺 HDMI</button>
-                    <button onclick="taSwitch('dlna')">📡 DLNA</button>
-                    <button data-i18n="refresh" data-icon="🔄" onclick="taRefresh()">🔄 Refresh</button>
-                </div>
-            </div>
-            <div class="media-meta"><span data-i18n="taDefault">Default sink:</span> <span id="ta-default">—</span></div>
-        </div>
-        <div class="media-grid">
-            <div>
-                <div class="sec">
-                    <h3 data-i18n="outputSinks" data-tip="sectionOutputSinks">Output Sinks</h3>
-                    <div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+                <div style="display:flex; gap:.4rem; align-items:center;">
+                    <label style="font-size:.72rem;color:#8b949e">Delay (ms):</label>
+                    <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px; padding: 0.3rem; border: 1px solid #30363d; border-radius: 4px; background: #0d1117; color: var(--app-text)">
+                    <button class="app-tab-btn" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)" data-icon="💾" style="padding: 0.4rem 0.8rem; border-radius: 6px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1);">Apply</button>
                 </div>
             </div>
-            <div>
-                <div class="sec">
-                    <h3 data-i18n="inputSources" data-tip="sectionInputSources">Input Sources</h3>
-                    <div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
+
+            <div style="display: flex; gap: 1rem; align-items: center; background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; margin-bottom: 0.2rem;">Expert Operations</div>
+                    <div style="font-size: 0.72rem; color: #8b949e;">Restart services or reset audio patchbay to defaults.</div>
                 </div>
+                <button class="app-tab-btn" onclick="api('/audio/test')" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Play Test Sound</button>
+                <button class="app-tab-btn" onclick="taRoute('reset')" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Reset Matrix</button>
+                <button class="app-tab-btn" onclick="restartMpv()" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Restart MPV</button>
             </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="mixer" data-tip="sectionMixer">Mixer — Active Streams</h3>
-            <div id="ta-mixer" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="audioRouting" data-tip="sectionAudioRouting">Audio Routing & Patchbay</h3>
-            <div id="ta-matrix" style="margin-bottom:1rem;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:0.5rem"></div>
-            <div id="ta-routes" class="media-grid" style="grid-template-columns:1fr">Loading...</div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="dlnaLatency" data-tip="sectionDlnaLatency">DLNA Latency Compensation</h3>
-            <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
-                <label style="font-size:.72rem;color:#8b949e" data-i18n="audioDelay">Audio delay (ms):</label>
-                <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px">
-                <button data-icon="💾" data-i18n="saveApply" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)">💾 Save + Apply</button>
-                <span class="media-meta">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio; negative advances audio/video sync.</span>
-            </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="diagnostics" data-tip="sectionDiagnostics">Diagnostics</h3>
-            <div id="ta-summary" class="media-meta" data-i18n="clickRefresh">Click Refresh</div>
-            <details style="margin-top:.5rem">
-                <summary class="media-meta" style="cursor:pointer" data-i18n="taRaw">Raw technical JSON</summary>
-                <pre id="ta-raw" data-i18n="clickRefresh">Click Refresh</pre>
-            </details>
         </div>
     </div>
 
