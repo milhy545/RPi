@@ -1,0 +1,82 @@
+"""
+Return-to-dashboard service.
+
+Provides a single, idempotent action to return from any active mode to the
+dashboard, handling graceful shutdown, timeout, and fallback to forceful
+termination. Records the reason and source of the last return for telemetry.
+"""
+
+import threading
+from typing import Optional
+
+# We will import mode_switcher lazily to avoid circular imports
+from ..mode_switcher import ModeSwitcher
+
+# Global state
+_last_reason: str = "unknown"
+_last_source: str = "unknown"
+_last_timestamp: float = 0.0
+_lock = threading.Lock()
+
+# Reference to the active mode_switcher (set by the TUI)
+_active_mode_switcher: Optional[ModeSwitcher] = None
+_ms_lock = threading.Lock()
+
+
+def set_mode_switcher(ms: Optional[ModeSwitcher]) -> None:
+    """Set the active mode_switcher instance (called from TUI)."""
+    global _active_mode_switcher
+    with _ms_lock:
+        _active_mode_switcher = ms
+
+
+def get_mode_switcher() -> Optional[ModeSwitcher]:
+    """Get the current mode_switcher instance."""
+    with _ms_lock:
+        return _active_mode_switcher
+
+
+def get_last_return() -> dict:
+    """Return a dict with the last reason, source, and timestamp."""
+    with _lock:
+        return {
+            "reason": _last_reason,
+            "source": _last_source,
+            "timestamp": _last_timestamp,
+        }
+
+
+def _record_return(reason: str, source: str) -> None:
+    """Record the reason and source for the last return."""
+    global _last_reason, _last_source, _last_timestamp
+    with _lock:
+        _last_reason = reason
+        _last_source = source
+        _last_timestamp = time.time()
+
+
+def return_to_dashboard(reason: str, source: str) -> bool:
+    """
+    Execute a return-to-dashboard sequence.
+    Returns True if a return was initiated (i.e., we stopped an active mode),
+    False if we were already at the dashboard.
+    This function is idempotent.
+    """
+    # Always record the attempt
+    _record_return(reason, source)
+
+    # Get the current mode_switcher
+    ms = get_mode_switcher()
+    if ms is None:
+        # No mode_switcher known; assume we are at the dashboard.
+        return False
+
+    # Request the mode_switcher to stop the active process, if any.
+    # The method returns True if it actually terminated a process.
+    try:
+        stopped = ms.request_stop()
+    except Exception:
+        # If something goes wrong, we assume we did not stop anything.
+        stopped = False
+
+    return stopped
