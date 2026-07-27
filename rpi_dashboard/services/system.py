@@ -3,9 +3,14 @@
 Handles system stats, restart, and hardware monitoring.
 """
 
+import json
 import os
+import socket
 import subprocess
-from typing import Any, Dict
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+from config import HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, PORT
 
 
 def _run(cmd, t=5):
@@ -94,6 +99,83 @@ def get_uptime() -> str:
         return "unknown"
 
 
+def _cpu_sample() -> List[Tuple[int, int]]:
+    out: List[Tuple[int, int]] = []
+    with open("/proc/stat") as f:
+        for line in f:
+            if line.startswith("cpu") and line[3:4].isdigit():
+                parts = [int(x) for x in line.split()[1:]]
+                idle = parts[3] + parts[4]
+                total = sum(parts)
+                out.append((total, idle))
+    return out
+
+
+def _meminfo() -> Dict[str, int]:
+    mem: Dict[str, int] = {}
+    with open("/proc/meminfo") as f:
+        for line in f:
+            key, value = line.split(":", 1)
+            mem[key] = int(value.split()[0])
+    return mem
+
+
+def _cpu_freqs_cached() -> List[Optional[int]]:
+    freq: List[Optional[int]] = []
+    for i in range(4):
+        try:
+            with open(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq") as f:
+                freq.append(int(f.read().strip()) // 1000)
+        except Exception:
+            freq.append(None)
+    return freq
+
+
+def _vcgencmd_core_mhz() -> Optional[int]:
+    try:
+        raw = subprocess.check_output(["vcgencmd", "measure_clock", "core"], text=True, timeout=2).strip()
+        return int(raw.split("=")[-1]) // 1000000
+    except Exception:
+        return None
+
+
+def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
+    names = {"rpi-tv", "rpi-tv.local", "localhost"}
+    ips = {"127.0.0.1"}
+    try:
+        hn = socket.gethostname().strip()
+        if hn:
+            names.add(hn)
+            names.add(f"{hn}.local")
+    except Exception:
+        pass
+    try:
+        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
+            if ip:
+                ips.add(ip)
+    except Exception:
+        pass
+    try:
+        for flag in ("-4", "-6"):
+            r = subprocess.run(["tailscale", "ip", flag], capture_output=True, text=True, timeout=3)
+            if r.returncode == 0:
+                for ip in r.stdout.split():
+                    ips.add(ip)
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            d = json.loads(r.stdout or "{}")
+            dns = (d.get("Self") or {}).get("DNSName") or ""
+            if dns:
+                names.add(dns.rstrip("."))
+                names.add(dns.split(".")[0])
+    except Exception:
+        pass
+    return sorted(names), sorted(ips)
+
+
 def get_system_stats() -> Dict[str, Any]:
     """Get comprehensive system stats."""
     return {
@@ -102,6 +184,74 @@ def get_system_stats() -> Dict[str, Any]:
         "ram": get_ram_usage(),
         "disk": get_disk_usage(),
         "uptime": get_uptime(),
+    }
+
+
+def get_hw_stats() -> Dict[str, Any]:
+    """Get richer hardware stats used by the WebUI terminal tab."""
+    cpu: List[float] = []
+    try:
+        samples_a = _cpu_sample()
+        time.sleep(0.35)
+        samples_b = _cpu_sample()
+        for (t0, i0), (t1, i1) in zip(samples_a, samples_b):
+            dt = t1 - t0
+            di = i1 - i0
+            cpu.append(round(100 * (dt - di) / dt, 1) if dt > 0 else 0.0)
+    except Exception:
+        cpu = []
+    mem = _meminfo()
+    total_mb = mem.get("MemTotal", 0) // 1024
+    avail_mb = mem.get("MemAvailable", 0) // 1024
+    used_mb = max(0, total_mb - avail_mb)
+    st = os.statvfs("/")
+    total_gb = round(st.f_blocks * st.f_frsize / 1024 / 1024 / 1024, 1)
+    free_gb = round(st.f_bfree * st.f_frsize / 1024 / 1024 / 1024, 1)
+    avail_gb = round(st.f_bavail * st.f_frsize / 1024 / 1024 / 1024, 1)
+    used_gb = round(total_gb - free_gb, 1)
+    temp_c = None
+    for tp in ("/sys/class/thermal/thermal_zone0/temp", "/sys/class/thermal/thermal_zone1/temp"):
+        try:
+            with open(tp) as f:
+                temp_c = round(int(f.read().strip()) / 1000, 1)
+                break
+        except Exception:
+            pass
+    freq = _cpu_freqs_cached()
+    gpu = {"core_mhz": _vcgencmd_core_mhz(), "temp_c": temp_c}
+    with open("/proc/uptime") as f:
+        up = int(float(f.read().split()[0]))
+    h = up // 3600
+    m = (up % 3600) // 60
+    s = up % 60
+    return {
+        "cpu": cpu,
+        "loadavg": list(os.getloadavg()),
+        "temp_c": temp_c,
+        "freq_mhz": freq,
+        "gpu": gpu,
+        "ram": {"used_mb": used_mb, "total_mb": total_mb, "percent": round(100 * used_mb / total_mb, 1) if total_mb else 0},
+        "disk": {"used_gb": used_gb, "total_gb": total_gb, "free_gb": free_gb, "avail_gb": avail_gb, "percent": round(100 * used_gb / total_gb, 1) if total_gb else 0},
+        "uptime": f"{h}h {m}m {s}s",
+    }
+
+
+def get_https_info() -> Dict[str, Any]:
+    """Return HTTPS and friendly port metadata."""
+    names, ips = dashboard_hostnames_and_ips()
+    host = names[0] if names else "rpi-tv"
+    return {
+        "ok": True,
+        "http_port": PORT,
+        "https_port": HTTPS_PORT,
+        "friendly_http_port": HTTP_PORT,
+        "friendly_https_port": HTTPS_PORT_ALT,
+        "cert_exists": os.path.exists(os.path.expanduser("~/.config/rpi-dashboard/https/webui.crt")),
+        "https_url": f"https://{host}:{HTTPS_PORT}/",
+        "friendly_https_url": f"https://{host}/",
+        "friendly_http_url": f"http://{host}/",
+        "names": names,
+        "ips": ips,
     }
 
 

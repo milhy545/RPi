@@ -80,6 +80,18 @@ from .handlers import (
     handle_restart_mpv,
     handle_restart_dashboard,
     handle_restart_rpi,
+    handle_system_hw_stats,
+    handle_system_https_info,
+    handle_youtube_cookie_status,
+    handle_youtube_age_check,
+    handle_media_preview,
+    handle_dlna_select,
+    handle_dlna_connect,
+    handle_dlna_disconnect,
+    handle_dlna_scan,
+    handle_dlna_renderer_status,
+    handle_dlna_renderer_start,
+    handle_dlna_renderer_stop,
 )
 
 
@@ -132,13 +144,13 @@ ROUTES: Dict[str, Callable] = {
     "/audio/route/dlna-input/stop": handle_audio_route_dlnain_stop,
     "/audio/route/dlna-input/mode": handle_audio_route_dlnain_mode,
     "/audio/route/dlna-input/target": handle_audio_route_dlnain_target,
-    "/dlna/select": legacy_webserver_endpoint,
-    "/dlna/connect": legacy_webserver_endpoint,
-    "/dlna/disconnect": legacy_webserver_endpoint,
-    "/dlna/scan": legacy_webserver_endpoint,
-    "/dlna/renderer/status": legacy_webserver_endpoint,
-    "/dlna/renderer/start": legacy_webserver_endpoint,
-    "/dlna/renderer/stop": legacy_webserver_endpoint,
+    "/dlna/select": handle_dlna_select,
+    "/dlna/connect": handle_dlna_connect,
+    "/dlna/disconnect": handle_dlna_disconnect,
+    "/dlna/scan": handle_dlna_scan,
+    "/dlna/renderer/status": handle_dlna_renderer_status,
+    "/dlna/renderer/start": handle_dlna_renderer_start,
+    "/dlna/renderer/stop": handle_dlna_renderer_stop,
     "/keepalive": handle_keepalive,
     
     # Player routes
@@ -208,18 +220,18 @@ ROUTES: Dict[str, Callable] = {
     
     # System routes
     "/system/stats": handle_system_stats,
-    "/system/hw-stats": legacy_webserver_endpoint,
+    "/system/hw-stats": handle_system_hw_stats,
     "/system/status": legacy_webserver_endpoint,
-    "/system/https-info": legacy_webserver_endpoint,
+    "/system/https-info": handle_system_https_info,
     "/restart/mpv": handle_restart_mpv,
     "/restart/dashboard": handle_restart_dashboard,
     "/restart/rpi": handle_restart_rpi,
     "/system/restart-mpv": legacy_webserver_endpoint,
     "/system/restart-dashboard": legacy_webserver_endpoint,
     "/system/restart-rpi": legacy_webserver_endpoint,
-    "/youtube/cookies/status": legacy_webserver_endpoint,
-    "/youtube/age-check": legacy_webserver_endpoint,
-    "/media/preview": legacy_webserver_endpoint,
+    "/youtube/cookies/status": handle_youtube_cookie_status,
+    "/youtube/age-check": handle_youtube_age_check,
+    "/media/preview": handle_media_preview,
 }
 
 

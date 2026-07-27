@@ -4,7 +4,7 @@ Implements request handlers for all API endpoints.
 """
 
 from typing import Any, Dict
-from ..services import audio, audio_routing as audio_routing_service, player, devices, cec, system, terminal
+from ..services import audio, audio_dlna, audio_routing as audio_routing_service, media, player, devices, cec, system, terminal
 from ..services.bluetooth import service as bluetooth_service
 
 
@@ -657,3 +657,65 @@ def handle_restart_dashboard(q: Dict[str, Any]) -> Dict[str, Any]:
 def handle_restart_rpi(q: Dict[str, Any]) -> Dict[str, Any]:
     """Restart RPi."""
     return system.restart_rpi()
+
+
+def handle_system_hw_stats(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get hardware stats."""
+    return system.get_hw_stats()
+
+
+def handle_system_https_info(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get HTTPS info."""
+    return system.get_https_info()
+
+
+def handle_youtube_cookie_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get YouTube cookie status."""
+    return media.youtube_cookie_status()
+
+
+def handle_youtube_age_check(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Check YouTube age/cookie status for a URL."""
+    return media.youtube_age_check(_get(q, "url"))
+
+
+def handle_media_preview(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Preview a media URL."""
+    import webserver
+
+    return webserver.media_preview(_get(q, "url"))
+
+
+def handle_dlna_select(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Select a DLNA renderer."""
+    return audio_dlna.audio_select_dlna_renderer(_get(q, "name"), _get(q, "location"), _get(q, "usn"))
+
+
+def handle_dlna_connect(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Connect DLNA audio."""
+    return audio_dlna.audio_connect_dlna()
+
+
+def handle_dlna_disconnect(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Disconnect DLNA audio."""
+    return audio_dlna.audio_disconnect_dlna()
+
+
+def handle_dlna_scan(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Scan for DLNA renderers."""
+    return audio_dlna.dlna_scan()
+
+
+def handle_dlna_renderer_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get DLNA renderer status."""
+    return audio_dlna.dlna_renderer_status()
+
+
+def handle_dlna_renderer_start(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Start DLNA renderer."""
+    return audio_dlna.dlna_renderer_start()
+
+
+def handle_dlna_renderer_stop(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Stop DLNA renderer."""
+    return audio_dlna.dlna_renderer_stop()

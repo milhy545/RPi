@@ -3,6 +3,7 @@
 import json
 import sys
 import threading
+import time
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -144,8 +145,6 @@ def test_route_registry_covers_webui_get_endpoints():
 def test_legacy_routes_are_explicitly_marked():
     legacy_endpoints = {
         "/cec/send",
-        "/system/hw-stats",
-        "/youtube/age-check",
     }
 
     for endpoint in legacy_endpoints:
@@ -175,7 +174,22 @@ def test_legacy_routes_are_explicitly_marked():
         "/mpv/memory-save",
     }
 
-    for endpoint in migrated_mpv_endpoints:
+    migrated_system_endpoints = {
+        "/system/hw-stats",
+        "/system/https-info",
+        "/youtube/cookies/status",
+        "/youtube/age-check",
+        "/media/preview",
+        "/dlna/select",
+        "/dlna/connect",
+        "/dlna/disconnect",
+        "/dlna/scan",
+        "/dlna/renderer/status",
+        "/dlna/renderer/start",
+        "/dlna/renderer/stop",
+    }
+
+    for endpoint in migrated_mpv_endpoints | migrated_system_endpoints:
         assert routes.ROUTES[endpoint] is not routes.legacy_webserver_endpoint
 
     for endpoint in migrated_audio_endpoints:
@@ -242,3 +256,51 @@ def test_webserver_delegates_migrated_mpv_route(server_url):
         routes.ROUTES["/mpv/seekabs"] = original
 
     assert payload == {"ok": True, "route": "/mpv/seekabs", "position": 12.5}
+
+
+def test_webserver_delegates_migrated_system_route(server_url):
+    original = routes.ROUTES["/system/hw-stats"]
+    routes.ROUTES["/system/hw-stats"] = lambda query: {"ok": True, "route": query["_route"][0], "cpu": [1.0]}
+    try:
+        with urllib.request.urlopen(server_url + "/system/hw-stats", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/system/hw-stats"] = original
+
+    assert payload == {"ok": True, "route": "/system/hw-stats", "cpu": [1.0]}
+
+
+def test_webserver_delegates_migrated_media_route(server_url):
+    original = routes.ROUTES["/media/preview"]
+    routes.ROUTES["/media/preview"] = lambda query: {"ok": True, "route": query["_route"][0], "type": "direct"}
+    try:
+        with urllib.request.urlopen(server_url + "/media/preview?url=https%3A%2F%2Fexample.com%2Fvideo.mp4", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/media/preview"] = original
+
+    assert payload == {"ok": True, "route": "/media/preview", "type": "direct"}
+
+
+def test_webserver_delegates_migrated_dlna_routes(server_url):
+    original_select = routes.ROUTES["/dlna/select"]
+    original_scan = routes.ROUTES["/dlna/scan"]
+    time.sleep(1.1)
+    routes.ROUTES["/dlna/select"] = lambda query: {"ok": True, "route": query["_route"][0], "selected": query["name"][0]}
+    routes.ROUTES["/dlna/scan"] = lambda query: {"ok": True, "route": query["_route"][0], "count": 1}
+    try:
+        with urllib.request.urlopen(server_url + "/dlna/select?name=Renderer&location=http%3A%2F%2Fexample", timeout=5) as response:
+            assert response.status == 200
+            select_payload = json.loads(response.read().decode())
+        time.sleep(1.1)
+        with urllib.request.urlopen(server_url + "/dlna/scan", timeout=5) as response:
+            assert response.status == 200
+            scan_payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/dlna/select"] = original_select
+        routes.ROUTES["/dlna/scan"] = original_scan
+
+    assert select_payload == {"ok": True, "route": "/dlna/select", "selected": "Renderer"}
+    assert scan_payload == {"ok": True, "route": "/dlna/scan", "count": 1}

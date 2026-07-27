@@ -2153,6 +2153,18 @@ class H(BaseHTTPRequestHandler):
                 "/mpv/memory",
                 "/mpv/memory/clear",
                 "/mpv/memory-save",
+                "/system/hw-stats",
+                "/system/https-info",
+                "/youtube/cookies/status",
+                "/youtube/age-check",
+                "/media/preview",
+                "/dlna/select",
+                "/dlna/connect",
+                "/dlna/disconnect",
+                "/dlna/scan",
+                "/dlna/renderer/status",
+                "/dlna/renderer/start",
+                "/dlna/renderer/stop",
             }
             if path in registry_first:
                 handler = get_route(path)

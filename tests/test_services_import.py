@@ -70,7 +70,18 @@ def test_import_audio_dlna():
     """Test audio DLNA module import."""
     from rpi_dashboard.services import audio_dlna
     assert hasattr(audio_dlna, 'audio_select_dlna_renderer')
+    assert hasattr(audio_dlna, 'audio_connect_dlna')
+    assert hasattr(audio_dlna, 'audio_disconnect_dlna')
+    assert hasattr(audio_dlna, 'dlna_scan')
     assert hasattr(audio_dlna, 'dlna_renderer_status')
+
+
+def test_import_media():
+    """Test media module import."""
+    from rpi_dashboard.services import media
+    assert hasattr(media, 'youtube_cookie_status')
+    assert hasattr(media, 'youtube_age_check')
+    assert hasattr(media, 'media_preview')
 
 
 def test_import_api_routes():
