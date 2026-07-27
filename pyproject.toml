@@ -13,11 +13,7 @@ dependencies = [
     "yt-dlp>=2024.10.22",
 ]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["rpi_dashboard*"]
-
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pylint>=4.0.6",
     "pytest-asyncio>=1.4.0",
@@ -29,6 +25,10 @@ dev = [
     "pip-audit>=2.6.1",
     "pyyaml>=6.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rpi_dashboard*"]
 
 [tool.ruff.lint]
 select = ["F"]
