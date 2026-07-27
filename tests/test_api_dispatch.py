@@ -143,8 +143,6 @@ def test_route_registry_covers_webui_get_endpoints():
 
 def test_legacy_routes_are_explicitly_marked():
     legacy_endpoints = {
-        "/audio/bt",
-        "/audio/route/dlna-input/start",
         "/cec/send",
         "/mpv/seekabs",
         "/system/hw-stats",
@@ -154,20 +152,38 @@ def test_legacy_routes_are_explicitly_marked():
     for endpoint in legacy_endpoints:
         assert routes.ROUTES[endpoint] is routes.legacy_webserver_endpoint
 
+    migrated_audio_endpoints = {
+        "/audio/bt",
+        "/audio/hdmi",
+        "/audio/dlna",
+        "/audio/mute",
+        "/audio/route/alexa-bt",
+        "/audio/route/alexa-retarget",
+        "/audio/route/dlna-input/status",
+        "/audio/route/dlna-input/start",
+        "/audio/route/dlna-input/stop",
+        "/audio/route/dlna-input/mode",
+        "/audio/route/dlna-input/target",
+        "/keepalive",
+    }
+
+    for endpoint in migrated_audio_endpoints:
+        assert routes.ROUTES[endpoint] is not routes.legacy_webserver_endpoint
+
 
 def test_legacy_route_telemetry_records_hits():
     routes.LEGACY_ROUTE_HITS.clear()
     routes.LEGACY_ROUTE_LAST_HIT.clear()
 
-    payload = routes.legacy_webserver_endpoint({"_route": ["/audio/bt"]})
+    payload = routes.legacy_webserver_endpoint({"_route": ["/cec/send"]})
     assert payload["legacy"] is True
-    assert payload["route"] == "/audio/bt"
+    assert payload["route"] == "/cec/send"
     assert payload["hits"] == 1
-    assert routes.LEGACY_ROUTE_HITS["/audio/bt"] == 1
+    assert routes.LEGACY_ROUTE_HITS["/cec/send"] == 1
 
-    payload = routes.legacy_webserver_endpoint({"_route": ["/audio/bt"]})
+    payload = routes.legacy_webserver_endpoint({"_route": ["/cec/send"]})
     assert payload["hits"] == 2
-    assert routes.LEGACY_ROUTE_HITS["/audio/bt"] == 2
+    assert routes.LEGACY_ROUTE_HITS["/cec/send"] == 2
 
 
 def test_legacy_bt_connect_uses_adapter_aware_resolver(server_url):
@@ -183,3 +199,19 @@ def test_legacy_bt_connect_uses_adapter_aware_resolver(server_url):
 
     assert payload["ok"] is False
     assert payload["code"] == "ambiguous_device"
+
+
+def test_webserver_delegates_migrated_audio_route(server_url):
+    def handler(query):
+        return {"ok": True, "route": query["_route"][0], "target": "bt"}
+
+    original = routes.ROUTES["/audio/bt"]
+    routes.ROUTES["/audio/bt"] = handler
+    try:
+        with urllib.request.urlopen(server_url + "/audio/bt", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/audio/bt"] = original
+
+    assert payload == {"ok": True, "route": "/audio/bt", "target": "bt"}

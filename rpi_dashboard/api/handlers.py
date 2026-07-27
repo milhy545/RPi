@@ -4,7 +4,7 @@ Implements request handlers for all API endpoints.
 """
 
 from typing import Any, Dict
-from ..services import audio, player, devices, cec, system, terminal
+from ..services import audio, audio_routing as audio_routing_service, player, devices, cec, system, terminal
 from ..services.bluetooth import service as bluetooth_service
 
 
@@ -90,12 +90,74 @@ def handle_audio_bluetooth_profiles(q: Dict[str, Any]) -> Dict[str, Any]:
     return audio.audio_set_bluetooth_profile(card, profile)
 
 
-def handle_audio_mute(q: Dict[str, Any]) -> Dict[str, Any]:
-    """Set explicit sink/source mute state."""
+def handle_audio_mute_state(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set exact sink/source mute state."""
     kind = _get(q, "kind")
     name = _get(q, "name")
     muted = _get(q, "muted", "1") not in {"0", "false", "False", "off"}
     return audio.audio_set_mute(kind, name, muted)
+
+
+def handle_audio_mute(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Toggle sink/source mute state."""
+    kind = _get(q, "kind")
+    name = _get(q, "name")
+    return audio_routing_service.audio_toggle_mute(kind, name)
+
+
+def handle_audio_bt(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Route audio to Bluetooth output."""
+    return audio_routing_service.audio_route_output("bt")
+
+
+def handle_audio_hdmi(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Route audio to HDMI output."""
+    return audio_routing_service.audio_route_output("hdmi")
+
+
+def handle_audio_dlna(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Route audio to DLNA output."""
+    return audio_routing_service.audio_route_output("dlna")
+
+
+def handle_audio_route_alexa_bt(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Control Alexa→BT routing."""
+    return audio_routing_service.audio_route_alexa_bt(_get(q, "action", "status"))
+
+
+def handle_audio_route_alexa_retarget(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Retarget Alexa routing to the current default output."""
+    return audio_routing_service._retarget_alexa()
+
+
+def handle_audio_route_dlnain_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Return DLNA input routing status."""
+    return audio_routing_service.dlnain_status()
+
+
+def handle_audio_route_dlnain_start(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Start DLNA input routing."""
+    return audio_routing_service._dlnain_start()
+
+
+def handle_audio_route_dlnain_stop(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Stop DLNA input routing."""
+    return audio_routing_service._dlnain_stop()
+
+
+def handle_audio_route_dlnain_mode(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set DLNA input routing mode."""
+    return audio_routing_service.dlnain_set_mode(_get(q, "mode", "follow"))
+
+
+def handle_audio_route_dlnain_target(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set DLNA input routing target."""
+    return audio_routing_service.dlnain_set_target(_get(q, "sink"))
+
+
+def handle_keepalive(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Control keepalive audio streams."""
+    return audio_routing_service.audio_keepalive(_get(q, "action", "status"), _get(q, "sink") or None)
 
 
 # ─── Player Handlers ─────────────────────────────────────────────────

@@ -2135,6 +2135,18 @@ class H(BaseHTTPRequestHandler):
                 "/bt/reset",
                 "/bt/capabilities",
                 "/bt/phone-role",
+                "/audio/bt",
+                "/audio/hdmi",
+                "/audio/dlna",
+                "/audio/mute",
+                "/audio/route/alexa-bt",
+                "/audio/route/alexa-retarget",
+                "/audio/route/dlna-input/status",
+                "/audio/route/dlna-input/start",
+                "/audio/route/dlna-input/stop",
+                "/audio/route/dlna-input/mode",
+                "/audio/route/dlna-input/target",
+                "/keepalive",
             }
             if path in registry_first:
                 handler = get_route(path)
