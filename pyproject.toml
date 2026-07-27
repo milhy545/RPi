@@ -1,7 +1,7 @@
 [project]
-name = "rpi"
+name = "rpi-dashboard"
 version = "0.1.0"
-description = "Add your description here"
+description = "RPi-TV Dashboard"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +12,10 @@ dependencies = [
     "websockets>=12.0",
     "yt-dlp>=2024.10.22",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rpi_dashboard*"]
 
 [dependency-groups]
 dev = [

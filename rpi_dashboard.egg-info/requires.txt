@@ -1,0 +1,6 @@
+aiohttp>=3.14.1
+dbus-fast>=5.0.22
+pytest-asyncio>=1.4.0
+textual>=8.2.7
+websockets>=12.0
+yt-dlp>=2024.10.22
