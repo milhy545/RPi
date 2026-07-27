@@ -63,7 +63,7 @@ jobs:
       - name: Run pytest
         run: .venv/bin/python -m pytest -q --tb=short
 
-      - name: Create receipt
+      - name: Create receipt and report
         id: receipt
         run: |
           SHA=$(git rev-parse HEAD)
@@ -74,25 +74,30 @@ jobs:
           mkdir -p "$REPORT_DIR"
           RECEIPT_FILE="${RECEIPT_DIR}/${SHA}-$(date -u +%Y%m%d-%H%M%S)-github-main.json"
           REPORT_FILE="${REPORT_DIR}/${SHA}-$(date -u +%Y%m%d-%H%M%S)-github-main.md"
-          cat > "$REPORT_FILE" <<EOF
+          
+          # Create report file
+          cat > "$REPORT_FILE" <<HEREDOC
 # RPi Dashboard CI Report
 
 - Commit: $SHA
 - Host: $(hostname)
 - Time: $(date -Is)
 - Result: PASS
-EOF
-          cat > "$RECEIPT_FILE" <<EOF
-          {
-            "status": "done",
-            "commit_sha": "$SHA",
-            "tree_hash": "$TREE",
-            "source": "github-actions-main-push",
-            "ci_report": "$REPORT_FILE",
-            "actions_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
-          }
-          EOF
+HEREDOC
+          
+          # Create receipt file
+          cat > "$RECEIPT_FILE" <<HEREDOC
+{
+  "status": "done",
+  "commit_sha": "$SHA",
+  "tree_hash": "$TREE",
+  "source": "github-actions-main-push",
+  "ci_report": "$REPORT_FILE",
+  "actions_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+}
+HEREDOC
+          
           echo "receipt=$RECEIPT_FILE" >> $GITHUB_OUTPUT
           echo "report=$REPORT_FILE" >> $GITHUB_OUTPUT
 
