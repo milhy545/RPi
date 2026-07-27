@@ -70,25 +70,43 @@ jobs:
           TREE=$(git rev-parse HEAD^{tree})
           RECEIPT_DIR="conductor/ci/receipts"
           mkdir -p "$RECEIPT_DIR"
+          REPORT_DIR="conductor/ci/reports"
+          mkdir -p "$REPORT_DIR"
           RECEIPT_FILE="${RECEIPT_DIR}/${SHA}-$(date -u +%Y%m%d-%H%M%S)-github-main.json"
+          REPORT_FILE="${REPORT_DIR}/${SHA}-$(date -u +%Y%m%d-%H%M%S)-github-main.md"
+          cat > "$REPORT_FILE" <<EOF
+# RPi Dashboard CI Report
+
+- Commit: $SHA
+- Host: $(hostname)
+- Time: $(date -Is)
+- Result: PASS
+EOF
           cat > "$RECEIPT_FILE" <<EOF
           {
             "status": "done",
             "commit_sha": "$SHA",
             "tree_hash": "$TREE",
             "source": "github-actions-main-push",
-            "ci_report": "conductor/ci/reports/${SHA}-$(date -u +%Y%m%d-%H%M%S)-github-main.md",
+            "ci_report": "$REPORT_FILE",
             "actions_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
           }
           EOF
           echo "receipt=$RECEIPT_FILE" >> $GITHUB_OUTPUT
+          echo "report=$REPORT_FILE" >> $GITHUB_OUTPUT
 
       - name: Upload receipt
         uses: actions/upload-artifact@v4
         with:
           name: ci-receipt
           path: ${{ steps.receipt.outputs.receipt }}
+
+      - name: Upload CI report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-report-ubuntu
+          path: ${{ steps.receipt.outputs.report }}
 
   # ─────────────────────────────────────────────────────────────────
   # RPI-HW: Self-hosted runner on RPi 3B+ (hardware tests)
