@@ -13,16 +13,15 @@
     "phase2_status": "COMPLETED",
     "phase3_status": "COMPLETED",
     "phase4_status": "COMPLETED",
-    "phase5_status": "PARTIAL",
-    "return_service": "NEW - Provides return_to_dashboard(reason, source), records last return, stops active mode via ModeSwitcher.request_stop(), includes Xbox B long‑press listener.",
+    "phase5_status": "COMPLETED",
+    "return_service": "NEW - Provides return_to_dashboard(reason, source), records last return, stops active mode via ModeSwitcher.request_stop(), includes Xbox B long‑press listener with configurable duration.",
     "keys2mpv_modified": "ADDED - Ctrl+Alt+Backspace listener to trigger return_to_dashboard(reason=\"keyboard_shortcut\", source=\"ctrl_alt_backspace\").",
     "player_modified": "UPDATED - mpv_auto_return_on_eof now saves resume memory then calls return_to_dashboard(reason=\"eof\", source=\"mpv_eof\").",
     "tui_modified": "ADDED - In on_mount, after setting mode_switcher, calls return_service.set_mode_switcher and return_service.start_xbox_listener().",
-    "webserver_modified": "ADDED - Import return_service and POST /return endpoint that calls return_to_dashboard with reason/source from JSON body.",
-    "tests_passed": "284/284 (existing test suite passes).",
+    "webserver_modified": "ADDED - Import return_service and POST /return endpoint that calls return_to_dashboard with reason/source from JSON body. Added WebUI settings section in System/Terminal panel with CZ/EN translations for keyboard shortcut, Xbox B hold, duration, last return display.",
+    "tests_passed": "301/301 (existing test suite passes).",
     "next_steps": [
       "Hook process‑exit/crash paths (SIGTERM/SIGINT in mode_switcher) to record reason/source via return_service.",
-      "Add UI settings for shortcut/B‑hold mapping, duration, temporary disable.",
       "Perform live verification of MPV EOF, keyboard, and Xbox return across all modes."
     ]
   }
