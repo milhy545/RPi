@@ -6,6 +6,7 @@ Implements request handlers for all API endpoints.
 from typing import Any, Dict
 from ..services import audio, audio_dlna, audio_routing as audio_routing_service, media, player, devices, cec, system, terminal
 from ..services.bluetooth import service as bluetooth_service
+from ..services import return_service
 
 
 def _get(q: dict, name: str, default: str = "") -> str:
@@ -795,3 +796,30 @@ def handle_dlna_renderer_start(q: Dict[str, Any]) -> Dict[str, Any]:
 def handle_dlna_renderer_stop(q: Dict[str, Any]) -> Dict[str, Any]:
     """Stop DLNA renderer."""
     return audio_dlna.dlna_renderer_stop()
+
+
+# ─── Return Service Handlers ─────────────────────────────────────────
+
+def handle_return_config_get(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get return service configuration."""
+    return {"ok": True, "config": return_service.get_config()}
+
+
+def handle_return_config_set(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Update return service configuration."""
+    try:
+        # Support both form data and JSON body
+        if hasattr(q, 'get'):
+            updates = {k: v[0] if isinstance(v, list) else v for k, v in q.items()}
+        else:
+            updates = q
+        config = return_service.update_config(updates)
+        return {"ok": True, "config": config}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def handle_return_last(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get last return event."""
+    return {"ok": True, "last_return": return_service.get_last_return()}
+

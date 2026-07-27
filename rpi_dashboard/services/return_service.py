@@ -8,15 +8,27 @@ Also listens for Xbox B button (BTN_EAST) long press (≥2 seconds) to trigger
 a return.
 """
 
+import json
 import os
 import select
 import struct
 import threading
 import time
+from pathlib import Path
 from typing import Optional, Dict, List
 
 # We will import mode_switcher lazily to avoid circular imports
 from mode_switcher import ModeSwitcher
+
+# Configuration file path
+_CONFIG_PATH = Path("/home/milhy777/rpi-dashboard/conductor/ci/receipts/return_service_config.json")
+
+# Default configuration
+_DEFAULT_CONFIG = {
+    "keyboard_shortcut_enabled": True,
+    "xbox_b_hold_enabled": True,
+    "xbox_b_hold_duration_sec": 2.0,
+}
 
 # Global state
 _last_reason: str = "unknown"
@@ -32,6 +44,59 @@ _ms_lock = threading.Lock()
 _xbox_listener_thread: Optional[threading.Thread] = None
 _xbox_listener_stop_event = threading.Event()
 _listener_started = False
+
+# Configuration (loaded from file)
+_config: Dict = {}
+_config_lock = threading.Lock()
+
+
+def _load_config() -> Dict:
+    """Load configuration from file, falling back to defaults."""
+    global _config
+    with _config_lock:
+        if _config:
+            return _config
+        try:
+            if _CONFIG_PATH.exists():
+                with open(_CONFIG_PATH, 'r') as f:
+                    _config = {**_DEFAULT_CONFIG, **json.load(f)}
+            else:
+                _config = _DEFAULT_CONFIG.copy()
+        except Exception:
+            _config = _DEFAULT_CONFIG.copy()
+        return _config
+
+
+def _save_config() -> None:
+    """Save configuration to file."""
+    global _config
+    with _config_lock:
+        _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(_CONFIG_PATH, 'w') as f:
+            json.dump(_config, f, indent=2)
+
+
+def get_config() -> Dict:
+    """Get current configuration."""
+    return {**_load_config()}
+
+
+def update_config(updates: Dict) -> Dict:
+    """Update configuration with new values."""
+    global _config
+    with _config_lock:
+        _config = _load_config()
+        for key, value in updates.items():
+            if key in _DEFAULT_CONFIG:
+                # Type conversion for known keys
+                if key.endswith('_enabled'):
+                    _config[key] = bool(value)
+                elif key.endswith('_duration_sec'):
+                    _config[key] = float(value)
+                else:
+                    _config[key] = value
+        _save_config()
+    return get_config()
 
 
 def set_mode_switcher(ms: Optional[ModeSwitcher]) -> None:
@@ -206,6 +271,12 @@ def _xbox_listener_loop() -> None:
                     # Possibly device disconnected
                     raise OSError
                 (tv_sec, tv_usec, ev_type, ev_code, ev_value) = struct.unpack('llHHi', data)
+
+                # Check if Xbox B listener is enabled
+                config = get_config()
+                xbox_enabled = config.get("xbox_b_hold_enabled", True)
+                xbox_duration = config.get("xbox_b_hold_duration_sec", 2.0)
+
                 if ev_type == 1 and ev_code == BTN_EAST:  # EV_KEY, BTN_EAST
                     if ev_value == 1:  # key down
                         press_times[fd] = time.time()
@@ -213,7 +284,7 @@ def _xbox_listener_loop() -> None:
                         start = press_times.get(fd)
                         if start is not None:
                             duration = time.time() - start
-                            if duration >= 2.0:
+                            if xbox_enabled and duration >= xbox_duration:
                                 # Long press detected
                                 try:
                                     return_to_dashboard(

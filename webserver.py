@@ -1462,6 +1462,7 @@ JS=r"""
 function $(s){return document.querySelector(s)}function $$(s){return document.querySelectorAll(s)}
 function msg(t,c){let d=document.createElement('div');d.className='t '+c;d.textContent=t;$('#toast').appendChild(d);setTimeout(()=>d.remove(),4000)}
 async function api(u){try{return await(await fetch(u)).json()}catch(e){return{error:e.message}}}
+async function apiPost(u, data){try{return await(await fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})).json()}catch(e){return{error:e.message}}}
 function sw(n){$$('.tab').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
 let previewTimer=null,previewSeq=0;
 function httpsUrlForCurrent(){let host=location.hostname||'rpi-tv';let p=location.port;if(p==='8080')return 'https://'+host+':8443'+location.pathname;if(p==='80'||p==='')return 'https://'+host+location.pathname;return 'https://'+host+(p?':'+p:'')+location.pathname}
@@ -1490,7 +1491,7 @@ function jsarg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")
 function getCookie(name){let prefix=encodeURIComponent(name)+'=';let item=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(prefix));return item?decodeURIComponent(item.slice(prefix.length)):''}
 function setCookie(name,value){document.cookie=encodeURIComponent(name)+'='+encodeURIComponent(value)+'; path=/; max-age=31536000; SameSite=Lax'}
 const LANG_KEY='rpidash-lang'
-const I18N={cz:{player:'Přehrávač',apps:'Aplikace',cec:'CEC',kodi:'Kodi',audio:'Audio',devices:'Zařízení',terminal:'Terminál',status:'Stav',quick:'Rychlé',ageCookies:'Věk / cookies',cookieStatus:'Stav cookies',ageCheck:'Kontrola věku',play:'Přehrát',pasteClipboard:'Vložit schránku',openHttps:'Otevřít HTTPS',httpFallbackBanner:'HTTP fallback je aktivní. Pro vložení ze schránky použij zabezpečenou verzi.',secureClipboardEnabled:'Zabezpečená verze: clipboard je povolený po schválení oprávnění prohlížeče.',refresh:'Obnovit',connect:'Připojit',disconnect:'Odpojit',saveApply:'Uložit + použít',inputUrl:'YouTube nebo přímá URL...',audioDelay:'Audio delay (ms):',playerDesc:'Přehrávání YouTube/mpv a diagnostika cookies.',appsDesc:'Spuštění aplikací a návrat do dashboardu.',cecPower:'Napájení',cecBridge:'Remote→MPV Bridge',cecNav:'Navigace',cecVol:'Hlasitost',cecInput:'Vstup',cecDevices:'Zařízení',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy cesta pro odeslání URL do lokálního Kodi na 127.0.0.1:9090 přes Player.Open. Smysl má jen pokud Kodi skutečně běží jako renderer/přehrávač; běžné YouTube/mpv přehrávání používá kartu Player.',audioTitle:'Audio & Media',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Zařízeních; směrování výstupu je zde.',outputSinks:'Výstupní zařízení',inputSources:'Vstupní zdroje',mixer:'Mixér — aktivní streamy',audioRouting:'Směrování zvuku',dlnaLatency:'Kompenzace DLNA zpoždění',ytAge:'YouTube věk / cookies',ytAgeDesc:'Kontrola čerstvosti cookies bez vyzrazení hodnot. Použij, když age-restricted video nejde přehrát.',diagnostics:'Diagnostika',devicesTitle:'Zařízení',devicesDesc:'Páruj a připojuj hardware zde. Wi-Fi nastavení je v sekci Síť.',btPair:'Párování Bluetooth',wifiConfig:'Wi‑Fi konfigurace',networkTitle:'🌐 Síť',networkDesc:'Nastavení sítě a správa Wi-Fi.',tailscaleTitle:'🔗 Tailscale',roles:'Doporučené role zařízení',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj zde, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj zde pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.',termConnect:'Připojit',termDisconnect:'Odpojit',scan:'Skenovat',pair:'Párovat',trust:'Důvěřovat',remove:'Odebrat',found:'Nalezeno',paired:'spárováno',connected:'Připojeno',disconnected:'Odpojeno',playing:'Přehrávám',paused:'Pozastaveno',stopped:'Zastaveno',language:'Jazyk',clickScan:'Klikni na Skenovat',clickScanRefresh:'Klikni na Skenovat nebo Obnovit',clickCookieStatus:'Klikni na Stav cookies',appsLaunch:'Spustit aplikaci',appsReturn:'Návrat do Dashboardu',appsReturnDesc:'• <b>Ctrl+C</b> — ukončí většinu aplikací<br>• <b>Ctrl+Q</b> — ukončí Steam Link<br>• <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>• Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení',cecBridgeDesc:'Play/Pause, Stop, Seek, Vol via TV remote',ssid:'SSID',password:'Heslo',tipPlayerInput:'Vlož YouTube URL nebo přímý odkaz na video/audio.',tipAgeCheck:'Zadej YouTube URL pro kontrolu věkového ověření.',tipCecScan:'Prohledá CEC sběrnici a zobrazí HDMI zařízení.',tipCecBridge:'Přeposílá tlačítka TV ovladače na mpv.',tipAudioBt:'Přepne výstup na Bluetooth soundbar.',tipAudioHdmi:'Přepne výstup na HDMI.',tipAudioDlna:'Přepne výstup na DLNA zařízení.',tipDlnaLatency:'Nastav zpoždění zvuku při DLNA přehrávání.',tipBtScan:'Skenuje okolní Bluetooth zařízení.',tipWifiScan:'Skenuje dostupné Wi-Fi sítě.',tipWifiConnect:'Připojí RPi ke zvolené Wi-Fi. Heslo zůstává jen v prohlížeči.',tipKodiUrl:'URL adresa odeslaná do Kodi přes JSON-RPC.',tipMpvQ:'Kvalita přehrávání; vyšší rozlišení víc zatěžuje RPi.',feedbackBtn:'💬 Zpětná vazba',feedbackTitle:'💬 Odeslat zpětnou vazbu',feedbackTypeLabel:'Typ:',feedbackBug:'Nahlásit chybu',feedbackFeature:'Návrh na vylepšení',feedbackDescLabel:'Popis:',feedbackSubmit:'Odeslat',feedbackPlaceholder:'Zde popište chybu nebo nápad...',feedbackRequired:'Popis je povinný.',feedbackSending:'Odesílám zpětnou vazbu...',feedbackSuccess:'Zpětná vazba byla uložena! Soubor:',feedbackFailed:'Chyba při odesílání zpětné vazby.',ssidRequired:'Název sítě SSID je povinný.',wifiConnected:'Wi‑Fi připojena.',wifiFailed:'Připojení k Wi‑Fi selhalo.',wifiScanning:'Skenování Wi‑Fi...',wifiScanDone:'Skenování Wi‑Fi dokončeno.',wifiScanFailed:'Skenování Wi‑Fi selhalo.',ytUrlRequired:'Zadejte YouTube URL.',ytChecking:'Ověřování věku a cookies...',ytExtractable:'Video lze bez problému přehrát.',ytFailed:'Ověření věku selhalo.',launching:'Spouštím',failed:'selhalo',stopping:'Zastavování...',termReady:'Terminál připraven.',connectionError:'Chyba připojení.',appsMpv:'🎬 MPV Přehrávač',appsStopReturn:'⏹ ZASTAVIT & VRÁTIT SE',hwStatsTitle:'HW Statistiky & Zátěž',hwUpdateBtn:'Aktualizovat',hwLiveBtn:'Živé sledování',hwLoading:'Načítám HW statistiky...',sysLoading:'Načítám parametry procesů...',restartTitle:'Restart Systému',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboardu',restartRpi:'Restart RPi',taDefault:'Výchozí výstup:',taRaw:'Surová JSON data',clickRefresh:'Klikni Obnovit',wifiUse:'Použít',wifiNone:'Žádné sítě nenalezeny'},en:{player:'Player',apps:'Apps',cec:'CEC',kodi:'Kodi',audio:'Audio',devices:'Devices',terminal:'Terminal',status:'Status',quick:'Quick',ageCookies:'Age / cookies',cookieStatus:'Cookie status',ageCheck:'Age check',play:'Play',pasteClipboard:'Paste clipboard',openHttps:'Open HTTPS',httpFallbackBanner:'HTTP fallback is active. Use the secure version for clipboard paste.',secureClipboardEnabled:'Secure version: clipboard is enabled after browser permission.',refresh:'Refresh',connect:'Connect',disconnect:'Disconnect',saveApply:'Save + apply',inputUrl:'YouTube or direct URL...',audioDelay:'Audio delay (ms):',playerDesc:'YouTube/mpv playback and cookie diagnostics.',appsDesc:'Launch apps and return to the dashboard.',cecPower:'Power',cecBridge:'Remote→MPV Bridge',cecNav:'Navigation',cecVol:'Volume',cecInput:'Input',cecDevices:'Devices',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.',audioTitle:'Audio & Media',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.',outputSinks:'Output Sinks',inputSources:'Input Sources',mixer:'Mixer — Active Streams',audioRouting:'Audio Routing',dlnaLatency:'DLNA Latency Compensation',ytAge:'YouTube Age / Cookies',ytAgeDesc:'Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.',diagnostics:'Diagnostics',devicesTitle:'Devices',devicesDesc:'Pair and connect hardware here. Wi-Fi settings are in the Network section.',btPair:'Bluetooth Pairing',wifiConfig:'Wi‑Fi Configuration',networkTitle:'🌐 Network',networkDesc:'Network configuration and Wi-Fi management.',tailscaleTitle:'🔗 Tailscale',roles:'Suggested Device Roles',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.',termConnect:'Connect',termDisconnect:'Disconnect',scan:'Scan',pair:'Pair',trust:'Trust',remove:'Remove',found:'Found',paired:'paired',connected:'Connected',disconnected:'Disconnected',playing:'Playing',paused:'Paused',stopped:'Stopped',language:'Language',clickScan:'Click Scan',clickScanRefresh:'Click Scan or Refresh',clickCookieStatus:'Click Cookie status',appsLaunch:'Launch app',appsReturn:'Back to Dashboard',appsReturnDesc:'• <b>Ctrl+C</b> — closes most applications<br>• <b>Ctrl+Q</b> — closes Steam Link<br>• <b>STOP button</b> — forces a return<br>• Apps run directly on the TV and the dashboard returns automatically after exit',cecBridgeDesc:'Play/Pause, Stop, Seek, Volume via TV remote',ssid:'SSID',password:'Password',tipPlayerInput:'Paste a YouTube URL or direct video/audio link.',tipAgeCheck:'Enter a YouTube URL to check age/cookie status.',tipCecScan:'Scan the CEC bus and list HDMI devices.',tipCecBridge:'Forward TV remote buttons to mpv.',tipAudioBt:'Switch audio output to Bluetooth soundbar.',tipAudioHdmi:'Switch audio output to HDMI.',tipAudioDlna:'Switch audio output to a DLNA device.',tipDlnaLatency:'Set audio delay offset for DLNA playback.',tipBtScan:'Scan nearby Bluetooth devices.',tipWifiScan:'Scan available Wi-Fi networks.',tipWifiConnect:'Connect to a Wi-Fi network. Password stays only in your browser.',tipKodiUrl:'URL address to send to Kodi via JSON-RPC.',tipMpvQ:'Playback quality; higher resolution uses more RPi resources.',feedbackBtn:'💬 Feedback',feedbackTitle:'💬 Submit Feedback',feedbackTypeLabel:'Type:',feedbackBug:'Bug Report',feedbackFeature:'Feature Request',feedbackDescLabel:'Description:',feedbackSubmit:'Submit',feedbackPlaceholder:'Please describe the issue or your feature request...',feedbackRequired:'Description is required.',feedbackSending:'Submitting feedback...',feedbackSuccess:'Feedback submitted! File:',feedbackFailed:'Failed to submit feedback.',ssidRequired:'SSID required.',wifiConnected:'Wi-Fi connected.',wifiFailed:'Wi-Fi connection failed.',wifiScanning:'Scanning Wi-Fi...',wifiScanDone:'Wi-Fi scan done.',wifiScanFailed:'Wi-Fi scan failed.',ytUrlRequired:'Enter YouTube URL.',ytChecking:'Checking YouTube age/cookies...',ytExtractable:'Video is extractable.',ytFailed:'Age/cookie check failed.',launching:'Launching',failed:'failed',stopping:'Stopping...',termReady:'Terminal ready.',connectionError:'Connection error.',appsMpv:'🎬 MPV Player',appsStopReturn:'⏹ STOP & RETURN',hwStatsTitle:'HW Stats & CPU Masks',hwUpdateBtn:'Update',hwLiveBtn:'Live monitoring',hwLoading:'Loading HW stats...',sysLoading:'Loading CPU masks...',restartTitle:'Restart Actions',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboard',restartRpi:'Restart RPi',taDefault:'Default sink:',taRaw:'Raw technical JSON',clickRefresh:'Click Refresh',wifiUse:'Use',wifiNone:'No networks found'}}
+const I18N={cz:{player:'Přehrávač',apps:'Aplikace',cec:'CEC',kodi:'Kodi',audio:'Audio',devices:'Zařízení',terminal:'Terminál',status:'Stav',quick:'Rychlé',ageCookies:'Věk / cookies',cookieStatus:'Stav cookies',ageCheck:'Kontrola věku',play:'Přehrát',pasteClipboard:'Vložit schránku',openHttps:'Otevřít HTTPS',httpFallbackBanner:'HTTP fallback je aktivní. Pro vložení ze schránky použij zabezpečenou verzi.',secureClipboardEnabled:'Zabezpečená verze: clipboard je povolený po schválení oprávnění prohlížeče.',refresh:'Obnovit',connect:'Připojit',disconnect:'Odpojit',saveApply:'Uložit + použít',inputUrl:'YouTube nebo přímá URL...',audioDelay:'Audio delay (ms):',playerDesc:'Přehrávání YouTube/mpv a diagnostika cookies.',appsDesc:'Spuštění aplikací a návrat do dashboardu.',cecPower:'Napájení',cecBridge:'Remote→MPV Bridge',cecNav:'Navigace',cecVol:'Hlasitost',cecInput:'Vstup',cecDevices:'Zařízení',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy cesta pro odeslání URL do lokálního Kodi na 127.0.0.1:9090 přes Player.Open. Smysl má jen pokud Kodi skutečně běží jako renderer/přehrávač; běžné YouTube/mpv přehrávání používá kartu Player.',audioTitle:'Audio & Media',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Zařízeních; směrování výstupu je zde.',outputSinks:'Výstupní zařízení',inputSources:'Vstupní zdroje',mixer:'Mixér — aktivní streamy',audioRouting:'Směrování zvuku',dlnaLatency:'Kompenzace DLNA zpoždění',ytAge:'YouTube věk / cookies',ytAgeDesc:'Kontrola čerstvosti cookies bez vyzrazení hodnot. Použij, když age-restricted video nejde přehrát.',diagnostics:'Diagnostika',devicesTitle:'Zařízení',devicesDesc:'Páruj a připojuj hardware zde. Wi-Fi nastavení je v sekci Síť.',btPair:'Párování Bluetooth',wifiConfig:'Wi‑Fi konfigurace',networkTitle:'🌐 Síť',networkDesc:'Nastavení sítě a správa Wi-Fi.',tailscaleTitle:'🔗 Tailscale',roles:'Doporučené role zařízení',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj zde, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj zde pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.',termConnect:'Připojit',termDisconnect:'Odpojit',scan:'Skenovat',pair:'Párovat',trust:'Důvěřovat',remove:'Odebrat',found:'Nalezeno',paired:'spárováno',connected:'Připojeno',disconnected:'Odpojeno',playing:'Přehrávám',paused:'Pozastaveno',stopped:'Zastaveno',language:'Jazyk',clickScan:'Klikni na Skenovat',clickScanRefresh:'Klikni na Skenovat nebo Obnovit',clickCookieStatus:'Klikni na Stav cookies',appsLaunch:'Spustit aplikaci',appsReturn:'Návrat do Dashboardu',appsReturnDesc:'• <b>Ctrl+C</b> — ukončí většinu aplikací<br>• <b>Ctrl+Q</b> — ukončí Steam Link<br>• <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>• Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení',cecBridgeDesc:'Play/Pause, Stop, Seek, Vol via TV remote',ssid:'SSID',password:'Heslo',tipPlayerInput:'Vlož YouTube URL nebo přímý odkaz na video/audio.',tipAgeCheck:'Zadej YouTube URL pro kontrolu věkového ověření.',tipCecScan:'Prohledá CEC sběrnici a zobrazí HDMI zařízení.',tipCecBridge:'Přeposílá tlačítka TV ovladače na mpv.',tipAudioBt:'Přepne výstup na Bluetooth soundbar.',tipAudioHdmi:'Přepne výstup na HDMI.',tipAudioDlna:'Přepne výstup na DLNA zařízení.',tipDlnaLatency:'Nastav zpoždění zvuku při DLNA přehrávání.',tipBtScan:'Skenuje okolní Bluetooth zařízení.',tipWifiScan:'Skenuje dostupné Wi-Fi sítě.',tipWifiConnect:'Připojí RPi ke zvolené Wi-Fi. Heslo zůstává jen v prohlížeči.',tipKodiUrl:'URL adresa odeslaná do Kodi přes JSON-RPC.',tipMpvQ:'Kvalita přehrávání; vyšší rozlišení víc zatěžuje RPi.',feedbackBtn:'💬 Zpětná vazba',feedbackTitle:'💬 Odeslat zpětnou vazbu',feedbackTypeLabel:'Typ:',feedbackBug:'Nahlásit chybu',feedbackFeature:'Návrh na vylepšení',feedbackDescLabel:'Popis:',feedbackSubmit:'Odeslat',feedbackPlaceholder:'Zde popište chybu nebo nápad...',feedbackRequired:'Popis je povinný.',feedbackSending:'Odesílám zpětnou vazbu...',feedbackSuccess:'Zpětná vazba byla uložena! Soubor:',feedbackFailed:'Chyba při odesílání zpětné vazby.',ssidRequired:'Název sítě SSID je povinný.',wifiConnected:'Wi‑Fi připojena.',wifiFailed:'Připojení k Wi‑Fi selhalo.',wifiScanning:'Skenování Wi‑Fi...',wifiScanDone:'Skenování Wi‑Fi dokončeno.',wifiScanFailed:'Skenování Wi‑Fi selhalo.',ytUrlRequired:'Zadejte YouTube URL.',ytChecking:'Ověřování věku a cookies...',ytExtractable:'Video lze bez problému přehrát.',ytFailed:'Ověření věku selhalo.',launching:'Spouštím',failed:'selhalo',stopping:'Zastavování...',termReady:'Terminál připraven.',connectionError:'Chyba připojení.',appsMpv:'🎬 MPV Přehrávač',appsStopReturn:'⏹ ZASTAVIT & VRÁTIT SE',hwStatsTitle:'HW Statistiky & Zátěž',hwUpdateBtn:'Aktualizovat',hwLiveBtn:'Živé sledování',hwLoading:'Načítám HW statistiky...',sysLoading:'Načítám parametry procesů...',restartTitle:'Restart Systému',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboardu',restartRpi:'Restart RPi',taDefault:'Výchozí výstup:',taRaw:'Surová JSON data',clickRefresh:'Klikni Obnovit',wifiUse:'Použít',wifiNone:'Žádné sítě nenalezeny'},returnTitle:'Návrat do Dashboardu',returnDesc:'Nastavení globálních klávesových zkratek a Xbox ovladače pro návrat do dashboardu.',returnKeyboardEnabled:'Klávesová zkratka (Ctrl+Alt+Backspace)',returnKeyboardEnabledDesc:'Povolit globální klávesovou zkratku pro návrat do dashboardu.',returnXboxEnabled:'Xbox B tlačítko (dlouhý stisk)',returnXboxEnabledDesc:'Povolit návrat do dashboardu dlouhým stiskem Xbox B tlačítka.',returnXboxDuration:'Délka stisku Xbox B (sekundy)',returnXboxDurationDesc:'Minimální doba stisku pro spuštění návratu.',returnLastReturn:'Poslední návrat',returnLastReason:'Důvod:',returnLastSource:'Zdroj:',returnLastTime:'Čas:',returnSave:'Uložit nastavení',returnSaved:'Nastavení uloženo!',returnSaveFailed:'Uložení selhalo',returnStatusTitle:'Stav Xbox B listeneru',returnListenerStatus:'Stav:',returnListenerRunning:'Běží',returnListenerStopped:'Zastaven',returnListenerDevices:'Zjištěná zařízení:',en:{player:'Player',apps:'Apps',cec:'CEC',kodi:'Kodi',audio:'Audio',devices:'Devices',terminal:'Terminal',status:'Status',quick:'Quick',ageCookies:'Age / cookies',cookieStatus:'Cookie status',ageCheck:'Age check',play:'Play',pasteClipboard:'Paste clipboard',openHttps:'Open HTTPS',httpFallbackBanner:'HTTP fallback is active. Use the secure version for clipboard paste.',secureClipboardEnabled:'Secure version: clipboard is enabled after browser permission.',refresh:'Refresh',connect:'Connect',disconnect:'Disconnect',saveApply:'Save + apply',inputUrl:'YouTube or direct URL...',audioDelay:'Audio delay (ms):',playerDesc:'YouTube/mpv playback and cookie diagnostics.',appsDesc:'Launch apps and return to the dashboard.',cecPower:'Power',cecBridge:'Remote→MPV Bridge',cecNav:'Navigation',cecVol:'Volume',cecInput:'Input',cecDevices:'Devices',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.',audioTitle:'Audio & Media',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.',outputSinks:'Output Sinks',inputSources:'Input Sources',mixer:'Mixer — Active Streams',audioRouting:'Audio Routing',dlnaLatency:'DLNA Latency Compensation',ytAge:'YouTube Age / Cookies',ytAgeDesc:'Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.',diagnostics:'Diagnostics',devicesTitle:'Devices',devicesDesc:'Pair and connect hardware here. Wi-Fi settings are in the Network section.',btPair:'Bluetooth Pairing',wifiConfig:'Wi‑Fi Configuration',networkTitle:'🌐 Network',networkDesc:'Network configuration and Wi-Fi management.',tailscaleTitle:'🔗 Tailscale',roles:'Suggested Device Roles',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.',termConnect:'Connect',termDisconnect:'Disconnect',scan:'Scan',pair:'Pair',trust:'Trust',remove:'Remove',found:'Found',paired:'paired',connected:'Connected',disconnected:'Disconnected',playing:'Playing',paused:'Paused',stopped:'Stopped',language:'Language',clickScan:'Click Scan',clickScanRefresh:'Click Scan or Refresh',clickCookieStatus:'Click Cookie status',appsLaunch:'Launch app',appsReturn:'Back to Dashboard',appsReturnDesc:'• <b>Ctrl+C</b> — closes most applications<br>• <b>Ctrl+Q</b> — closes Steam Link<br>• <b>STOP button</b> — forces a return<br>• Apps run directly on the TV and the dashboard returns automatically after exit',cecBridgeDesc:'Play/Pause, Stop, Seek, Volume via TV remote',ssid:'SSID',password:'Password',tipPlayerInput:'Paste a YouTube URL or direct video/audio link.',tipAgeCheck:'Enter a YouTube URL to check age/cookie status.',tipCecScan:'Scan the CEC bus and list HDMI devices.',tipCecBridge:'Forward TV remote buttons to mpv.',tipAudioBt:'Switch audio output to Bluetooth soundbar.',tipAudioHdmi:'Switch audio output to HDMI.',tipAudioDlna:'Switch audio output to a DLNA device.',tipDlnaLatency:'Set audio delay offset for DLNA playback.',tipBtScan:'Scan nearby Bluetooth devices.',tipWifiScan:'Scan available Wi-Fi networks.',tipWifiConnect:'Connect to a Wi-Fi network. Password stays only in your browser.',tipKodiUrl:'URL address to send to Kodi via JSON-RPC.',tipMpvQ:'Playback quality; higher resolution uses more RPi resources.',feedbackBtn:'💬 Feedback',feedbackTitle:'💬 Submit Feedback',feedbackTypeLabel:'Type:',feedbackBug:'Bug Report',feedbackFeature:'Feature Request',feedbackDescLabel:'Description:',feedbackSubmit:'Submit',feedbackPlaceholder:'Please describe the issue or your feature request...',feedbackRequired:'Description is required.',feedbackSending:'Submitting feedback...',feedbackSuccess:'Feedback submitted! File:',feedbackFailed:'Failed to submit feedback.',ssidRequired:'SSID required.',wifiConnected:'Wi-Fi connected.',wifiFailed:'Wi-Fi connection failed.',wifiScanning:'Scanning Wi-Fi...',wifiScanDone:'Wi-Fi scan done.',wifiScanFailed:'Wi-Fi scan failed.',ytUrlRequired:'Enter YouTube URL.',ytChecking:'Checking YouTube age/cookies...',ytExtractable:'Video is extractable.',ytFailed:'Age/cookie check failed.',launching:'Launching',failed:'failed',stopping:'Stopping...',termReady:'Terminal ready.',connectionError:'Connection error.',appsMpv:'🎬 MPV Player',appsStopReturn:'⏹ STOP & RETURN',hwStatsTitle:'HW Stats & CPU Masks',hwUpdateBtn:'Update',hwLiveBtn:'Live monitoring',hwLoading:'Loading HW stats...',sysLoading:'Loading CPU masks...',restartTitle:'Restart Actions',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboard',restartRpi:'Restart RPi',taDefault:'Default sink:',taRaw:'Raw technical JSON',clickRefresh:'Click Refresh',wifiUse:'Use',wifiNone:'No networks found'}},returnTitle:'Return to Dashboard',returnDesc:'Global keyboard shortcut and Xbox controller settings for returning to the dashboard.',returnKeyboardEnabled:'Keyboard shortcut (Ctrl+Alt+Backspace)',returnKeyboardEnabledDesc:'Enable global keyboard shortcut to return to dashboard.',returnXboxEnabled:'Xbox B button (long press)',returnXboxEnabledDesc:'Enable return to dashboard on long press of Xbox B button.',returnXboxDuration:'Xbox B hold duration (seconds)',returnXboxDurationDesc:'Minimum hold time to trigger return.',returnLastReturn:'Last Return',returnLastReason:'Reason:',returnLastSource:'Source:',returnLastTime:'Time:',returnSave:'Save Settings',returnSaved:'Settings saved!',returnSaveFailed:'Save failed',returnStatusTitle:'Xbox B Listener Status',returnListenerStatus:'Status:',returnListenerRunning:'Running',returnListenerStopped:'Stopped',returnListenerDevices:'Detected devices:'
 
 const HELPERS={
 cz:{
@@ -1615,6 +1616,107 @@ async function restartRpi(){
     let r=await api('/system/restart-rpi');
     msg(r.out||L('rebooting'),'ok');
 }
+
+async function loadReturnSettings(){
+    let r=await api('/return/config');
+    if(r.config){
+        $('#return-keyboard-enabled').checked=r.config.keyboard_shortcut_enabled!==false;
+        $('#return-xbox-enabled').checked=r.config.xbox_b_hold_enabled!==false;
+        $('#return-xbox-duration').value=r.config.xbox_b_hold_duration_sec||2;
+        updateReturnStatus();
+    }
+}
+
+async function saveReturnSettings(){
+    let msg=$('#return-save-msg');
+    let data={
+        keyboard_shortcut_enabled: $('#return-keyboard-enabled').checked,
+        xbox_b_hold_enabled: $('#return-xbox-enabled').checked,
+        xbox_b_hold_duration_sec: parseFloat($('#return-xbox-duration').value)||2
+    };
+    msg.textContent=L('saving')||'Saving...';
+    msg.style.color='#8b949e';
+    let r=await apiPost('/return/config/set', data);
+    if(r.ok){
+        msg.textContent=L('returnSaved')||'Settings saved!';
+        msg.style.color='#3fb950';
+        updateReturnStatus();
+    }else{
+        msg.textContent=L('returnSaveFailed')||'Save failed';
+        msg.style.color='#f85149';
+    }
+    setTimeout(()=>{msg.textContent=''},3000);
+}
+
+function updateReturnStatus(){
+    $('#return-keyboard-status').textContent=$('#return-keyboard-enabled').checked?L('enabled'):L('disabled');
+    $('#return-xbox-status').textContent=$('#return-xbox-enabled').checked?L('enabled'):L('disabled');
+}
+
+async function loadReturnStatus(){
+    let r=await api('/return/last');
+    if(r.last_return){
+        $('#return-last-reason').textContent=r.last_return.reason||'—';
+        $('#return-last-source').textContent=r.last_return.source||'—';
+        let ts=r.last_return.timestamp;
+        $('#return-last-time').textContent=ts?new Date(ts*1000).toLocaleString():'—';
+    }
+}
+
+async function refreshReturnListenerStatus(){
+    let r=await api('/return/config');
+    if(r.config){
+        let running=r.config.xbox_b_hold_enabled!==false;
+        $('#return-listener-status').textContent=running?L('returnListenerRunning'):L('returnListenerStopped');
+        $('#return-listener-status').style.color=running?'#3fb950':'#f85149';
+        // Note: device detection would need a separate endpoint
+        $('#return-listener-devices').textContent=running?'Listening on /dev/input/event*' :'—';
+    }
+}
+
+async function systemRefresh(){
+    await Promise.all([loadHwStats(), loadSysStatus(), loadReturnSettings(), loadReturnStatus(), refreshReturnListenerStatus()]);
+}
+
+// Call loadReturnSettings when terminal panel becomes active
+document.addEventListener('DOMContentLoaded', ()=>{
+    setTimeout(()=>{ if($('#p-terminal')?.classList.contains('active')){ loadReturnSettings(); loadReturnStatus(); refreshReturnListenerStatus(); }}, 500);
+});
+
+async function returnConfigLoad(){
+    let r = await api('/return/config');
+    if(r.config){
+        $('#return-keyboard-enabled').checked = r.config.keyboard_shortcut_enabled;
+        $('#return-xbox-enabled').checked = r.config.xbox_b_hold_enabled;
+        $('#return-xbox-duration').value = r.config.xbox_b_hold_duration_sec;
+    }
+}
+
+async function returnConfigSave(){
+    let config = {
+        keyboard_shortcut_enabled: $('#return-keyboard-enabled').checked,
+        xbox_b_hold_enabled: $('#return-xbox-enabled').checked,
+        xbox_b_hold_duration_sec: parseFloat($('#return-xbox-duration').value) || 2.0
+    };
+    let r = await api('/return/config/set', config);
+    if(r.ok){
+        msg(L('returnSaved'), 'ok');
+        returnConfigLoad();
+        returnLastRefresh();
+    }else{
+        msg(L('returnSaveFailed') + ': ' + (r.error||''), 'err');
+    }
+}
+
+async function returnLastRefresh(){
+    let r = await api('/return/last');
+    if(r.last_return){
+        $('#return-last-reason').textContent = r.last_return.reason;
+        $('#return-last-source').textContent = r.last_return.source;
+        $('#return-last-time').textContent = r.last_return.timestamp ? new Date(r.last_return.timestamp * 1000).toLocaleString() : '—';
+    }
+}
+
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg(L('bridgeOff'),'info')}else{let r=await api('/cec/br/start');msg(r.ok?L('bridgeOn'):L('failed'),r.ok?'ok':'err')}updBr()}
 async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';$('#brs').textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';$('#brs').textContent=L('disconnected')}}
 async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
@@ -1981,7 +2083,54 @@ def page():
 <div class="sec"><h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
 <div class="row" style="margin-bottom:.4rem"><button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button><button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button><span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span></div>
 <div id="terminal"></div></div>
-<div class="sec"><h3 data-i18n="restartTitle">Restart Actions</h3><div class="row"><button onclick="restartMpv()" class="danger" style="font-size:.75rem" data-i18n="restartMpv" data-icon="🔄">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem" data-i18n="restartDashboard" data-icon="🔄">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem" data-i18n="restartRpi" data-icon="🔄">🔄 Restart RPi</button></div></div></div>
+<div class="sec"><h3 data-i18n="restartTitle">Restart Actions</h3><div class="row"><button onclick="restartMpv()" class="danger" style="font-size:.75rem" data-i18n="restartMpv" data-icon="🔄">🔄 Restart mpv</button><button onclick="restartDashboard()" style="font-size:.75rem" data-i18n="restartDashboard" data-icon="🔄">🔄 Restart Dashboard</button><button onclick="restartRpi()" class="danger" style="font-size:.75rem" data-i18n="restartRpi" data-icon="🔄">🔄 Restart RPi</button></div></div>
+<div class="sec"><h3 data-i18n="returnTitle">Return to Dashboard</h3><div class="media-meta" data-i18n="returnDesc">Global keyboard shortcut and Xbox controller settings for returning to the dashboard.</div>
+<div class="row" style="margin-top:.5rem;align-items:center;gap:.5rem">
+  <label style="display:flex;align-items:center;gap:.4rem;flex:1;cursor:pointer">
+    <input type="checkbox" id="return-keyboard-enabled" onchange="saveReturnSettings()"> <span data-i18n="returnKeyboardEnabled">Keyboard shortcut (Ctrl+Alt+Backspace)</span>
+  </label>
+  <span id="return-keyboard-status" class="media-meta" style="font-size:.7rem"></span>
+</div>
+<div class="row" style="margin-top:.5rem;align-items:center;gap:.5rem">
+  <label style="display:flex;align-items:center;gap:.4rem;flex:1;cursor:pointer">
+    <input type="checkbox" id="return-xbox-enabled" onchange="saveReturnSettings()"> <span data-i18n="returnXboxEnabled">Xbox B button (long press)</span>
+  </label>
+  <span id="return-xbox-status" class="media-meta" style="font-size:.7rem"></span>
+</div>
+<div class="row" style="margin-top:.5rem;align-items:center;gap:.5rem">
+  <label data-i18n="returnXboxDuration" style="font-size:.75rem;color:#8b949e;min-width:140px">Xbox B hold duration (s)</label>
+  <input type="number" id="return-xbox-duration" value="2" min="1" max="10" step="0.5" style="width:70px" onchange="saveReturnSettings()">
+  <span class="media-meta" data-i18n="returnXboxDurationDesc" style="font-size:.7rem;flex:1">Minimum hold time to trigger return.</span>
+</div>
+<div class="row" style="margin-top:.5rem">
+  <button onclick="saveReturnSettings()" data-i18n="returnSave" data-icon="💾">💾 Save Settings</button>
+  <span id="return-save-msg" class="media-meta" style="margin-left:.5rem"></span>
+</div>
+<div style="margin-top:.75rem;padding:.5rem;background:#161b22;border:1px solid #30363d;border-radius:6px">
+  <h4 data-i18n="returnStatusTitle" style="margin:0 0 .4rem 0;font-size:.85rem">Xbox B Listener Status</h4>
+  <div class="row" style="gap:.5rem;font-size:.75rem;align-items:center">
+    <span data-i18n="returnListenerStatus">Status:</span>
+    <span id="return-listener-status" class="media-meta">—</span>
+  </div>
+  <div class="row" style="gap:.5rem;font-size:.75rem;align-items:center;margin-top:.2rem">
+    <span data-i18n="returnListenerDevices">Detected devices:</span>
+    <span id="return-listener-devices" class="media-meta">—</span>
+  </div>
+</div>
+<div class="sec" style="margin-top:.75rem"><h3 data-i18n="returnLastReturn">Last Return</h3>
+<div class="row" style="gap:.5rem;font-size:.75rem;align-items:center">
+  <span data-i18n="returnLastReason">Reason:</span>
+  <span id="return-last-reason" class="media-meta">—</span>
+</div>
+<div class="row" style="gap:.5rem;font-size:.75rem;align-items:center;margin-top:.2rem">
+  <span data-i18n="returnLastSource">Source:</span>
+  <span id="return-last-source" class="media-meta">—</span>
+</div>
+<div class="row" style="gap:.5rem;font-size:.75rem;align-items:center;margin-top:.2rem">
+  <span data-i18n="returnLastTime">Time:</span>
+  <span id="return-last-time" class="media-meta">—</span>
+</div>
+</div></div>
 <div id="feedback-modal" class="modal">
   <div class="modal-content">
     <button class="modal-close" onclick="closeFeedback()">×</button>
@@ -2192,6 +2341,9 @@ class H(BaseHTTPRequestHandler):
                 "/restart/mpv",
                 "/restart/rpi",
                 "/system/logs",
+            "/return/config",
+            "/return/config/set",
+            "/return/last",
                 "/system/stats",
                 "/terminal/connect",
                 "/terminal/disconnect",

@@ -104,6 +104,9 @@ from .handlers import (
     handle_dlna_renderer_status,
     handle_dlna_renderer_start,
     handle_dlna_renderer_stop,
+    handle_return_config_get,
+    handle_return_config_set,
+    handle_return_last,
 )
 
 
@@ -247,6 +250,9 @@ ROUTES: Dict[str, Callable] = {
     "/youtube/age-check": handle_youtube_age_check,
     "/media/preview": handle_media_preview,
     "/system/logs": handle_system_logs,
+    "/return/config": handle_return_config_get,
+    "/return/config/set": handle_return_config_set,
+    "/return/last": handle_return_last,
 }
 
 
