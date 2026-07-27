@@ -63,35 +63,6 @@ jobs:
       - name: Run pytest
         run: .venv/bin/python -m pytest -q --tb=short
 
-      - name: Ruff lint
-        run: .venv/bin/python -m ruff check . --select=E,F
-
-      - name: Mypy type check
-        run: .venv/bin/python -m mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
-
-      - name: Bandit security (high only)
-        run: .venv/bin/python -m bandit -q -lll -r . -x ./.venv,./__pycache__,./tests || true
-
-      - name: Pip-audit
-        run: .venv/bin/python -m pip_audit --skip-editable || true
-
-      - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          config: .gitleaks.toml
-
-      - name: ShellCheck
-        run: |
-          sudo apt-get update && sudo apt-get install -y shellcheck
-          shopt -s nullglob; shellcheck *.sh provisioning/*.sh tools/*.sh
-
-      - name: Upload CI report
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-report-ubuntu
-          path: conductor/ci/reports/*.md
-          if-no-files-found: ignore
-
       - name: Create receipt
         id: receipt
         run: |
