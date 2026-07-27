@@ -46,7 +46,7 @@ def main():
         import json
         json.dump(receipt, f, indent=2)
 
-    # Note: REPORT_FILE is already written above
+    # Output for GitHub Actions
     print(f"receipt={RECEIPT_FILE}")
     print(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md")
 
