@@ -43,34 +43,37 @@ jobs:
             pyproject.toml
             requirements*.txt
 
+      - name: Create virtual environment
+        run: python -m venv .venv
+
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
 
       - name: Python compile
-        run: python -m py_compile webserver.py tui.py mode_switcher.py keys2mpv.py
+        run: .venv/bin/python -m py_compile webserver.py tui.py mode_switcher.py keys2mpv.py
 
       - name: Extract WebUI JS
-        run: python tools/extract-webui-js.py webserver.py > /tmp/rpi-webui-ci.js
+        run: .venv/bin/python tools/extract-webui-js.py webserver.py > /tmp/rpi-webui-ci.js
 
       - name: Node syntax check
         run: node --check /tmp/rpi-webui-ci.js
 
       - name: Run pytest
-        run: python -m pytest -q --tb=short
+        run: .venv/bin/python -m pytest -q --tb=short
 
       - name: Ruff lint
-        run: python -m ruff check . --select=E,F,W,I
+        run: .venv/bin/python -m ruff check . --select=E,F,W,I
 
       - name: Mypy type check
-        run: python -m mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
+        run: .venv/bin/python -m mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
 
       - name: Bandit security (high only)
-        run: python -m bandit -q -lll -r . -x ./.venv,./__pycache__,./tests || true
+        run: .venv/bin/python -m bandit -q -lll -r . -x ./.venv,./__pycache__,./tests || true
 
       - name: Pip-audit
-        run: python -m pip_audit --skip-editable || true
+        run: .venv/bin/python -m pip_audit --skip-editable || true
 
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
@@ -135,7 +138,9 @@ jobs:
       - name: Install dependencies
         run: |
           cd /home/milhy777/rpi-dashboard
-          pip install -e ".[dev]" --break-system-packages
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]" --break-system-packages
 
       - name: Run hardware suite
         id: suite
