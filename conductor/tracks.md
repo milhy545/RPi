@@ -73,3 +73,4 @@
 - [ ] **Track: audio-multimixer-webui_20260725** — audio-multimixer-webui | [Plan](./tracks/audio-multimixer-webui_20260725/plan.md)
 
 - [x] **Track: report_1785101816_bug** — Bug report | [Plan](./tracks/report_1785101816_bug/plan.md)
+- [ ] **Track: keys2mpv-input-device-hardening_20260727** — Harden keys2mpv input device detection, diagnostics, and runtime reliability | [Plan](./tracks/keys2mpv-input-device-hardening_20260727/plan.md)
