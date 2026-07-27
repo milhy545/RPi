@@ -102,7 +102,7 @@ sectionWifi:'Wi‑Fi konfigurace přes nmcli. Heslo zůstává v prohlížeči a
 sectionNetwork:'Síť: Wi-Fi stav, skenování sítě, připojení. Tailscale VPN status.',
 sectionSystem:'Systém: HW statistiky, CPU masky, restart akce. Klikni Aktualizovat pro obnovu.',
 sectionLogs:'Logy: vyber službu a počet řádků, klikni Obnovit. Logy se načtou z journalctl.',
-sectionHttpsInfo:'HTTPS info: porty, certifikáty, hostnames a IP adresy.'
+sectionHttpsInfo:'HTTPS info: porty, certifikáty, hostnames a IP adresy.',
 sectionRoles:'Doporučené role vysvětlují, kde spravovat reproduktory, ovladače, mikrofony a budoucí hardware.',
 sectionTerminal:'Web terminál se připojuje přes WebSocket na tmux session RPi. Používej na rychlou diagnostiku bez SSH.',
 sectionKodi:'Kodi je legacy JSON-RPC launcher na 127.0.0.1:9090. Normální YouTube/mpv přehrávání používej přes Player; Kodi má smysl jen pokud lokální Kodi opravdu běží.'
@@ -132,7 +132,7 @@ sectionWifi:'Wi‑Fi configuration through nmcli. Password stays in the browser 
 sectionNetwork:'Network: Wi-Fi status, scan networks, connect. Tailscale VPN status.',
 sectionSystem:'System: HW stats, CPU masks, restart actions. Click Update to refresh.',
 sectionLogs:'Logs: select service and number of lines, click Refresh. Logs loaded from journalctl.',
-sectionHttpsInfo:'HTTPS info: ports, certificates, hostnames and IP addresses.'
+sectionHttpsInfo:'HTTPS info: ports, certificates, hostnames and IP addresses.',
 sectionRoles:'Suggested roles explain where to manage speakers, controllers, microphones, and future hardware.',
 sectionTerminal:'Web terminal connects through WebSocket to tmux session RPi. Use it for quick diagnostics without SSH.',
 sectionKodi:'Kodi is the legacy JSON-RPC launcher on 127.0.0.1:9090. Use Player for normal YouTube/mpv playback; Kodi matters only if local Kodi is actually running.'

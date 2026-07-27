@@ -96,6 +96,7 @@ from .handlers import (
     handle_youtube_cookie_status,
     handle_youtube_age_check,
     handle_media_preview,
+    handle_system_logs,
     handle_dlna_select,
     handle_dlna_connect,
     handle_dlna_disconnect,
