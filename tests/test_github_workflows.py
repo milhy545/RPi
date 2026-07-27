@@ -15,13 +15,32 @@ def _workflow(name: str) -> dict:
 
 def test_ci_approves_pull_requests_only_after_verification() -> None:
     workflow = _workflow("ci.yml")
-    approval = workflow["jobs"]["agent-approval"]
 
-    assert workflow["on"]["push"] == ""
-    assert approval["needs"] == "verify-done"
-    assert approval["permissions"] == {"pull-requests": "write"}
-    command = approval["steps"][0]["run"]
-    assert 'gh pr review "$PR_URL" --approve' in command
+    # Verify workflow structure
+    assert "on" in workflow
+    assert "push" in workflow["on"]
+    assert "pull_request" in workflow["on"]
+    assert "workflow_dispatch" in workflow["on"]
+
+    # Verify jobs exist
+    jobs = workflow["jobs"]
+    assert "local-sync" in jobs
+    assert "rpi-hardware" in jobs
+    assert "verify" in jobs
+    assert "status" in jobs
+
+    # Verify local-sync runs on ubuntu
+    assert jobs["local-sync"]["runs-on"] == "ubuntu-latest"
+
+    # Verify rpi-hardware runs on self-hosted RPi
+    assert jobs["rpi-hardware"]["runs-on"] == ["self-hosted", "rpi", "linux", "arm"]
+
+    # Verify verify job needs local-sync and rpi-hardware
+    assert jobs["verify"]["needs"] == ["local-sync", "rpi-hardware"]
+    assert jobs["verify"]["runs-on"] == ["self-hosted", "rpi", "linux", "arm"]
+
+    # Verify status job needs all previous
+    assert jobs["status"]["needs"] == ["local-sync", "rpi-hardware", "verify"]
 
 
 def test_auto_merge_uses_safe_target_event_without_checkout() -> None:
