@@ -21,7 +21,7 @@ def main():
 
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
     RECEIPT_FILE = f"{RECEIPT_DIR}/{SHA}-{timestamp}-github-main.json"
-    REPORT_FILE = f"{REPORT_DIR}/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md"
+    REPORT_FILE = f"conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md"
 
     # Create report file
     with open(REPORT_FILE, "w") as f:
@@ -32,7 +32,6 @@ def main():
         f.write("- Result: PASS\n")
 
     # Create receipt file
-    import os
     receipt = {
         "status": "done",
         "commit_sha": SHA,
@@ -47,8 +46,9 @@ def main():
         import json
         json.dump(receipt, f, indent=2)
 
+    # Note: REPORT_FILE is already written above
     print(f"receipt={RECEIPT_FILE}")
-    print(f"report={REPORT_FILE}")
+    print(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md")
 
 
 if __name__ == "__main__":
