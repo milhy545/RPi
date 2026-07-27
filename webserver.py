@@ -1913,10 +1913,12 @@ def page():
 <div class="tabs">
 <button id="tab-player" class="tab active" data-t="player" data-i18n="player" data-icon="🎬" onclick="sw('player')">🎬 Player</button>
 <button id="tab-apps" class="tab" data-t="apps" data-i18n="apps" data-icon="🚀" onclick="sw('apps')">🚀 Apps</button>
-<button id="tab-cec" class="tab" data-t="cec" data-i18n="cec" data-icon="📺" onclick="sw('cec')">📺 CEC</button>
 <button id="tab-audio" class="tab" data-t="audio" data-i18n="audio" data-icon="🔊" onclick="sw('audio');taRefresh()">🔊 Audio</button>
-<button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh()">🧩 Devices</button>
-<button id="tab-network" class="tab" data-t="network" data-i18n="network" data-icon="🌐" onclick="sw('network');wifiStatus()">🌐 Network</button>
+<button id="tab-bluetooth" class="tab" data-t="bluetooth" data-i18n="bluetooth" data-icon="🎮" onclick="sw('bluetooth')">🎮 Bluetooth</button>
+<button id="tab-devices" class="tab" data-t="devices" data-i18n="devices" data-icon="🧩" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
+<button id="tab-network" class="tab" data-t="network" data-i18n="network" data-icon="🌐" onclick="sw('network');networkRefresh()">🌐 Network</button>
+<button id="tab-system" class="tab" data-t="system" data-i18n="system" onclick="sw('system');systemRefresh()">⚙️ System</button>
+<button id="tab-logs" class="tab" data-t="logs" data-i18n="logs" onclick="sw('logs');logsRefresh()">📋 Logs</button>
 <button id="tab-terminal" class="tab" data-t="terminal" data-i18n="terminal" data-icon="💻" onclick="sw('terminal')">💻 Terminal</button>
 </div>
 <div id="p-player" class="pnl active"><div class="sec"><h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
@@ -1949,21 +1951,6 @@ def page():
 • <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>
 • Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení
 </div></div></div>
-<div id="p-cec" class="pnl"><div class="sec"><h3 data-i18n="cecPower" data-tip="sectionCecPower">Power</h3><div class="row">
-<button onclick="cec('on 0')" data-i18n="cecOn" data-icon="🟢">🟢 On</button><button onclick="cec('standby 0')" class="danger" data-i18n="cecOff" data-icon="🔴">🔴 Off</button>
-<button onclick="cecScan()" data-i18n="cecScan" data-icon="🔍">🔍 Scan</button></div></div>
-<div class="sec"><h3 data-i18n="cecBridge" data-tip="sectionCecBridge">Remote→MPV Bridge</h3><div class="row">
-<button id="brb" onclick="cecBr()" data-i18n="cecStart" data-icon="▶">▶ Start</button><span id="brs" style="font-size:.75em;color:#8b949e" data-i18n="disconnected">Disconnected</span></div>
-<div style="font-size:.7em;color:#666" data-i18n="cecBridgeDesc">Play/Pause, Stop, Seek, Vol via TV remote</div></div>
-<div class="sec"><h3 data-i18n="cecNav" data-tip="sectionCecNav">Nav</h3><div class="cec-grid">
-<button onclick="cecKey('menu')" aria-label="TV Menu">📋</button><button onclick="cecKey('up')" aria-label="TV Up">▲</button><button onclick="cecKey('channels+')">CH+</button>
-<button onclick="cecKey('left')" aria-label="TV Left">◀</button><button onclick="cecKey('select')" style="font-size:.7rem">OK</button><button onclick="cecKey('right')" aria-label="TV Right">▶</button>
-<button onclick="cecKey('back')" aria-label="TV Back">◀◀</button><button onclick="cecKey('down')" aria-label="TV Down">▼</button><button onclick="cecKey('channels-')">CH-</button></div></div>
-<div class="sec"><h3 data-i18n="cecVol" data-tip="sectionCecVol">Vol</h3><div class="vol-row">
-<button onclick="cec('voldown')" aria-label="TV Volume down">🔉−</button><button onclick="cec('mute')" aria-label="TV Mute">🔇</button><button onclick="cec('volup')" aria-label="TV Volume up">🔊+</button></div></div>
-<div class="sec"><h3 data-i18n="cecInput" data-tip="sectionCecInput">Input</h3><div class="row">
-<button onclick="cecIn(1)">HDMI1</button><button onclick="cecIn(2)">HDMI2</button><button onclick="cecIn(3)">HDMI3</button></div></div>
-<div class="sec"><h3 data-i18n="cecDevices" data-tip="sectionCecDevices">Devices</h3><div id="cdev" data-i18n="clickScan" style="font-size:.8em;color:#8b949e">Click Scan</div></div></div>
 <div id="p-audio" class="pnl">
 <div class="sec"><div class="media-head"><div><h3 data-i18n="audioTitle" data-tip="sectionAudio">Audio & Media</h3><div class="media-meta" data-i18n="audioDesc">Primary audio routing and mixer. Speaker pairing lives in Devices; output routing lives here.</div></div><div class="row"><button onclick="taSwitch('bt')">🎧 BT</button><button onclick="taSwitch('hdmi')">📺 HDMI</button><button onclick="taSwitch('dlna')">📡 DLNA</button><button data-i18n="refresh" data-icon="🔄" onclick="taRefresh()">🔄 Refresh</button></div></div><div class="media-meta"><span data-i18n="taDefault">Default sink:</span> <span id="ta-default">—</span></div></div>
 <div class="media-grid"><div><div class="sec"><h3 data-i18n="outputSinks" data-tip="sectionOutputSinks">Output Sinks</h3><div id="ta-sinks" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div><div><div class="sec"><h3 data-i18n="inputSources" data-tip="sectionInputSources">Input Sources</h3><div id="ta-sources" class="media-grid" style="grid-template-columns:1fr">Loading...</div></div></div></div>

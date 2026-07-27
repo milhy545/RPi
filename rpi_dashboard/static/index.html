@@ -20,7 +20,6 @@
             <nav class="app-tabs-horizontal" id="app-tabs-h">
                 <button id="tab-player" class="app-tab-btn tab active" data-t="player" data-i18n="player" onclick="sw('player')">🎬 Player</button>
                 <button id="tab-apps" class="app-tab-btn tab" data-t="apps" data-i18n="apps" onclick="sw('apps')">🚀 Apps</button>
-                <button id="tab-cec" class="app-tab-btn tab" data-t="cec" data-i18n="cec" onclick="sw('cec')">📺 CEC</button>
                 <button id="tab-audio" class="app-tab-btn tab" data-t="audio" data-i18n="audio" onclick="sw('audio');taRefresh()">🔊 Audio</button>
                 <button id="tab-bluetooth" class="app-tab-btn tab" data-t="bluetooth" data-i18n="bluetooth" onclick="sw('bluetooth')">🎮 Bluetooth</button>
                 <button id="tab-devices" class="app-tab-btn tab" data-t="devices" data-i18n="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
@@ -52,9 +51,6 @@
                     </a>
                     <a class="app-nav-item" data-t="apps" onclick="sw('apps')">
                         <span>🚀</span> <span>Apps</span>
-                    </a>
-                    <a class="app-nav-item" data-t="cec" onclick="sw('cec')">
-                        <span>📺</span> <span>CEC</span>
                     </a>
                     <a class="app-nav-item" data-t="audio" onclick="sw('audio');taRefresh()">
                         <span>🔊</span> <span>Audio</span>
@@ -159,60 +155,6 @@
                 • <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>
                 • Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení
             </div>
-        </div>
-    </div>
-
-    <!-- CEC Panel -->
-    <div id="p-cec" class="pnl">
-        <div class="sec">
-            <h3 data-i18n="cecPower" data-tip="sectionCecPower">Power</h3>
-            <div class="row">
-                <button onclick="cec('on 0')" data-i18n="cecOn" data-icon="🟢">🟢 On</button>
-                <button onclick="cec('standby 0')" class="danger" data-i18n="cecOff" data-icon="🔴">🔴 Off</button>
-                <button onclick="cecScan()" data-i18n="cecScan" data-icon="🔍">🔍 Scan</button>
-            </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="cecBridge" data-tip="sectionCecBridge">Remote→MPV Bridge</h3>
-            <div class="row">
-                <button id="brb" onclick="cecBr()" data-i18n="cecStart" data-icon="▶">▶ Start</button>
-                <span id="brs" style="font-size:.75em;color:#8b949e" data-i18n="disconnected">Disconnected</span>
-            </div>
-            <div style="font-size:.7em;color:#666" data-i18n="cecBridgeDesc">Play/Pause, Stop, Seek, Vol via TV remote</div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="cecNav" data-tip="sectionCecNav">Nav</h3>
-            <div class="cec-grid">
-                <button onclick="cecKey('menu')" aria-label="TV Menu">📋</button>
-                <button onclick="cecKey('up')" aria-label="TV Up">▲</button>
-                <button onclick="cecKey('channels+')">CH+</button>
-                <button onclick="cecKey('left')" aria-label="TV Left">◀</button>
-                <button onclick="cecKey('select')" style="font-size:.7rem">OK</button>
-                <button onclick="cecKey('right')" aria-label="TV Right">▶</button>
-                <button onclick="cecKey('back')" aria-label="TV Back">◀◀</button>
-                <button onclick="cecKey('down')" aria-label="TV Down">▼</button>
-                <button onclick="cecKey('channels-')">CH-</button>
-            </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="cecVol" data-tip="sectionCecVol">Vol</h3>
-            <div class="vol-row">
-                <button onclick="cec('voldown')" aria-label="TV Volume down">🔉−</button>
-                <button onclick="cec('mute')" aria-label="TV Mute">🔇</button>
-                <button onclick="cec('volup')" aria-label="TV Volume up">🔊+</button>
-            </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="cecInput" data-tip="sectionCecInput">Input</h3>
-            <div class="row">
-                <button onclick="cecIn(1)">HDMI1</button>
-                <button onclick="cecIn(2)">HDMI2</button>
-                <button onclick="cecIn(3)">HDMI3</button>
-            </div>
-        </div>
-        <div class="sec">
-            <h3 data-i18n="cecDevices" data-tip="sectionCecDevices">Devices</h3>
-            <div id="cdev" data-i18n="clickScan" style="font-size:.8em;color:#8b949e">Click Scan</div>
         </div>
     </div>
 
