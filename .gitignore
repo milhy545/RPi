@@ -75,3 +75,4 @@ conductor/ci/reports/
 conductor/ci/receipts/*.json
 core
 gitleaks_report.json
+rpi_dashboard.egg-info/
