@@ -40,6 +40,37 @@ def devices_state() -> Dict[str, Any]:
     }
 
 
+def devices_legacy_summary() -> Dict[str, Any]:
+    """Return the legacy `/devices` summary used by the old WebUI."""
+    try:
+        sink_result = _run(["pactl", "list", "short", "sinks"], t=5)
+    except Exception as e:
+        return {"bt": [], "dlna": [], "hdmi": [], "error": str(e)}
+    sinks = [line.split()[1] for line in sink_result.stdout.strip().split("\n") if len(line.split()) > 1]
+    bt: List[str] = []
+    dlna: List[str] = []
+    hdmi: List[str] = []
+    for sink in sinks:
+        if sink.startswith("bluez_sink") or sink.startswith("bluez_output"):
+            bt.append(f"BT ({sink.split('.')[1].replace('_', ':')})")
+        elif "-uuid_" in sink and "LG" not in sink:
+            dlna.append(f"DLNA ({sink})")
+        elif "hdmi" in sink.lower():
+            hdmi.append(f"HDMI ({sink})")
+    try:
+        paired = _run(["bluetoothctl", "devices", "Paired"], t=5)
+        for line in paired.stdout.strip().split("\n"):
+            if not line.startswith("Device"):
+                continue
+            parts = line.split()
+            if len(parts) >= 3:
+                name = " ".join(parts[2:])
+                bt.append(f"Paired: {name} ({parts[1]})")
+    except Exception:
+        pass
+    return {"bt": bt, "dlna": dlna, "hdmi": hdmi}
+
+
 def _bt_parse_devices(output: str) -> List[Dict[str, str]]:
     devices = []
     for line in output.strip().split("\n"):

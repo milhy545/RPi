@@ -4,27 +4,21 @@ Handles HDMI-CEC commands for TV control.
 """
 
 import subprocess
+import sys
 from typing import Any, Dict, Optional
-
-
-def _run(cmd, t=5):
-    """Run a command with timeout."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=t)
 
 
 def cec_cmd(cmd: str, timeout: float = 5) -> Dict[str, Any]:
     """Send a CEC command."""
     try:
-        r = _run(["cec-client", "-d", "1", "-s"], t=timeout)
-        # Send command via stdin
         proc = subprocess.Popen(
             ["cec-client", "-d", "1", "-s"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
         )
-        stdout, stderr = proc.communicate(input=cmd + "\n", timeout=timeout)
+        stdout, _stderr = proc.communicate(input=cmd + "\n", timeout=timeout)
         return {"ok": proc.returncode == 0, "output": stdout.strip()[:200]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -33,25 +27,98 @@ def cec_cmd(cmd: str, timeout: float = 5) -> Dict[str, Any]:
 def cec_scan() -> Dict[str, Any]:
     """Scan CEC bus for devices."""
     try:
-        r = _run(["echo", "scan"], t=3)
-        # Actually scan using cec-client
-        proc = subprocess.Popen(
-            ["cec-client", "-d", "1", "-s"],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        stdout, stderr = proc.communicate(input="scan\n", timeout=5)
-
-        devices = []
-        for line in stdout.split("\n"):
-            if "device #" in line.lower():
-                devices.append(line.strip())
-
-        return {"ok": True, "devices": devices}
+        r = subprocess.run(["cec-ctl", "-d", "/dev/cec0", "-S"], capture_output=True, text=True, timeout=5)
+        return {"ok": True, "devices": r.stdout.strip().splitlines() if r.stdout.strip() else [], "output": r.stdout.strip()[:500]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def cec_send(cmd: str, timeout: float = 5) -> Dict[str, Any]:
+    """Send a raw CEC command."""
+    return cec_cmd(cmd, timeout)
+
+
+def cec_key(key: str, timeout: float = 5) -> Dict[str, Any]:
+    """Send a CEC key command."""
+    return cec_cmd(f"user-control pressed '{key}'", timeout)
+
+
+def cec_input(input_num: str, timeout: float = 5) -> Dict[str, Any]:
+    """Switch to a CEC input."""
+    _ = input_num
+    return cec_cmd("active-source phys-addr=1.0.0.0", timeout)
+
+
+_CEC_BRIDGE: Optional[subprocess.Popen[Any]] = None
+
+
+def cec_bridge_start() -> Dict[str, Any]:
+    """Start the legacy CEC-to-mpv bridge."""
+    global _CEC_BRIDGE
+    cec_bridge_stop()
+    script = r'''
+import json, os, select, socket, subprocess, sys, time
+MP = "/tmp/rpi-mpv.sock"
+SOCKET_RECV_SIZE = 4096
+
+def mc(cmd):
+    if not os.path.exists(MP):
+        return
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect(MP)
+        s.settimeout(1)
+        s.sendall((json.dumps({"command": ["parse-command", cmd]}) + "\n").encode())
+        s.recv(SOCKET_RECV_SIZE)
+        s.close()
+    except Exception as e:
+        print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+
+M = {"play": "cycle pause", "pause": "cycle pause", "stop": "stop", "backward": "seek -10", "forward": "seek 10", "rewind": "seek -60", "fast_forward": "seek 60", "left": "seek -10", "right": "seek 10", "select": "cycle pause", "exit": "stop", "menu": "cycle pause", "volume_up": "add volume 5", "volume_down": "add volume -5", "mute": "cycle mute"}
+while True:
+    p = subprocess.Popen(["cec-client", "-s", "-d", "1", "-p", "0"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        while True:
+            r, _, _ = select.select([p.stdout], [], [], 3.0)
+            if r:
+                line = p.stdout.readline()
+                if not line:
+                    break
+                lowered = line.lower()
+                for k, cmd in M.items():
+                    if k in lowered:
+                        mc(cmd)
+                        break
+    except Exception as e:
+        print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+    try:
+        p.wait(timeout=2)
+    except Exception:
+        p.kill()
+    time.sleep(2)
+'''
+    _CEC_BRIDGE = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"ok": True, "pid": _CEC_BRIDGE.pid}
+
+
+def cec_bridge_stop() -> Dict[str, Any]:
+    """Stop the legacy CEC-to-mpv bridge."""
+    global _CEC_BRIDGE
+    proc = _CEC_BRIDGE
+    if proc and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            proc.kill()
+    _CEC_BRIDGE = None
+    return {"ok": True}
+
+
+def cec_bridge_status() -> Dict[str, Any]:
+    """Return the bridge status."""
+    proc = _CEC_BRIDGE
+    return {"on": bool(proc and proc.poll() is None), "pid": proc.pid if proc else None}
 
 
 def cec_power_on() -> Dict[str, Any]:

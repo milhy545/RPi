@@ -258,6 +258,21 @@ def handle_devices_state(q: Dict[str, Any]) -> Dict[str, Any]:
     return devices.devices_state()
 
 
+def handle_devices_legacy(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get the legacy device summary."""
+    return devices.devices_legacy_summary()
+
+
+def handle_devices_bt_scan(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Legacy Bluetooth scan for the Devices tab."""
+    seconds = _get(q, "seconds", "5")
+    try:
+        sec = int(seconds)
+    except ValueError:
+        sec = 5
+    return devices.bluetooth_scan_devices(sec)
+
+
 def handle_bt_scan(q: Dict[str, Any]) -> Dict[str, Any]:
     """Scan Bluetooth devices."""
     adapter_id = _get(q, "adapter_id")
@@ -573,6 +588,42 @@ def handle_cec_scan(q: Dict[str, Any]) -> Dict[str, Any]:
     return cec.cec_scan()
 
 
+def handle_cec_send(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Send a raw CEC command."""
+    cmd = _get(q, "c")
+    if not cmd:
+        return {"ok": False, "error": "no cmd"}
+    return cec.cec_send(cmd)
+
+
+def handle_cec_key(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Send a CEC key command."""
+    key = _get(q, "k")
+    if not key:
+        return {"ok": False, "error": "no key"}
+    return cec.cec_key(key)
+
+
+def handle_cec_in(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Switch the CEC input."""
+    return cec.cec_input(_get(q, "n", "1"))
+
+
+def handle_cec_bridge_start(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Start the legacy CEC bridge."""
+    return cec.cec_bridge_start()
+
+
+def handle_cec_bridge_stop(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Stop the legacy CEC bridge."""
+    return cec.cec_bridge_stop()
+
+
+def handle_cec_bridge_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get the legacy CEC bridge status."""
+    return cec.cec_bridge_status()
+
+
 def handle_cec_power(q: Dict[str, Any]) -> Dict[str, Any]:
     """CEC power control."""
     action = _get(q, "action", "on")
@@ -644,19 +695,27 @@ def handle_system_stats(q: Dict[str, Any]) -> Dict[str, Any]:
     return system.get_system_stats()
 
 
+def handle_system_status(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get system service affinity status."""
+    return system.get_system_status()
+
+
 def handle_restart_mpv(q: Dict[str, Any]) -> Dict[str, Any]:
     """Restart mpv."""
-    return system.restart_mpv()
+    result = system.restart_mpv()
+    return {**result, "out": result.get("message", "mpv stopped")}
 
 
 def handle_restart_dashboard(q: Dict[str, Any]) -> Dict[str, Any]:
     """Restart dashboard."""
-    return system.restart_dashboard()
+    result = system.restart_dashboard()
+    return {**result, "out": result.get("message", "Dashboard restarting...")}
 
 
 def handle_restart_rpi(q: Dict[str, Any]) -> Dict[str, Any]:
     """Restart RPi."""
-    return system.restart_rpi()
+    result = system.restart_rpi()
+    return {**result, "out": result.get("message", "Rebooting...")}
 
 
 def handle_system_hw_stats(q: Dict[str, Any]) -> Dict[str, Any]:

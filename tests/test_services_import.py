@@ -23,6 +23,7 @@ def test_import_devices():
     """Test devices module import."""
     from rpi_dashboard.services import devices
     assert hasattr(devices, 'devices_state')
+    assert hasattr(devices, 'devices_legacy_summary')
     assert hasattr(devices, 'bluetooth_scan_devices')
     assert hasattr(devices, 'wifi_status')
 
@@ -31,6 +32,8 @@ def test_import_cec():
     """Test CEC module import."""
     from rpi_dashboard.services import cec
     assert hasattr(cec, 'cec_scan')
+    assert hasattr(cec, 'cec_send')
+    assert hasattr(cec, 'cec_bridge_status')
     assert hasattr(cec, 'cec_power_on')
     assert hasattr(cec, 'cec_volume_up')
 
@@ -39,6 +42,7 @@ def test_import_system():
     """Test system module import."""
     from rpi_dashboard.services import system
     assert hasattr(system, 'get_system_stats')
+    assert hasattr(system, 'get_system_status')
     assert hasattr(system, 'restart_mpv')
     assert hasattr(system, 'restart_dashboard')
 

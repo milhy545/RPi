@@ -2083,7 +2083,9 @@ class H(BaseHTTPRequestHandler):
             "/system/reboot", "/devices/bt/scan", "/wifi/scan", "/audio/default-sink",
             "/audio/latency", "/dlna/select", "/dlna/connect", "/dlna/disconnect",
             "/keepalive", "/dlna/scan", "/youtube/age-check", "/media/preview",
-            "/mpv/play", "/mpv/stop", "/mpv/toggle", "/mpv/seek", "/mpv/volume", "/mpv/mute"
+            "/mpv/play", "/mpv/stop", "/mpv/toggle", "/mpv/seek", "/mpv/volume", "/mpv/mute",
+            "/cec/send", "/cec/key", "/cec/in", "/cec/br/start", "/cec/br/stop",
+            "/system/restart-mpv", "/system/restart-dashboard", "/system/restart-rpi"
         }
         if path in action_endpoints:
             if not _check_rate_limit(self.client_address[0]):
@@ -2135,6 +2137,8 @@ class H(BaseHTTPRequestHandler):
                 "/bt/reset",
                 "/bt/capabilities",
                 "/bt/phone-role",
+                "/devices",
+                "/devices/bt/scan",
                 "/audio/bt",
                 "/audio/hdmi",
                 "/audio/dlna",
@@ -2165,6 +2169,16 @@ class H(BaseHTTPRequestHandler):
                 "/dlna/renderer/status",
                 "/dlna/renderer/start",
                 "/dlna/renderer/stop",
+                "/cec/send",
+                "/cec/key",
+                "/cec/in",
+                "/cec/br/start",
+                "/cec/br/stop",
+                "/cec/br/st",
+                "/system/status",
+                "/system/restart-mpv",
+                "/system/restart-dashboard",
+                "/system/restart-rpi",
             }
             if path in registry_first:
                 handler = get_route(path)

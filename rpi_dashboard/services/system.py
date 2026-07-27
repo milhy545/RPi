@@ -187,6 +187,57 @@ def get_system_stats() -> Dict[str, Any]:
     }
 
 
+def _taskset_mask(pid: str) -> str:
+    if not pid or pid == "0":
+        return "N/A"
+    try:
+        r = subprocess.check_output(["taskset", "-p", pid], text=True).strip()
+        return r.split(":")[-1].strip()
+    except Exception:
+        return "N/A"
+
+
+def _mask_to_cores(mask: str) -> str:
+    try:
+        mask_val = int(mask, 16)
+        cores = [str(i) for i in range(4) if mask_val & (1 << i)]
+        return ",".join(cores) if cores else "none"
+    except Exception:
+        return "?"
+
+
+def get_system_status() -> Dict[str, Any]:
+    """Return CPU affinity/status info used by the legacy WebUI."""
+    try:
+        mpv_pid = subprocess.check_output(["pgrep", "-x", "mpv"], text=True).strip().splitlines()[0]
+    except Exception:
+        mpv_pid = ""
+    dash_pid = subprocess.check_output(["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"], text=True).strip()
+    keys_pid = subprocess.check_output(["systemctl", "show", "keys2mpv", "-p", "MainPID", "--value"], text=True).strip()
+    ws_pid = subprocess.check_output(["systemctl", "show", "webserver", "-p", "MainPID", "--value"], text=True).strip()
+    pw_pid = subprocess.check_output(["systemctl", "--user", "show", "pipewire", "-p", "MainPID", "--value"], text=True).strip()
+    wp_pid = subprocess.check_output(["systemctl", "--user", "show", "wireplumber", "-p", "MainPID", "--value"], text=True).strip()
+    mpv_mask = _taskset_mask(mpv_pid)
+    dash_mask = _taskset_mask(dash_pid)
+    keys_mask = _taskset_mask(keys_pid)
+    ws_mask = _taskset_mask(ws_pid)
+    pw_mask = _taskset_mask(pw_pid)
+    wp_mask = _taskset_mask(wp_pid)
+    return {
+        "mpv": {"pid": mpv_pid, "mask": mpv_mask, "cores": _mask_to_cores(mpv_mask)},
+        "dashboard": {"pid": dash_pid, "mask": dash_mask, "cores": "0" if dash_mask == "1" else dash_mask},
+        "keys2mpv": {"pid": keys_pid, "mask": keys_mask, "cores": "0" if keys_mask == "1" else keys_mask},
+        "webserver": {"pid": ws_pid, "mask": ws_mask, "cores": "0" if ws_mask == "1" else ws_mask},
+        "pipewire": {"pid": pw_pid, "mask": pw_mask, "cores": "3" if pw_mask == "8" else pw_mask},
+        "wireplumber": {"pid": wp_pid, "mask": wp_mask, "cores": "3" if wp_mask == "8" else wp_mask},
+        "summary": {
+            "core0_background": ["dashboard", "keys2mpv", "webserver"],
+            "core1_2_media": ["mpv"],
+            "core3_audio": ["pipewire", "wireplumber"],
+        },
+    }
+
+
 def get_hw_stats() -> Dict[str, Any]:
     """Get richer hardware stats used by the WebUI terminal tab."""
     cpu: List[float] = []

@@ -143,9 +143,7 @@ def test_route_registry_covers_webui_get_endpoints():
 
 
 def test_legacy_routes_are_explicitly_marked():
-    legacy_endpoints = {
-        "/cec/send",
-    }
+    legacy_endpoints = set()
 
     for endpoint in legacy_endpoints:
         assert routes.ROUTES[endpoint] is routes.legacy_webserver_endpoint
@@ -177,6 +175,10 @@ def test_legacy_routes_are_explicitly_marked():
     migrated_system_endpoints = {
         "/system/hw-stats",
         "/system/https-info",
+        "/system/status",
+        "/system/restart-mpv",
+        "/system/restart-dashboard",
+        "/system/restart-rpi",
         "/youtube/cookies/status",
         "/youtube/age-check",
         "/media/preview",
@@ -187,6 +189,14 @@ def test_legacy_routes_are_explicitly_marked():
         "/dlna/renderer/status",
         "/dlna/renderer/start",
         "/dlna/renderer/stop",
+        "/devices",
+        "/devices/bt/scan",
+        "/cec/send",
+        "/cec/key",
+        "/cec/in",
+        "/cec/br/start",
+        "/cec/br/stop",
+        "/cec/br/st",
     }
 
     for endpoint in migrated_mpv_endpoints | migrated_system_endpoints:
@@ -271,7 +281,48 @@ def test_webserver_delegates_migrated_system_route(server_url):
     assert payload == {"ok": True, "route": "/system/hw-stats", "cpu": [1.0]}
 
 
+def test_webserver_delegates_migrated_system_status_route(server_url):
+    original = routes.ROUTES["/system/status"]
+    routes.ROUTES["/system/status"] = lambda query: {"ok": True, "route": query["_route"][0], "mpv": {"mask": "1", "cores": "0"}}
+    try:
+        with urllib.request.urlopen(server_url + "/system/status", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/system/status"] = original
+
+    assert payload == {"ok": True, "route": "/system/status", "mpv": {"mask": "1", "cores": "0"}}
+
+
+def test_webserver_delegates_migrated_device_route(server_url):
+    original = routes.ROUTES["/devices"]
+    routes.ROUTES["/devices"] = lambda query: {"ok": True, "route": query["_route"][0], "bt": ["BT (11:22:33:44:55:66)"]}
+    try:
+        with urllib.request.urlopen(server_url + "/devices", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/devices"] = original
+
+    assert payload == {"ok": True, "route": "/devices", "bt": ["BT (11:22:33:44:55:66)"]}
+
+
+def test_webserver_delegates_migrated_cec_route(server_url):
+    original = routes.ROUTES["/cec/send"]
+    time.sleep(1.1)
+    routes.ROUTES["/cec/send"] = lambda query: {"ok": True, "route": query["_route"][0], "cmd": query["c"][0]}
+    try:
+        with urllib.request.urlopen(server_url + "/cec/send?c=standby%200", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/cec/send"] = original
+
+    assert payload == {"ok": True, "route": "/cec/send", "cmd": "standby 0"}
+
+
 def test_webserver_delegates_migrated_media_route(server_url):
+    time.sleep(1.1)
     original = routes.ROUTES["/media/preview"]
     routes.ROUTES["/media/preview"] = lambda query: {"ok": True, "route": query["_route"][0], "type": "direct"}
     try:
