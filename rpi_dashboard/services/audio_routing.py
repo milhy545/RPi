@@ -61,7 +61,8 @@ def _retarget_alexa() -> Dict[str, Any]:
         return {"ok": False, "error": "No suitable output found"}
     if target == new_target:
         return {"ok": True, "unchanged": True, "target": target}
-    _stop_loopback(mid)
+    if mid:
+        _stop_loopback(mid)
     import time
     time.sleep(0.3)
     new_mid = _start_loopback(_USB_ALEXA_SRC, new_target)
@@ -97,6 +98,8 @@ def _dlnain_stop() -> Dict[str, Any]:
     running, src = _dlnain_loopback_running()
     if not running:
         return {"ok": True, "was_running": False}
+    if not src:
+        return {"ok": False, "error": "DLNA input source not found"}
     stopped = _stop_loopback_by_source(src)
     return {"ok": stopped, "source": src}
 
@@ -106,9 +109,11 @@ def _dlnain_retarget(new_target: str) -> bool:
     running, src = _dlnain_loopback_running()
     if not running:
         return False
+    if not src:
+        return False
     lb = _find_loopback_by_source(src)
     if lb:
-        _stop_loopback(lb["id"])
+        _stop_loopback(lb)
     import time
     time.sleep(0.3)
     mid = _start_loopback(src, new_target)
