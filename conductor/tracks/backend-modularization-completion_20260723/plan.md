@@ -23,19 +23,20 @@ Phase artifacts:
 - `conductor/tracks/backend-modularization-completion_20260723/wireframes.md`
 - `conductor/tracks/backend-modularization-completion_20260723/baseline_capture.md`
 
-## Phase 3: Incremental backend extraction 🔄 IN PROGRESS
+## Phase 3: Incremental backend extraction ✅ COMPLETED
 
 - [x] Task: Move terminal WebSocket ownership behind its service boundary. ✅ Done
 - [x] Task: Split remaining Audio responsibilities into cohesive modules. ✅ Done
-- [ ] Task: Replace legacy endpoint bodies with tested versioned service/API
-  delegation and migrate all in-repository consumers. ⏳ Active
-- [ ] Task: Add per-phase startup, route, memory, latency, polling, and per-core
-  CPU comparisons.
+- [x] Task: Replace legacy endpoint bodies with tested versioned service/API
+  delegation and migrate all in-repository consumers. ✅ Done
+- [x] Task: Add per-phase startup, route, memory, latency, polling, and per-core
+  CPU comparisons. ✅ Done
 
 Phase artifacts:
 - `rpi_dashboard/services/audio_routing.py`
 - `rpi_dashboard/services/audio_diagnostics.py`
 - `rpi_dashboard/services/audio_dlna.py`
+- `conductor/tracks/backend-modularization-completion_20260723/comparisons.md`
 
 ## Phase 4: Production visual redesign
 

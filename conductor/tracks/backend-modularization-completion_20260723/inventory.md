@@ -16,56 +16,11 @@
 
 ## Legacy / compatibility routes still present
 
-### Explicit compatibility markers in `rpi_dashboard/api/routes.py`
-
-These paths still route through `legacy_webserver_endpoint` and therefore need migration owners, consumers, and removal decisions before they can be retired:
-
-- `/audio/bt`
-- `/audio/dlna`
-- `/audio/hdmi`
-- `/audio/mute`
-- `/audio/route/alexa-bt`
-- `/audio/route/alexa-retarget`
-- `/audio/route/dlna-input/mode`
-- `/audio/route/dlna-input/start`
-- `/audio/route/dlna-input/status`
-- `/audio/route/dlna-input/stop`
-- `/audio/route/dlna-input/target`
-- `/cec/br/st`
-- `/cec/br/start`
-- `/cec/br/stop`
-- `/cec/in`
-- `/cec/key`
-- `/cec/send`
-- `/devices`
-- `/devices/bt/scan`
-- `/dlna/connect`
-- `/dlna/disconnect`
-- `/dlna/renderer/start`
-- `/dlna/renderer/status`
-- `/dlna/renderer/stop`
-- `/dlna/scan`
-- `/dlna/select`
-- `/keepalive`
-- `/media/preview`
-- `/mpv/memory`
-- `/mpv/memory-save`
-- `/mpv/memory/clear`
-- `/mpv/seekabs`
-- `/mpv/toggle`
-- `/mpv/vol`
-- `/system/https-info`
-- `/system/hw-stats`
-- `/system/restart-dashboard`
-- `/system/restart-mpv`
-- `/system/restart-rpi`
-- `/system/status`
-- `/youtube/age-check`
-- `/youtube/cookies/status`
+`rpi_dashboard/api/routes.py` no longer exposes active `legacy_webserver_endpoint` registrations for the migrated route set. The helper still exists for future retirement batches and telemetry, but the current registry points the migrated paths directly at API handlers.
 
 ### Still owned inline by `webserver.py`
 
-`webserver.py` still contains direct `if/elif` branches for the same legacy behaviors above, plus the shared runtime helpers they call.
+`webserver.py` still contains direct `if/elif` branches for the migrated behaviors as compatibility fallbacks. Registry-first dispatch now routes the active API surface through the service/API layer, so these inline branches are now bypassed for normal requests.
 
 ### Duplicate headless API surface in `tui.py --headless`
 
