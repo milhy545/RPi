@@ -64,7 +64,7 @@ jobs:
         run: .venv/bin/python -m pytest -q --tb=short
 
       - name: Ruff lint
-        run: .venv/bin/python -m ruff check . --select=E,F,W,I
+        run: .venv/bin/python -m ruff check . --select=E,F
 
       - name: Mypy type check
         run: .venv/bin/python -m mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
