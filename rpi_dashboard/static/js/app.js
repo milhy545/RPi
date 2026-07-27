@@ -30,7 +30,49 @@ function jsarg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")
 function getCookie(name){let prefix=encodeURIComponent(name)+'=';let item=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(prefix));return item?decodeURIComponent(item.slice(prefix.length)):''}
 function setCookie(name,value){document.cookie=encodeURIComponent(name)+'='+encodeURIComponent(value)+'; path=/; max-age=31536000; SameSite=Lax'}
 const LANG_KEY='rpidash-lang'
-const I18N={cz:{player:'Přehrávač',apps:'Aplikace',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Zařízení',terminal:'Terminál',status:'Stav',quick:'Rychlé',ageCookies:'Věk / cookies',cookieStatus:'Stav cookies',ageCheck:'Kontrola věku',play:'Přehrát',pasteClipboard:'Vložit schránku',openHttps:'Otevřít HTTPS',httpFallbackBanner:'HTTP fallback je aktivní. Pro vložení ze schránky použij zabezpečenou verzi.',secureClipboardEnabled:'Zabezpečená verze: clipboard je povolený po schválení oprávnění prohlížeče.',refresh:'Obnovit',connect:'Připojit',disconnect:'Odpojit',saveApply:'Uložit + použít',inputUrl:'YouTube nebo přímá URL...',audioDelay:'Audio delay (ms):',playerDesc:'Přehrávání YouTube/mpv a diagnostika cookies.',appsDesc:'Spuštění aplikací a návrat do dashboardu.',cecPower:'Napájení',cecBridge:'Remote→MPV Bridge',cecNav:'Navigace',cecVol:'Hlasitost',cecInput:'Vstup',cecDevices:'Zařízení',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy cesta pro odeslání URL do lokálního Kodi na 127.0.0.1:9090 přes Player.Open. Smysl má jen pokud Kodi skutečně běží jako renderer/přehrávač; běžné YouTube/mpv přehrávání používá kartu Player.',audioTitle:'Audio & Media',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',outputSinks:'Výstupní zařízení',inputSources:'Vstupní zdroje',mixer:'Mixér — aktivní streamy',audioRouting:'Směrování zvuku',dlnaLatency:'Kompenzace DLNA zpoždění',ytAge:'YouTube věk / cookies',ytAgeDesc:'Kontrola čerstvosti cookies bez vyzrazení hodnot. Použij, když age-restricted video nejde přehrát.',diagnostics:'Diagnostika',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesTitle:'Zařízení',devicesDesc:'Wi‑Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',btPair:'Párování Bluetooth',wifiConfig:'Wi‑Fi konfigurace',roles:'Doporučené role zařízení',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj zde, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj zde pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.',termConnect:'Připojit',termDisconnect:'Odpojit',scan:'Skenovat',pair:'Párovat',trust:'Důvěřovat',remove:'Odebrat',found:'Nalezeno',paired:'spárováno',connected:'Připojeno',disconnected:'Odpojeno',playing:'Přehrávám',paused:'Pozastaveno',stopped:'Zastaveno',language:'Jazyk',clickScan:'Klikni na Skenovat',clickScanRefresh:'Klikni na Skenovat nebo Obnovit',clickCookieStatus:'Klikni na Stav cookies',appsLaunch:'Spustit aplikaci',appsReturn:'Návrat do Dashboardu',appsReturnDesc:'• <b>Ctrl+C</b> — ukončí většinu aplikací<br>• <b>Ctrl+Q</b> — ukončí Steam Link<br>• <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>• Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení',cecBridgeDesc:'Play/Pause, Stop, Seek, Vol via TV remote',ssid:'SSID',password:'Heslo',tipPlayerInput:'Vlož YouTube URL nebo přímý odkaz na video/audio.',tipAgeCheck:'Zadej YouTube URL pro kontrolu věkového ověření.',tipCecScan:'Prohledá CEC sběrnici a zobrazí HDMI zařízení.',tipCecBridge:'Přeposílá tlačítka TV ovladače na mpv.',tipAudioBt:'Přepne výstup na Bluetooth soundbar.',tipAudioHdmi:'Přepne výstup na HDMI.',tipAudioDlna:'Přepne výstup na DLNA zařízení.',tipDlnaLatency:'Nastav zpoždění zvuku při DLNA přehrávání.',tipBtScan:'Skenuje okolní Bluetooth zařízení.',tipWifiScan:'Skenuje dostupné Wi-Fi sítě.',tipWifiConnect:'Připojí RPi ke zvolené Wi-Fi. Heslo zůstává jen v prohlížeči.',tipKodiUrl:'URL adresa odeslaná do Kodi přes JSON-RPC.',tipMpvQ:'Kvalita přehrávání; vyšší rozlišení víc zatěžuje RPi.',feedbackBtn:'💬 Zpětná vazba',feedbackTitle:'💬 Odeslat zpětnou vazbu',feedbackTypeLabel:'Typ:',feedbackBug:'Nahlásit chybu',feedbackFeature:'Návrh na vylepšení',feedbackDescLabel:'Popis:',feedbackSubmit:'Odeslat',feedbackPlaceholder:'Zde popište chybu nebo nápad...',feedbackRequired:'Popis je povinný.',feedbackSending:'Odesílám zpětnou vazbu...',feedbackSuccess:'Zpětná vazba byla uložena! Soubor:',feedbackFailed:'Chyba při odesílání zpětné vazby.',ssidRequired:'Název sítě SSID je povinný.',wifiConnected:'Wi‑Fi připojena.',wifiFailed:'Připojení k Wi‑Fi selhalo.',wifiScanning:'Skenování Wi‑Fi...',wifiScanDone:'Skenování Wi‑Fi dokončeno.',wifiScanFailed:'Skenování Wi‑Fi selhalo.',ytUrlRequired:'Zadejte YouTube URL.',ytChecking:'Ověřování věku a cookies...',ytExtractable:'Video lze bez problému přehrát.',ytFailed:'Ověření věku selhalo.',launching:'Spouštím',failed:'selhalo',stopping:'Zastavování...',termReady:'Terminál připraven.',connectionError:'Chyba připojení.',appsMpv:'🎬 MPV Přehrávač',appsStopReturn:'⏹ ZASTAVIT & VRÁTIT SE',hwStatsTitle:'HW Statistiky & Zátěž',hwUpdateBtn:'Aktualizovat',hwLiveBtn:'Živé sledování',hwLoading:'Načítám HW statistiky...',sysLoading:'Načítám parametry procesů...',restartTitle:'Restart Systému',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboardu',restartRpi:'Restart RPi',taDefault:'Výchozí výstup:',taRaw:'Surová JSON data',clickRefresh:'Klikni Obnovit',wifiUse:'Použít',wifiNone:'Žádné sítě nenalezeny'},en:{player:'Player',apps:'Apps',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Devices',terminal:'Terminal',status:'Status',quick:'Quick',ageCookies:'Age / cookies',cookieStatus:'Cookie status',ageCheck:'Age check',play:'Play',pasteClipboard:'Paste clipboard',openHttps:'Open HTTPS',httpFallbackBanner:'HTTP fallback is active. Use the secure version for clipboard paste.',secureClipboardEnabled:'Secure version: clipboard is enabled after browser permission.',refresh:'Refresh',connect:'Connect',disconnect:'Disconnect',saveApply:'Save + apply',inputUrl:'YouTube or direct URL...',audioDelay:'Audio delay (ms):',playerDesc:'YouTube/mpv playback and cookie diagnostics.',appsDesc:'Launch apps and return to the dashboard.',cecPower:'Power',cecBridge:'Remote→MPV Bridge',cecNav:'Navigation',cecVol:'Volume',cecInput:'Input',cecDevices:'Devices',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.',audioTitle:'Audio & Media',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',outputSinks:'Output Sinks',inputSources:'Input Sources',mixer:'Mixer — Active Streams',audioRouting:'Audio Routing',dlnaLatency:'DLNA Latency Compensation',ytAge:'YouTube Age / Cookies',ytAgeDesc:'Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.',diagnostics:'Diagnostics',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesTitle:'Devices',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',btPair:'Bluetooth Pairing',wifiConfig:'Wi‑Fi Configuration',roles:'Suggested Device Roles',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.',termConnect:'Connect',termDisconnect:'Disconnect',scan:'Scan',pair:'Pair',trust:'Trust',remove:'Remove',found:'Found',paired:'paired',connected:'Connected',disconnected:'Disconnected',playing:'Playing',paused:'Paused',stopped:'Stopped',language:'Language',clickScan:'Click Scan',clickScanRefresh:'Click Scan or Refresh',clickCookieStatus:'Click Cookie status',appsLaunch:'Launch app',appsReturn:'Back to Dashboard',appsReturnDesc:'• <b>Ctrl+C</b> — closes most applications<br>• <b>Ctrl+Q</b> — closes Steam Link<br>• <b>STOP button</b> — forces a return<br>• Apps run directly on the TV and the dashboard returns automatically after exit',cecBridgeDesc:'Play/Pause, Stop, Seek, Volume via TV remote',ssid:'SSID',password:'Password',tipPlayerInput:'Paste a YouTube URL or direct video/audio link.',tipAgeCheck:'Enter a YouTube URL to check age/cookie status.',tipCecScan:'Scan the CEC bus and list HDMI devices.',tipCecBridge:'Forward TV remote buttons to mpv.',tipAudioBt:'Switch audio output to Bluetooth soundbar.',tipAudioHdmi:'Switch audio output to HDMI.',tipAudioDlna:'Switch audio output to a DLNA device.',tipDlnaLatency:'Set audio delay offset for DLNA playback.',tipBtScan:'Scan nearby Bluetooth devices.',tipWifiScan:'Scan available Wi-Fi networks.',tipWifiConnect:'Connect to a Wi-Fi network. Password stays only in your browser.',tipKodiUrl:'URL address to send to Kodi via JSON-RPC.',tipMpvQ:'Playback quality; higher resolution uses more RPi resources.',feedbackBtn:'💬 Feedback',feedbackTitle:'💬 Submit Feedback',feedbackTypeLabel:'Type:',feedbackBug:'Bug Report',feedbackFeature:'Feature Request',feedbackDescLabel:'Description:',feedbackSubmit:'Submit',feedbackPlaceholder:'Please describe the issue or your feature request...',feedbackRequired:'Description is required.',feedbackSending:'Submitting feedback...',feedbackSuccess:'Feedback submitted! File:',feedbackFailed:'Failed to submit feedback.',ssidRequired:'SSID required.',wifiConnected:'Wi-Fi connected.',wifiFailed:'Wi-Fi connection failed.',wifiScanning:'Scanning Wi-Fi...',wifiScanDone:'Wi-Fi scan done.',wifiScanFailed:'Wi-Fi scan failed.',ytUrlRequired:'Enter YouTube URL.',ytChecking:'Checking YouTube age/cookies...',ytExtractable:'Video is extractable.',ytFailed:'Age/cookie check failed.',launching:'Launching',failed:'failed',stopping:'Stopping...',termReady:'Terminal ready.',connectionError:'Connection error.',appsMpv:'🎬 MPV Player',appsStopReturn:'⏹ STOP & RETURN',hwStatsTitle:'HW Stats & CPU Masks',hwUpdateBtn:'Update',hwLiveBtn:'Live monitoring',hwLoading:'Loading HW stats...',sysLoading:'Loading CPU masks...',restartTitle:'Restart Actions',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboard',restartRpi:'Restart RPi',taDefault:'Default sink:',taRaw:'Raw technical JSON',clickRefresh:'Click Refresh',wifiUse:'Use',wifiNone:'No networks found'}}
+const I18N={cz:{player:'Přehrávač',apps:'Aplikace',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Zařízení',terminal:'Terminál',status:'Stav',quick:'Rychlé',ageCookies:'Věk / cookies',cookieStatus:'Stav cookies',ageCheck:'Kontrola věku',play:'Přehrát',pasteClipboard:'Vložit schránku',openHttps:'Otevřít HTTPS',httpFallbackBanner:'HTTP fallback je aktivní. Pro vložení ze schránky použij zabezpečenou verzi.',secureClipboardEnabled:'Zabezpečená verze: clipboard je povolený po schválení oprávnění prohlížeče.',refresh:'Obnovit',connect:'Připojit',disconnect:'Odpojit',saveApply:'Uložit + použít',inputUrl:'YouTube nebo přímá URL...',audioDelay:'Audio delay (ms):',playerDesc:'Přehrávání YouTube/mpv a diagnostika cookies.',appsDesc:'Spuštění aplikací a návrat do dashboardu.',cecPower:'Napájení',cecBridge:'Remote→MPV Bridge',cecNav:'Navigace',cecVol:'Hlasitost',cecInput:'Vstup',cecDevices:'Zařízení',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy cesta pro odeslání URL do lokálního Kodi na 127.0.0.1:9090 přes Player.Open. Smysl má jen pokud Kodi skutečně běží jako renderer/přehrávač; běžné YouTube/mpv přehrávání používá kartu Player.',audioTitle:'Audio & Media',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',outputSinks:'Výstupní zařízení',inputSources:'Vstupní zdroje',mixer:'Mixér — aktivní streamy',audioRouting:'Směrování zvuku',dlnaLatency:'Kompenzace DLNA zpoždění',ytAge:'YouTube věk / cookies',ytAgeDesc:'Kontrola čerstvosti cookies bez vyzrazení hodnot. Použij, když age-restricted video nejde přehrát.',diagnostics:'Diagnostika',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesTitle:'Zařízení',devicesDesc:'Wi‑Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',btPair:'Párování Bluetooth',wifiConfig:'Wi‑Fi konfigurace',roles:'Doporučené role zařízení',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj zde, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj zde pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.',termConnect:'Připojit',termDisconnect:'Odpojit',scan:'Skenovat',pair:'Párovat',trust:'Důvěřovat',remove:'Odebrat',found:'Nalezeno',paired:'spárováno',connected:'Připojeno',disconnected:'Odpojeno',playing:'Přehrávám',paused:'Pozastaveno',stopped:'Zastaveno',language:'Jazyk',clickScan:'Klikni na Skenovat',clickScanRefresh:'Klikni na Skenovat nebo Obnovit',clickCookieStatus:'Klikni na Stav cookies',appsLaunch:'Spustit aplikaci',appsReturn:'Návrat do Dashboardu',appsReturnDesc:'• <b>Ctrl+C</b> — ukončí většinu aplikací<br>• <b>Ctrl+Q</b> — ukončí Steam Link<br>• <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>• Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení',cecBridgeDesc:'Play/Pause, Stop, Seek, Vol via TV remote',ssid:'SSID',password:'Heslo',tipPlayerInput:'Vlož YouTube URL nebo přímý odkaz na video/audio.',tipAgeCheck:'Zadej YouTube URL pro kontrolu věkového ověření.',tipCecScan:'Prohledá CEC sběrnici a zobrazí HDMI zařízení.',tipCecBridge:'Přeposílá tlačítka TV ovladače na mpv.',tipAudioBt:'Přepne výstup na Bluetooth soundbar.',tipAudioHdmi:'Přepne výstup na HDMI.',tipAudioDlna:'Přepne výstup na DLNA zařízení.',tipDlnaLatency:'Nastav zpoždění zvuku při DLNA přehrávání.',tipBtScan:'Skenuje okolní Bluetooth zařízení.',tipWifiScan:'Skenuje dostupné Wi-Fi sítě.',tipWifiConnect:'Připojí RPi ke zvolené Wi-Fi. Heslo zůstává jen v prohlížeči.',tipKodiUrl:'URL adresa odeslaná do Kodi přes JSON-RPC.',tipMpvQ:'Kvalita přehrávání; vyšší rozlišení víc zatěžuje RPi.',feedbackBtn:'💬 Zpětná vazba',feedbackTitle:'💬 Odeslat zpětnou vazbu',feedbackTypeLabel:'Typ:',feedbackBug:'Nahlásit chybu',feedbackFeature:'Návrh na vylepšení',feedbackDescLabel:'Popis:',feedbackSubmit:'Odeslat',feedbackPlaceholder:'Zde popište chybu nebo nápad...',feedbackRequired:'Popis je povinný.',feedbackSending:'Odesílám zpětnou vazbu...',feedbackSuccess:'Zpětná vazba byla uložena! Soubor:',feedbackFailed:'Chyba při odesílání zpětné vazby.',ssidRequired:'Název sítě SSID je povinný.',wifiConnected:'Wi‑Fi připojena.',wifiFailed:'Připojení k Wi‑Fi selhalo.',wifiScanning:'Skenování Wi‑Fi...',wifiScanDone:'Skenování Wi‑Fi dokončeno.',wifiScanFailed:'Skenování Wi‑Fi selhalo.',ytUrlRequired:'Zadejte YouTube URL.',ytChecking:'Ověřování věku a cookies...',ytExtractable:'Video lze bez problému přehrát.',ytFailed:'Ověření věku selhalo.',launching:'Spouštím',failed:'selhalo',stopping:'Zastavování...',termReady:'Terminál připraven.',connectionError:'Chyba připojení.',appsMpv:'🎬 MPV Přehrávač',appsStopReturn:'⏹ ZASTAVIT & VRÁTIT SE',hwStatsTitle:'HW Statistiky & Zátěž',hwUpdateBtn:'Aktualizovat',hwLiveBtn:'Živé sledování',hwLoading:'Načítám HW statistiky...',sysLoading:'Načítám parametry procesů...',restartTitle:'Restart Systému',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboardu',restartRpi:'Restart RPi',taDefault:'Výchozí výstup:',taRaw:'Surová JSON data',clickRefresh:'Klikni Obnovit',wifiUse:'Použít',wifiNone:'Žádné sítě nenalezeny',
+network:'🌐 Síť',
+networkTitle:'🌐 Síť',
+networkDesc:'Nastavení sítě a správa Wi-Fi.',
+tailscaleTitle:'🔗 Tailscale',
+tailscaleDesc:'Stav Tailscale VPN.',
+sectionNetwork:'Síť: Wi-Fi stav, skenování sítě, připojení. Tailscale VPN status.',
+system:'⚙️ Systém',
+systemTitle:'⚙️ Systém',
+systemDesc:'HW statistiky, CPU masky, restart akce.',
+logs:'📋 Logy',
+logsTitle:'📋 Systémové logy',
+logsDesc:'Prohlížení systemd journalu a aplikačních logů pro diagnostiku.',
+sectionLogs:'Logy: vyber službu a počet řádků, klikni Obnovit. Logy se načtou z journalctl.',
+httpsInfoTitle:'HTTPS Info',
+logServiceDashboard:'Dashboard',
+logServiceMpv:'MPV',
+logServiceKeys2mpv:'Keys2MPV',
+logServicePipewire:'PipeWire',
+logServiceWireplumber:'WirePlumber',
+logServiceBluetooth:'Bluetooth',
+logServiceAll:'Vše (journalctl -u)'},en:{player:'Player',apps:'Apps',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Devices',terminal:'Terminal',status:'Status',quick:'Quick',ageCookies:'Age / cookies',cookieStatus:'Cookie status',ageCheck:'Age check',play:'Play',pasteClipboard:'Paste clipboard',openHttps:'Open HTTPS',httpFallbackBanner:'HTTP fallback is active. Use the secure version for clipboard paste.',secureClipboardEnabled:'Secure version: clipboard is enabled after browser permission.',refresh:'Refresh',connect:'Connect',disconnect:'Disconnect',saveApply:'Save + apply',inputUrl:'YouTube or direct URL...',audioDelay:'Audio delay (ms):',playerDesc:'YouTube/mpv playback and cookie diagnostics.',appsDesc:'Launch apps and return to the dashboard.',cecPower:'Power',cecBridge:'Remote→MPV Bridge',cecNav:'Navigation',cecVol:'Volume',cecInput:'Input',cecDevices:'Devices',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.',audioTitle:'Audio & Media',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',outputSinks:'Output Sinks',inputSources:'Input Sources',mixer:'Mixer — Active Streams',audioRouting:'Audio Routing',dlnaLatency:'DLNA Latency Compensation',ytAge:'YouTube Age / Cookies',ytAgeDesc:'Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.',diagnostics:'Diagnostics',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesTitle:'Devices',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',btPair:'Bluetooth Pairing',wifiConfig:'Wi‑Fi Configuration',roles:'Suggested Device Roles',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.',termConnect:'Connect',termDisconnect:'Disconnect',scan:'Scan',pair:'Pair',trust:'Trust',remove:'Remove',found:'Found',paired:'paired',connected:'Connected',disconnected:'Disconnected',playing:'Playing',paused:'Paused',stopped:'Stopped',language:'Language',clickScan:'Click Scan',clickScanRefresh:'Click Scan or Refresh',clickCookieStatus:'Click Cookie status',appsLaunch:'Launch app',appsReturn:'Back to Dashboard',appsReturnDesc:'• <b>Ctrl+C</b> — closes most applications<br>• <b>Ctrl+Q</b> — closes Steam Link<br>• <b>STOP button</b> — forces a return<br>• Apps run directly on the TV and the dashboard returns automatically after exit',cecBridgeDesc:'Play/Pause, Stop, Seek, Volume via TV remote',ssid:'SSID',password:'Password',tipPlayerInput:'Paste a YouTube URL or direct video/audio link.',tipAgeCheck:'Enter a YouTube URL to check age/cookie status.',tipCecScan:'Scan the CEC bus and list HDMI devices.',tipCecBridge:'Forward TV remote buttons to mpv.',tipAudioBt:'Switch audio output to Bluetooth soundbar.',tipAudioHdmi:'Switch audio output to HDMI.',tipAudioDlna:'Switch audio output to a DLNA device.',tipDlnaLatency:'Set audio delay offset for DLNA playback.',tipBtScan:'Scan nearby Bluetooth devices.',tipWifiScan:'Scan available Wi-Fi networks.',tipWifiConnect:'Connect to a Wi-Fi network. Password stays only in your browser.',tipKodiUrl:'URL address to send to Kodi via JSON-RPC.',tipMpvQ:'Playback quality; higher resolution uses more RPi resources.',feedbackBtn:'💬 Feedback',feedbackTitle:'💬 Submit Feedback',feedbackTypeLabel:'Type:',feedbackBug:'Bug Report',feedbackFeature:'Feature Request',feedbackDescLabel:'Description:',feedbackSubmit:'Submit',feedbackPlaceholder:'Please describe the issue or your feature request...',feedbackRequired:'Description is required.',feedbackSending:'Submitting feedback...',feedbackSuccess:'Feedback submitted! File:',feedbackFailed:'Failed to submit feedback.',ssidRequired:'SSID required.',wifiConnected:'Wi-Fi connected.',wifiFailed:'Wi-Fi connection failed.',wifiScanning:'Scanning Wi-Fi...',wifiScanDone:'Wi-Fi scan done.',wifiScanFailed:'Wi-Fi scan failed.',ytUrlRequired:'Enter YouTube URL.',ytChecking:'Checking YouTube age/cookies...',ytExtractable:'Video is extractable.',ytFailed:'Age/cookie check failed.',launching:'Launching',failed:'failed',stopping:'Stopping...',termReady:'Terminal ready.',connectionError:'Connection error.',appsMpv:'🎬 MPV Player',appsStopReturn:'⏹ STOP & RETURN',hwStatsTitle:'HW Stats & CPU Masks',hwUpdateBtn:'Update',hwLiveBtn:'Live monitoring',hwLoading:'Loading HW stats...',sysLoading:'Loading CPU masks...',restartTitle:'Restart Actions',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboard',restartRpi:'Restart RPi',taDefault:'Default sink:',taRaw:'Raw technical JSON',clickRefresh:'Click Refresh',wifiUse:'Use',wifiNone:'No networks found',
+network:'🌐 Network',
+networkTitle:'🌐 Network',
+networkDesc:'Network configuration and Wi-Fi management.',
+tailscaleTitle:'🔗 Tailscale',
+tailscaleDesc:'Tailscale VPN status.',
+sectionNetwork:'Network: Wi-Fi status, scan networks, connect. Tailscale VPN status.',
+system:'⚙️ System',
+systemTitle:'⚙️ System',
+systemDesc:'HW stats, CPU masks, restart actions.',
+logs:'📋 Logs',
+logsTitle:'📋 System Logs',
+logsDesc:'View systemd journal and application logs for troubleshooting.',
+sectionLogs:'Logs: select service and number of lines, click Refresh. Logs loaded from journalctl.',
+httpsInfoTitle:'HTTPS Info',
+logServiceDashboard:'Dashboard',
+logServiceMpv:'MPV',
+logServiceKeys2mpv:'Keys2MPV',
+logServicePipewire:'PipeWire',
+logServiceWireplumber:'WirePlumber',
+logServiceBluetooth:'Bluetooth',
+logServiceAll:'All (journalctl -u)'}}
 Object.assign(I18N.cz,{bluetooth:'Bluetooth',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesDesc:'Wi-Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj v Bluetooth, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj v Bluetooth pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.'});
 Object.assign(I18N.en,{bluetooth:'Bluetooth',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust in Bluetooth, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust in Bluetooth for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.'});
 
@@ -57,6 +99,10 @@ sectionDiagnostics:'Lidské shrnutí a raw JSON pro debug audio stavu. Raw JSON 
 sectionDevices:'Zařízení slouží pro párování/připojení hardwaru. Speaker se zde páruje, ale audio výstup se volí v Audio.',
 sectionBluetooth:'Bluetooth pairing: sken najde okolní zařízení, Pair spáruje, Trust uloží důvěru, Connect připojí. Gamepady se nepoužívají jako audio.',
 sectionWifi:'Wi‑Fi konfigurace přes nmcli. Heslo zůstává v prohlížeči a posílá se jen na lokální endpoint pro připojení.',
+sectionNetwork:'Síť: Wi-Fi stav, skenování sítě, připojení. Tailscale VPN status.',
+sectionSystem:'Systém: HW statistiky, CPU masky, restart akce. Klikni Aktualizovat pro obnovu.',
+sectionLogs:'Logy: vyber službu a počet řádků, klikni Obnovit. Logy se načtou z journalctl.',
+sectionHttpsInfo:'HTTPS info: porty, certifikáty, hostnames a IP adresy.'
 sectionRoles:'Doporučené role vysvětlují, kde spravovat reproduktory, ovladače, mikrofony a budoucí hardware.',
 sectionTerminal:'Web terminál se připojuje přes WebSocket na tmux session RPi. Používej na rychlou diagnostiku bez SSH.',
 sectionKodi:'Kodi je legacy JSON-RPC launcher na 127.0.0.1:9090. Normální YouTube/mpv přehrávání používej přes Player; Kodi má smysl jen pokud lokální Kodi opravdu běží.'
@@ -83,6 +129,10 @@ sectionDiagnostics:'Human summary and raw JSON for audio debugging. Use raw JSON
 sectionDevices:'Devices is for pairing and connecting hardware. Pair speakers here, but choose audio output in Audio.',
 sectionBluetooth:'Bluetooth pairing: scan finds nearby devices, Pair pairs, Trust stores trust, Connect connects. Gamepads are not used as audio.',
 sectionWifi:'Wi‑Fi configuration through nmcli. Password stays in the browser and is sent only to the local connect endpoint.',
+sectionNetwork:'Network: Wi-Fi status, scan networks, connect. Tailscale VPN status.',
+sectionSystem:'System: HW stats, CPU masks, restart actions. Click Update to refresh.',
+sectionLogs:'Logs: select service and number of lines, click Refresh. Logs loaded from journalctl.',
+sectionHttpsInfo:'HTTPS info: ports, certificates, hostnames and IP addresses.'
 sectionRoles:'Suggested roles explain where to manage speakers, controllers, microphones, and future hardware.',
 sectionTerminal:'Web terminal connects through WebSocket to tmux session RPi. Use it for quick diagnostics without SSH.',
 sectionKodi:'Kodi is the legacy JSON-RPC launcher on 127.0.0.1:9090. Use Player for normal YouTube/mpv playback; Kodi matters only if local Kodi is actually running.'
@@ -708,4 +758,140 @@ async function btWizardSetPhoneRole(role) {
     BT_WIZARD.phoneRole = role;
     await api('/bt/phone-role?role=' + encodeURIComponent(role) + '&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
 }
+
+// =============================================
+// NETWORK PANEL FUNCTIONS
+// =============================================
+async function networkRefresh() {
+    await Promise.all([wifiStatus(), tailscaleRefresh()]);
+}
+
+async function wifiStatus() {
+    let el = $('#wifi-list');
+    if (!el) return;
+    el.textContent = 'Loading...';
+    let r = await api('/wifi/status');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    if (r.connected) {
+        lines.push('Connected: ' + (r.ssid || 'unknown'));
+        lines.push('IP: ' + (r.ip || 'unknown'));
+        lines.push('Signal: ' + (r.signal || 'unknown'));
+        lines.push('Frequency: ' + (r.frequency || 'unknown'));
+    } else {
+        lines.push('Wi-Fi: Disconnected');
+    }
+    if (r.interfaces && r.interfaces.length) {
+        lines.push('Interfaces: ' + r.interfaces.join(', '));
+    }
+    el.textContent = lines.join('\n');
+}
+
+async function wifiScan() {
+    let el = $('#wifi-list');
+    if (!el) return;
+    el.textContent = 'Scanning...';
+    let r = await api('/wifi/scan');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    if (!r.networks || !r.networks.length) {
+        el.textContent = 'No networks found';
+        return
+    }
+    let h = r.networks.map(n => '<div style="margin:2px 0;display:flex;gap:6px;align-items:center">'
+        + '<b>' + esc(n.ssid || 'hidden') + '</b> '
+        + '<span style="color:#8b949e;font-size:.7em">' + esc(n.bssid || '') + '</span> '
+        + '<span style="color:#8b949e;font-size:.7em">Signal: ' + (n.signal || '?') + '</span>'
+        + '<button onclick="wifiConnectTo(\'' + jsarg(n.ssid || '') + '\')" style="font-size:.7em;padding:2px 6px">Connect</button>'
+        + '</div>').join('');
+    el.innerHTML = h;
+}
+
+async function wifiConnect() {
+    let ssid = $('#wifi-ssid').value.trim();
+    let pass = $('#wifi-pass').value;
+    if (!ssid) { msg('SSID required', 'err'); return }
+    msg('Connecting to ' + ssid + '...', 'info');
+    let r = await api('/wifi/connect?ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass));
+    msg(r.ok ? 'Wi-Fi connected' : (r.error || 'Failed'), r.ok ? 'ok' : 'err');
+    if (r.ok) { $('#wifi-pass').value = ''; await wifiStatus(); }
+}
+
+async function wifiConnectTo(ssid) {
+    let pass = prompt('Password for ' + ssid + ':');
+    if (pass === null) return;
+    msg('Connecting to ' + ssid + '...', 'info');
+    let r = await api('/wifi/connect?ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass));
+    msg(r.ok ? 'Wi-Fi connected' : (r.error || 'Failed'), r.ok ? 'ok' : 'err');
+    if (r.ok) await wifiStatus();
+}
+
+async function tailscaleRefresh() {
+    let el = $('#tailscale-status');
+    if (!el) return;
+    el.textContent = 'Loading...';
+    let r = await api('/system/network-info');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    if (r.tailscale) {
+        let ts = r.tailscale;
+        lines.push('Tailscale: ' + (ts.connected ? 'Connected' : 'Disconnected'));
+        if (ts.ip) lines.push('Tailscale IP: ' + ts.ip);
+        if (ts.status) lines.push('Status: ' + ts.status);
+    } else {
+        lines.push('Tailscale: Not available');
+    }
+    if (r.network) {
+        lines.push('--- Network Interfaces ---');
+        if (r.network.ips && r.network.ips.length) lines.push('IPs: ' + r.network.ips.join(', '));
+        if (r.network.gateway) lines.push('Gateway: ' + r.network.gateway);
+    }
+    el.textContent = lines.join('\n');
+}
+
+// =============================================
+// SYSTEM PANEL FUNCTIONS
+// =============================================
+async function systemRefresh() {
+    await Promise.all([loadHwStats(), loadSysStatus(), loadHttpsInfo()]);
+}
+
+async function loadHttpsInfo() {
+    let el = $('#https-info');
+    if (!el) return;
+    let r = await api('/system/https-info');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    lines.push('HTTPS Port: ' + (r.https_port || 8443));
+    lines.push('Friendly HTTPS Port: ' + (r.friendly_https_port || 443));
+    lines.push('Friendly HTTP Port: ' + (r.friendly_http_port || 80));
+    lines.push('Cert Exists: ' + (r.cert_exists ? 'Yes' : 'No'));
+    lines.push('HTTPS URL: ' + (r.https_url || 'N/A'));
+    lines.push('Friendly HTTPS URL: ' + (r.friendly_https_url || 'N/A'));
+    lines.push('Friendly HTTP URL: ' + (r.friendly_http_url || 'N/A'));
+    if (r.names && r.names.length) lines.push('Hostnames: ' + r.names.join(', '));
+    if (r.ips && r.ips.length) lines.push('IPs: ' + r.ips.join(', '));
+    el.textContent = lines.join('\n');
+}
+
+// =============================================
+// LOGS PANEL FUNCTIONS
+// =============================================
+async function logsRefresh() {
+    let el = $('#logs-output');
+    if (!el) return;
+    let service = $('#log-service').value;
+    let lines = $('#log-lines').value || 100;
+    el.textContent = 'Loading logs...';
+    let url = '/system/logs?lines=' + encodeURIComponent(lines);
+    if (service) url += '&service=' + encodeURIComponent(service);
+    let r = await api(url);
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    if (r.logs) {
+        el.textContent = r.logs;
+        el.scrollTop = el.scrollHeight;
+    } else {
+        el.textContent = 'No logs returned';
+    }
+}
+
 

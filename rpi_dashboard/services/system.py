@@ -393,3 +393,15 @@ def get_hwmon_info() -> Dict[str, Any]:
     except Exception:
         pass
     return {"temperatures": temps}
+
+
+def get_service_logs(service: str, lines: int = 100) -> Dict[str, Any]:
+    """Get systemd journal logs for a service."""
+    try:
+        cmd = ["journalctl", "-u", service, "-n", str(lines), "--no-pager", "--output=cat"]
+        if not service:
+            cmd = ["journalctl", "-n", str(lines), "--no-pager", "--output=cat"]
+        r = _run(cmd, t=10)
+        return {"logs": r.stdout, "error": r.stderr if r.returncode != 0 else None}
+    except Exception as e:
+        return {"logs": "", "error": str(e)}

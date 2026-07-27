@@ -91,6 +91,8 @@ from .handlers import (
     handle_restart_rpi,
     handle_system_hw_stats,
     handle_system_https_info,
+    handle_network_info,
+    handle_network_tailscale,
     handle_youtube_cookie_status,
     handle_youtube_age_check,
     handle_media_preview,
@@ -232,6 +234,8 @@ ROUTES: Dict[str, Callable] = {
     "/system/hw-stats": handle_system_hw_stats,
     "/system/status": handle_system_status,
     "/system/https-info": handle_system_https_info,
+    "/network/info": handle_network_info,
+    "/network/tailscale": handle_network_tailscale,
     "/restart/mpv": handle_restart_mpv,
     "/restart/dashboard": handle_restart_dashboard,
     "/restart/rpi": handle_restart_rpi,
@@ -241,6 +245,7 @@ ROUTES: Dict[str, Callable] = {
     "/youtube/cookies/status": handle_youtube_cookie_status,
     "/youtube/age-check": handle_youtube_age_check,
     "/media/preview": handle_media_preview,
+    "/system/logs": handle_system_logs,
 }
 
 

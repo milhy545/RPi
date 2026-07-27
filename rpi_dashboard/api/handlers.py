@@ -728,6 +728,23 @@ def handle_system_https_info(q: Dict[str, Any]) -> Dict[str, Any]:
     return system.get_https_info()
 
 
+def handle_network_info(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get network information."""
+    return system.get_network_info()
+
+
+def handle_network_tailscale(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get Tailscale status."""
+    return system.get_tailscale_status()
+
+
+def handle_system_logs(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Get system logs from journalctl."""
+    lines = int(_get(q, "lines", 100))
+    service = _get(q, "service", "")
+    return system.get_service_logs(service, lines)
+
+
 def handle_youtube_cookie_status(q: Dict[str, Any]) -> Dict[str, Any]:
     """Get YouTube cookie status."""
     return media.youtube_cookie_status()

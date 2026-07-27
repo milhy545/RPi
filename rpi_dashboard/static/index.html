@@ -24,6 +24,9 @@
                 <button id="tab-audio" class="app-tab-btn tab" data-t="audio" data-i18n="audio" onclick="sw('audio');taRefresh()">🔊 Audio</button>
                 <button id="tab-bluetooth" class="app-tab-btn tab" data-t="bluetooth" data-i18n="bluetooth" onclick="sw('bluetooth')">🎮 Bluetooth</button>
                 <button id="tab-devices" class="app-tab-btn tab" data-t="devices" data-i18n="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
+                <button id="tab-network" class="app-tab-btn tab" data-t="network" data-i18n="network" onclick="sw('network');networkRefresh()">🌐 Network</button>
+                <button id="tab-system" class="app-tab-btn tab" data-t="system" data-i18n="system" onclick="sw('system');systemRefresh()">⚙️ System</button>
+                <button id="tab-logs" class="app-tab-btn tab" data-t="logs" data-i18n="logs" onclick="sw('logs');logsRefresh()">📋 Logs</button>
                 <button id="tab-terminal" class="app-tab-btn tab" data-t="terminal" data-i18n="terminal" onclick="sw('terminal')">💻 Terminal</button>
             </nav>
 
@@ -61,6 +64,15 @@
                     </a>
                     <a class="app-nav-item" data-t="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">
                         <span>🧩</span> <span>Devices</span>
+                    </a>
+                    <a class="app-nav-item" data-t="network" onclick="sw('network');networkRefresh()">
+                        <span>🌐</span> <span>Network</span>
+                    </a>
+                    <a class="app-nav-item" data-t="system" onclick="sw('system');systemRefresh()">
+                        <span>⚙️</span> <span>System</span>
+                    </a>
+                    <a class="app-nav-item" data-t="logs" onclick="sw('logs');logsRefresh()">
+                        <span>📋</span> <span>Logs</span>
                     </a>
                     <a class="app-nav-item" data-t="terminal" onclick="sw('terminal')">
                         <span>💻</span> <span>Terminal</span>
@@ -415,8 +427,45 @@
         </div>
     </div>
 
-    <!-- Terminal Panel -->
-    <div id="p-terminal" class="pnl">
+    <!-- Network Panel -->
+    <div id="p-network" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="networkTitle" data-tip="sectionNetwork">🌐 Network</h3>
+                    <div class="media-meta" data-i18n="networkDesc">Network configuration, Wi-Fi management, and Tailscale VPN status.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="networkRefresh()">🔄 Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="media-grid">
+            <div class="sec">
+                <h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3>
+                <div class="row">
+                    <button onclick="wifiStatus()">📶 Status</button>
+                    <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
+                </div>
+                <div class="row" style="margin-top:.35rem">
+                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
+                </div>
+                <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
+            </div>
+            <div class="sec">
+                <h3 data-i18n="tailscaleTitle" data-tip="sectionTailscale">🔗 Tailscale</h3>
+                <div class="row" style="margin-bottom:.35rem">
+                    <button onclick="tailscaleRefresh()" data-i18n="refresh" data-icon="🔄">🔄 Refresh</button>
+                </div>
+                <div id="tailscale-status" class="media-meta">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Panel -->
+    <div id="p-system" class="pnl">
         <div class="sec">
             <h3 data-i18n="hwStatsTitle">HW Stats & CPU Masks</h3>
             <div class="row" style="margin-bottom:.35rem">
@@ -427,15 +476,6 @@
             <div id="sys-status" style="margin-top:.5rem;font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap" data-i18n="sysLoading">Loading CPU masks...</div>
         </div>
         <div class="sec">
-            <h3 data-tip="sectionTerminal" style="display:none">Terminal help</h3>
-            <div class="row" style="margin-bottom:.4rem">
-                <button data-i18n="termConnect" data-icon="🔌" onclick="termConnect()">🔌 Connect</button>
-                <button data-i18n="termDisconnect" data-icon="⏹" onclick="termDisconnect()" class="danger">⏹ Disconnect</button>
-                <span id="term-status" data-i18n="disconnected" style="font-size:.75em;color:#8b949e">Disconnected</span>
-            </div>
-            <div id="terminal"></div>
-        </div>
-        <div class="sec">
             <h3 data-i18n="restartTitle">Restart Actions</h3>
             <div class="row">
                 <button onclick="restartMpv()" class="danger" style="font-size:.75rem" data-i18n="restartMpv" data-icon="🔄">🔄 Restart mpv</button>
@@ -443,7 +483,42 @@
                 <button onclick="restartRpi()" class="danger" style="font-size:.75rem" data-i18n="restartRpi" data-icon="🔄">🔄 Restart RPi</button>
             </div>
         </div>
+        <div class="sec">
+            <h3 data-i18n="httpsInfoTitle">HTTPS Info</h3>
+            <div id="https-info" class="media-meta">Loading...</div>
+        </div>
     </div>
+
+    <!-- Logs Panel -->
+    <div id="p-logs" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="logsTitle" data-tip="sectionLogs">📋 System Logs</h3>
+                    <div class="media-meta" data-i18n="logsDesc">View systemd journal and application logs for troubleshooting.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="logsRefresh()">🔄 Refresh</button>
+                    <select id="log-service" onchange="logsRefresh()" style="width:auto;min-width:180px">
+                        <option value="rpi-dashboard" data-i18n="logServiceDashboard">Dashboard</option>
+                        <option value="mpv" data-i18n="logServiceMpv">MPV</option>
+                        <option value="keys2mpv" data-i18n="logServiceKeys2mpv">Keys2MPV</option>
+                        <option value="pipewire" data-i18n="logServicePipewire">PipeWire</option>
+                        <option value="wireplumber" data-i18n="logServiceWireplumber">WirePlumber</option>
+                        <option value="bluetooth" data-i18n="logServiceBluetooth">Bluetooth</option>
+                        <option value="" data-i18n="logServiceAll">All (journalctl -u)</option>
+                    </select>
+                    <input type="number" id="log-lines" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
+                    <button onclick="logsRefresh()" data-i18n="refresh">Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="sec">
+            <pre id="logs-output" style="font-size:.7rem;color:#8b949e;font-family:monospace;white-space:pre-wrap;max-height:500px;overflow:auto;background:#0d1117;padding:.6rem;border-radius:.3rem;border:1px solid #30363d" data-i18n="clickRefresh">Click Refresh to load logs</pre>
+        </div>
+    </div>
+
+    <!-- Terminal Panel -->
 
     <!-- Feedback Modal -->
     <div id="feedback-modal" class="modal">
