@@ -740,7 +740,7 @@ def handle_network_tailscale(q: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_system_logs(q: Dict[str, Any]) -> Dict[str, Any]:
     """Get system logs from journalctl."""
-    lines = int(_get(q, "lines", 100))
+    lines = int(_get(q, "lines", "100"))
     service = _get(q, "service", "")
     return system.get_service_logs(service, lines)
 
