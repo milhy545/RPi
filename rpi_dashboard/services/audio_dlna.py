@@ -15,7 +15,7 @@ from . import audio
 
 _PA_DLNA_PORT = PA_DLNA_PORT
 _PA_DLNA_LOG = "/tmp/pa-dlna-webui.log"
-_pa_dlna_proc: Optional[subprocess.Popen[str]] = None
+_pa_dlna_proc: Optional[subprocess.Popen[Any]] = None
 
 
 def _load_audio_latency() -> Dict[str, Any]:
@@ -223,7 +223,8 @@ def audio_connect_dlna() -> Dict[str, Any]:
         return {"ok": False, "error": "pa-dlna started but no DLNA sink appeared yet", "running": _pa_dlna_running()}
     r = subprocess.run(["pactl", "set-default-sink", sink], capture_output=True, text=True, timeout=5)
     audio._keepalive_start(sink)
-    delay = audio._apply_dlna_delay()
+    audio._apply_dlna_delay()
+    delay = _load_audio_latency().get("dlna_output_offset_ms")
     return {
         "ok": r.returncode == 0,
         "sink": sink,
