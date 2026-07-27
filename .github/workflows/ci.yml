@@ -58,19 +58,19 @@ jobs:
         run: node --check /tmp/rpi-webui-ci.js
 
       - name: Run pytest
-        run: .venv/bin/pytest -q --tb=short
+        run: python -m pytest -q --tb=short
 
       - name: Ruff lint
-        run: .venv/bin/ruff check . --select=E,F,W,I
+        run: python -m ruff check . --select=E,F,W,I
 
       - name: Mypy type check
-        run: .venv/bin/mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
+        run: python -m mypy --ignore-missing-imports rpi_dashboard webserver.py tui.py mode_switcher.py keys2mpv.py
 
       - name: Bandit security (high only)
-        run: .venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests || true
+        run: python -m bandit -q -lll -r . -x ./.venv,./__pycache__,./tests || true
 
       - name: Pip-audit
-        run: .venv/bin/pip-audit --skip-editable || true
+        run: python -m pip_audit --skip-editable || true
 
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
