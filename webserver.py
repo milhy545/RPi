@@ -2147,6 +2147,12 @@ class H(BaseHTTPRequestHandler):
                 "/audio/route/dlna-input/mode",
                 "/audio/route/dlna-input/target",
                 "/keepalive",
+                "/mpv/toggle",
+                "/mpv/seekabs",
+                "/mpv/vol",
+                "/mpv/memory",
+                "/mpv/memory/clear",
+                "/mpv/memory-save",
             }
             if path in registry_first:
                 handler = get_route(path)

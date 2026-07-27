@@ -202,6 +202,55 @@ def handle_mpv_volume(q: Dict[str, Any]) -> Dict[str, Any]:
     return player.mpv_volume(vol)
 
 
+def handle_mpv_toggle(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Toggle mpv pause state."""
+    return player.mpv_toggle()
+
+
+def handle_mpv_seekabs(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Seek mpv to an absolute position."""
+    pos = _get(q, "pos", "0")
+    try:
+        position = float(pos)
+    except ValueError:
+        return {"ok": False, "error": "pos must be number"}
+    return player.mpv_seek_absolute(position)
+
+
+def handle_mpv_vol(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Adjust mpv volume by a relative delta."""
+    delta = _get(q, "d", "0")
+    try:
+        amount = int(delta)
+    except ValueError:
+        return {"ok": False, "error": "d must be integer"}
+    return player.mpv_volume_delta(amount)
+
+
+def handle_mpv_memory(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Fetch stored mpv resume memory for a URL."""
+    url = _get(q, "url")
+    if not url:
+        return {"ok": False, "error": "url required"}
+    return {"ok": True, "memory": player.mpv_memory_for_url(url)}
+
+
+def handle_mpv_memory_clear(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Clear stored mpv resume memory for a URL."""
+    url = _get(q, "url")
+    if not url:
+        return {"ok": False, "error": "url required"}
+    return {"ok": True, "cleared": player.mpv_memory_clear_for_url(url)}
+
+
+def handle_mpv_memory_save(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist the current mpv resume state."""
+    if not player.mpv_ipc_socket_live():
+        return {"ok": True, "memory": "mpv not running"}
+    memory = player.save_mpv_resume_memory()
+    return {"ok": True, "memory": memory}
+
+
 # ─── Device Handlers ─────────────────────────────────────────────────
 
 def handle_devices_state(q: Dict[str, Any]) -> Dict[str, Any]:

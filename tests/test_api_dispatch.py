@@ -144,7 +144,6 @@ def test_route_registry_covers_webui_get_endpoints():
 def test_legacy_routes_are_explicitly_marked():
     legacy_endpoints = {
         "/cec/send",
-        "/mpv/seekabs",
         "/system/hw-stats",
         "/youtube/age-check",
     }
@@ -166,6 +165,18 @@ def test_legacy_routes_are_explicitly_marked():
         "/audio/route/dlna-input/target",
         "/keepalive",
     }
+
+    migrated_mpv_endpoints = {
+        "/mpv/toggle",
+        "/mpv/seekabs",
+        "/mpv/vol",
+        "/mpv/memory",
+        "/mpv/memory/clear",
+        "/mpv/memory-save",
+    }
+
+    for endpoint in migrated_mpv_endpoints:
+        assert routes.ROUTES[endpoint] is not routes.legacy_webserver_endpoint
 
     for endpoint in migrated_audio_endpoints:
         assert routes.ROUTES[endpoint] is not routes.legacy_webserver_endpoint
@@ -215,3 +226,19 @@ def test_webserver_delegates_migrated_audio_route(server_url):
         routes.ROUTES["/audio/bt"] = original
 
     assert payload == {"ok": True, "route": "/audio/bt", "target": "bt"}
+
+
+def test_webserver_delegates_migrated_mpv_route(server_url):
+    def handler(query):
+        return {"ok": True, "route": query["_route"][0], "position": float(query["pos"][0])}
+
+    original = routes.ROUTES["/mpv/seekabs"]
+    routes.ROUTES["/mpv/seekabs"] = handler
+    try:
+        with urllib.request.urlopen(server_url + "/mpv/seekabs?pos=12.5", timeout=5) as response:
+            assert response.status == 200
+            payload = json.loads(response.read().decode())
+    finally:
+        routes.ROUTES["/mpv/seekabs"] = original
+
+    assert payload == {"ok": True, "route": "/mpv/seekabs", "position": 12.5}

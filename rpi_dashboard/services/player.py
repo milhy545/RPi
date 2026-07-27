@@ -3,6 +3,7 @@
 Handles mpv player control, playback, and IPC communication.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -167,6 +168,15 @@ def mpv_seek(position: float) -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+def mpv_seek_absolute(position: float) -> Dict[str, Any]:
+    """Seek to an absolute position in the current file."""
+    try:
+        mcmd("seek", position, "absolute")
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def mpv_volume(volume: int) -> Dict[str, Any]:
     """Set mpv volume (0-150)."""
     try:
@@ -177,50 +187,113 @@ def mpv_volume(volume: int) -> Dict[str, Any]:
         return {"ok": False, "error": str(e)}
 
 
+def mpv_volume_delta(delta: int) -> Dict[str, Any]:
+    """Adjust mpv volume by a relative delta."""
+    try:
+        current = mget("volume") or 100
+        vol = max(0, min(150, int(current) + int(delta)))
+        mset("volume", vol)
+        return {"ok": True, "volume": vol, "delta": delta}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 def mpv_pause() -> Dict[str, Any]:
     """Toggle pause."""
     try:
-        paused = mget("paused")
+        paused = bool(mget("paused"))
         mset("paused", not paused)
         return {"ok": True, "paused": not paused}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def mpv_next() -> Dict[str, Any]:
-    """Play next item in playlist."""
+def mpv_toggle() -> Dict[str, Any]:
+    """Alias for pause toggle used by the API layer."""
+    return mpv_pause()
+
+
+def _playback_memory_file() -> str:
+    return os.path.join(os.path.expanduser("~"), "rpi-dashboard", "playback-memory.json")
+
+
+def _playback_media_key(url: str) -> str:
+    m = YT_RE.search(url or "")
+    if m:
+        return m.group(1)
+    return hashlib.sha256((url or "").encode()).hexdigest()[:16]
+
+
+def load_mpv_resume_memory() -> Dict[str, Any]:
+    """Load all saved playback resume metadata."""
+    mem_file = _playback_memory_file()
     try:
-        mcmd("playlist-next")
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        if os.path.exists(mem_file):
+            with open(mem_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+    except Exception:
+        pass
+    return {}
 
 
-def mpv_previous() -> Dict[str, Any]:
-    """Play previous item in playlist."""
+def _save_playback_memory(data: Dict[str, Any]) -> None:
+    mem_file = _playback_memory_file()
+    os.makedirs(os.path.dirname(mem_file), exist_ok=True)
+    with open(mem_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+def mpv_memory_for_url(url: str) -> Optional[Dict[str, Any]]:
+    """Return saved resume metadata for a URL."""
+    return load_mpv_resume_memory().get(_playback_media_key(url))
+
+
+def mpv_memory_clear_for_url(url: str) -> bool:
+    """Remove resume metadata for a URL."""
     try:
-        mcmd("playlist-prev")
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        data = load_mpv_resume_memory()
+        key = _playback_media_key(url)
+        if key in data:
+            del data[key]
+            _save_playback_memory(data)
+            return True
+    except Exception:
+        pass
+    return False
 
 
-def mpv_subtitle_add(url: str) -> Dict[str, Any]:
-    """Add subtitle file."""
+def save_mpv_resume_memory() -> Optional[Dict[str, Any]]:
+    """Save current playback position for resume."""
     try:
-        mcmd("sub-add", url)
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def mpv_audio_delay(delay_ms: int) -> Dict[str, Any]:
-    """Set audio delay in milliseconds."""
-    try:
-        mset("audio-delay", delay_ms / 1000.0)
-        return {"ok": True, "delay_ms": delay_ms}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        if not mpv_ipc_socket_live():
+            return None
+        pos = mget("time-pos")
+        dur = mget("duration")
+        title = mget("media-title")
+        if pos is None or dur is None or not title:
+            return None
+        position = float(pos)
+        duration = float(dur)
+        source_url = mget("path") or ""
+        key = _playback_media_key(source_url)
+        if duration > 0 and (position >= duration * 0.95 or duration - position < 30):
+            mpv_memory_clear_for_url(source_url)
+            return None
+        if position < 5:
+            return None
+        data = load_mpv_resume_memory()
+        memory = {
+            "position": position,
+            "duration": duration,
+            "title": title,
+            "timestamp": time.time(),
+        }
+        data[key] = memory
+        _save_playback_memory(data)
+        return memory
+    except Exception:
+        return None
 
 
 def mpv_ended() -> bool:
@@ -268,13 +341,13 @@ def mpv_listen_for_eof(callback=None, check_interval: float = 1.0) -> bool:
 def mpv_auto_return_on_eof() -> Dict[str, Any]:
     """Set up mpv to auto-return to dashboard on EOF."""
     def on_eof():
-        # Save resume memory
         save_mpv_resume_memory()
-        # Return to dashboard via the return service
         from . import return_service
         return_service.return_to_dashboard(reason="eof", source="mpv_eof")
     
     return {"ok": mpv_listen_for_eof(callback=on_eof)}
+
+
 def cleanup_stale_mpv_socket() -> None:
     """Remove stale mpv socket file."""
     try:
@@ -282,40 +355,6 @@ def cleanup_stale_mpv_socket() -> None:
             os.remove(MSOCK)
     except Exception:
         pass
-
-
-def save_mpv_resume_memory() -> None:
-    """Save current playback position for resume."""
-    try:
-        if not mpv_ipc_socket_live():
-            return
-        pos = mget("time-pos")
-        dur = mget("duration")
-        title = mget("media-title")
-        if pos and dur and title:
-            data = {
-                "position": pos,
-                "duration": dur,
-                "title": title,
-                "timestamp": time.time()
-            }
-            memory_file = os.path.expanduser("~/rpi-dashboard/playback-memory.json")
-            with open(memory_file, "w") as f:
-                json.dump(data, f)
-    except Exception:
-        pass
-
-
-def load_mpv_resume_memory() -> Optional[Dict[str, Any]]:
-    """Load saved playback position."""
-    try:
-        memory_file = os.path.expanduser("~/rpi-dashboard/playback-memory.json")
-        if os.path.exists(memory_file):
-            with open(memory_file) as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return None
 
 
 def yt_id(u: str) -> Optional[str]:
