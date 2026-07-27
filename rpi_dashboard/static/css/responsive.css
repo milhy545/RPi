@@ -228,6 +228,124 @@
         padding: 0.8rem;
         font-size: 0.9rem;
     }
+
+    /* WebUI shell */
+    .webui-app .app-topbar {
+        height: auto;
+        padding: 0.5rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.4rem;
+    }
+
+    .webui-app .app-brand {
+        width: 100%;
+        justify-content: center;
+        white-space: normal;
+        text-align: center;
+    }
+
+    .webui-app .app-controls {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: stretch;
+        gap: 0.35rem;
+    }
+
+    .webui-app .app-controls > * {
+        flex: 1 1 0;
+    }
+
+    .webui-app.mode-basic .app-tabs-horizontal {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+        width: 100%;
+    }
+
+    .webui-app .app-tab-btn {
+        width: 100%;
+        justify-content: center;
+        padding: 0.45rem 0.35rem;
+        font-size: 0.72rem;
+        min-height: 2.5rem;
+        white-space: normal;
+    }
+
+    .webui-app .app-body {
+        display: block;
+        min-height: 0;
+    }
+
+    .webui-app.mode-expert .app-body {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .webui-app.mode-expert .app-sidebar-left {
+        width: 100%;
+        border-right: 0;
+        border-bottom: 1px solid var(--app-border);
+    }
+
+    .webui-app .app-content {
+        padding: 12px 10px 16px;
+    }
+
+    .webui-app .app-statusbar {
+        height: auto;
+        padding: 0.45rem 0.75rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
+    }
+
+    .webui-app .app-status-pills {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .webui-app .app-status-pill {
+        flex: 1 1 140px;
+        justify-content: center;
+    }
+
+    .audio-topology-container {
+        padding: 12px;
+    }
+
+    .audio-topology-header,
+    .audio-controls > div {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .audio-flow-canvas {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        min-height: 0;
+    }
+
+    .audio-sources-col,
+    .audio-sinks-col {
+        gap: 10px;
+    }
+
+    .pipewire-engine-card {
+        width: 76px;
+        height: 76px;
+        margin: 0 auto;
+    }
+
+    .audio-node-card {
+        padding: 10px 12px;
+    }
+
+    .audio-node-vol {
+        flex-wrap: wrap;
+    }
 }
 
 /* Very small screens - <480px */
@@ -259,6 +377,53 @@
 
     .vol-row button {
         min-width: calc(33.33% - 4px);
+    }
+
+    .webui-app.mode-basic .app-tabs-horizontal {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .webui-app .app-tab-btn {
+        font-size: 0.7rem;
+        padding: 0.4rem 0.3rem;
+    }
+
+    .webui-app .feedback-btn {
+        font-size: 0.72rem;
+    }
+
+    .bt-topnav {
+        padding: 8px 10px;
+    }
+
+    .bt-brand {
+        min-width: 0;
+    }
+
+    .bt-top-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .bt-top-actions > * {
+        flex: 1 1 0;
+    }
+
+    .bt-quick {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .bt-summary,
+    .bt-adapter-cards {
+        grid-template-columns: 1fr;
+    }
+
+    .bt-area-topo {
+        min-height: 300px;
+    }
+
+    .bt-device-node {
+        width: min(78vw, 160px);
     }
 
     /* Hide some less important buttons on very small screens */

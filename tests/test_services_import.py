@@ -48,6 +48,15 @@ def test_import_terminal():
     from rpi_dashboard.services import terminal
     assert hasattr(terminal, 'terminal_connect')
     assert hasattr(terminal, 'terminal_disconnect')
+    assert hasattr(terminal, 'terminal_ws_handler')
+
+
+def test_import_audio_routing():
+    """Test audio routing module import."""
+    from rpi_dashboard.services import audio_routing
+    assert hasattr(audio_routing, 'audio_keepalive')
+    assert hasattr(audio_routing, 'audio_route_alexa_bt')
+    assert hasattr(audio_routing, '_dlnain_start')
 
 
 def test_import_api_routes():

@@ -22,6 +22,8 @@ from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route
 from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.services import return_service
+from rpi_dashboard.services import terminal as terminal_service
+from rpi_dashboard.services import audio_routing as audio_routing_service
 # URL metadata cache for faster playback
 URL_CACHE_FILE = os.path.join(os.path.expanduser("~"), "rpi-dashboard", "url-cache.json")
 URL_CACHE_TTL = 3600 * 24  # 24 hours
@@ -57,6 +59,12 @@ def norm(u: str) -> str:
 def yt_id(u: str) -> str:
     """Extract YouTube video ID from URL."""
     m=YT_RE.search(norm(u)); return m.group(1) if m else ""
+
+
+def _route_query(path: str, q: dict) -> dict:
+    routed = dict(q)
+    routed["_route"] = [path]
+    return routed
 
 class _URLCache:
     """Simple file-based cache for resolved YouTube URLs to avoid repeated yt-dlp calls."""
@@ -639,51 +647,15 @@ def _resolve_alexa_target():
 _DLNAIN_MODE_FILE=os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
 
 def _load_dlnain_mode():
-    try:
-        with open(_DLNAIN_MODE_FILE) as f: return json.load(f)
-    except Exception: return {"mode":"follow","manual_sink":None}
-
+    return audio_routing_service._load_dlnain_mode()
 def _save_dlnain_mode(data):
-    try:
-        with open(_DLNAIN_MODE_FILE,"w") as f: json.dump(data,f)
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-
+    return audio_routing_service._save_dlnain_mode(data)
 def _resolve_dlnain_target():
-    """Determine DLNA Input target based on mode."""
-    cfg=_load_dlnain_mode()
-    if cfg.get("mode")=="manual" and cfg.get("manual_sink"):
-        return cfg["manual_sink"]
-    # Follow primary
-    return _resolve_alexa_target()
-
+    return audio_routing_service._resolve_dlnain_target()
 def _dlnain_loopback_running():
-    """Check if DLNA Input loopback (gmrender source) is active."""
-    gmrender_src=None
-    try:
-        r=_run(["pactl","list","short","sources"])
-        for l in r.stdout.splitlines():
-            if "gmediarender" in l.lower() or "gmrender" in l.lower():
-                parts=l.split()
-                if len(parts)>=2: gmrender_src=parts[1]
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    if not gmrender_src: return False, None
-    lb=_find_loopback_by_source(gmrender_src)
-    return lb is not None, gmrender_src
-
+    return audio_routing_service._dlnain_loopback_running()
 def _alexa_loopback_running():
-    """Check if Alexa AUX loopback is active. Returns (running, current_target)."""
-    try:
-        r=_run(["pactl","list","short","modules"])
-        for l in r.stdout.splitlines():
-            if "module-loopback" in l and USB_ALEXA_SRC in l:
-                m=re.search(r'sink=(\S+)', l)
-                target=m.group(1) if m else None
-                m2=re.search(r'^(\d+)', l)
-                mod_id=m2.group(1) if m2 else None
-                return True, target, mod_id
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    return False, None, None
-
+    return audio_routing_service._alexa_loopback_running()
 def _paired_bt_device(paired_text, mac=BT_SOUNDBAR_MAC):
     for line in (paired_text or "").splitlines():
         parts=line.split()
@@ -1250,108 +1222,17 @@ def audio_disconnect_dlna():
     return {"ok":True,"running":_pa_dlna_running(),"delay_reset":True}
 
 def audio_keepalive(action, sink=None):
-    if action=="start" and sink:
-        ok=_keepalive_start(sink)
-        return {"ok":ok,"active":_keepalive_status(),"orphans":_keepalive_orphans()}
-    elif action=="stop" and sink:
-        _keepalive_stop(sink)
-        return {"ok":True,"active":_keepalive_status(),"orphans":_keepalive_orphans()}
-    elif action=="stop_all":
-        _keepalive_stop()
-        killed=_stop_keepalive_orphans()
-        return {"ok":True,"active":_keepalive_status(),"orphans":_keepalive_orphans(),"killed":killed}
-    return {"ok":True,"active":_keepalive_status(),"orphans":_keepalive_orphans()}
-
-# ── Routing: retarget and DLNA Input ─────────────────────────────────
-
+    return audio_routing_service.audio_keepalive(action, sink)
 def _retarget_alexa():
-    """Retarget Alexa loopback to follow current default_sink."""
-    running,target,mid=_alexa_loopback_running()
-    if not running:
-        return {"ok":False,"error":"Alexa loopback not running"}
-    new_target=_resolve_alexa_target()
-    if not new_target:
-        return {"ok":False,"error":"No suitable output found"}
-    if target==new_target:
-        return {"ok":True,"unchanged":True,"target":target}
-    # Stop old, start new
-    _stop_loopback(mid)
-    time.sleep(0.3)
-    new_mid=_start_loopback(USB_ALEXA_SRC, new_target)
-    if new_mid:
-        return {"ok":True,"old_target":target,"new_target":new_target,"module_id":new_mid}
-    return {"ok":False,"error":"Failed to start loopback to new target","old_target":target}
-
+    return audio_routing_service._retarget_alexa()
 def _dlnain_start():
-    """Start DLNA Input loopback from gmrender source."""
-    running,src=_dlnain_loopback_running()
-    if running:
-        return {"ok":True,"already":True,"source":src}
-    # Find gmrender source
-    gmrender_src=None
-    try:
-        r=_run(["pactl","list","short","sources"])
-        for l in r.stdout.splitlines():
-            if "gmediarender" in l.lower() or "gmrender" in l.lower():
-                parts=l.split()
-                if len(parts)>=2: gmrender_src=parts[1]
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    if not gmrender_src:
-        return {"ok":False,"error":"gmrender source not found in PipeWire"}
-    target=_resolve_dlnain_target()
-    if not target:
-        return {"ok":False,"error":"No suitable output found"}
-    mid=_start_loopback(gmrender_src, target)
-    if mid:
-        return {"ok":True,"source":gmrender_src,"target":target,"module_id":mid}
-    return {"ok":False,"error":"Failed to start loopback"}
-
+    return audio_routing_service._dlnain_start()
 def _dlnain_stop():
-    """Stop DLNA Input loopback."""
-    running,src=_dlnain_loopback_running()
-    if not running:
-        return {"ok":True,"was_running":False}
-    stopped=_stop_loopback_by_source(src)
-    return {"ok":stopped,"source":src}
-
+    return audio_routing_service._dlnain_stop()
 def _dlnain_retarget(new_target):
-    """Retarget DLNA Input loopback to new sink."""
-    running,src=_dlnain_loopback_running()
-    if not running: return False
-    # Find and stop current
-    lb=_find_loopback_by_source(src)
-    if lb: _stop_loopback(lb["id"])
-    time.sleep(0.3)
-    # Start new
-    mid=_start_loopback(src, new_target)
-    return mid is not None
-
+    return audio_routing_service._dlnain_retarget(new_target)
 def audio_route_alexa_bt(action):
-    if action=="stop":
-        mid=_loopback_module_id()
-        if mid: _run(["pactl","unload-module",mid])
-        return {"ok":True,"route":"alexa_to_bt","on":False}
-    if action=="start":
-        if _loopback_module_id(): return {"ok":True,"route":"alexa_to_bt","on":True,"already":True}
-        sources=_pactl_lines("sources")
-        if not any(s["name"]==USB_ALEXA_SRC for s in sources):
-            return {"ok":False,"route":"alexa_to_bt","on":False,"error":"USB Alexa input is not available"}
-        # Ensure BT is connected and loud enough.
-        subprocess.run(["bluetoothctl","connect",BT_SOUNDBAR_MAC],capture_output=True,text=True,timeout=10)
-        time.sleep(1)
-        sinks=_pactl_lines("sinks")
-        if not any(s["name"]==BT_SOUNDBAR_SINK for s in sinks):
-            return {"ok":False,"route":"alexa_to_bt","on":False,"error":"BT Soundbar sink is not available after connect attempt"}
-        subprocess.run(["pactl","set-sink-volume",BT_SOUNDBAR_SINK,"100%"],capture_output=True)
-        r=_run(["pactl","load-module","module-loopback",
-                f"source={USB_ALEXA_SRC}",f"sink={BT_SOUNDBAR_SINK}","rate=48000","channels=2",
-                "channel_map=front-left,front-right","source_dont_move=true","sink_dont_move=true","latency_msec=20","remix=true"], t=10)
-        return {"ok":r.returncode==0,"route":"alexa_to_bt","on":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
-    if action=="reset":
-        return audio_matrix_reset()
-    return {"ok":False,"error":"bad action"}
-
-# ── Devices, Wi-Fi, and YouTube diagnostics ───────────────────────────
+    return audio_routing_service.audio_route_alexa_bt(action)
 def _bt_kind(name):
     return devices_service._bt_device_kind(name)
 
@@ -2258,7 +2139,7 @@ class H(BaseHTTPRequestHandler):
             if path in registry_first:
                 handler = get_route(path)
                 if handler:
-                    return self.sj(200, handler(q))
+                    return self.sj(200, handler(_route_query(path, q)))
             if path in ("/","/index.html"): return self.st(200,page())
             elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
             elif path=="/manifest.json":
@@ -2498,15 +2379,15 @@ class H(BaseHTTPRequestHandler):
             elif path=="/bt/trust":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(q))
+                self.sj(200,get_route(path)(_route_query(path, q)))
             elif path=="/bt/pair":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(q))
+                self.sj(200,get_route(path)(_route_query(path, q)))
             elif path=="/bt/connect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                result=get_route(path)(q)
+                result=get_route(path)(_route_query(path, q))
                 bt_sink=None
                 if result.get("ok"):
                     for _ in range(10):
@@ -2519,14 +2400,14 @@ class H(BaseHTTPRequestHandler):
             elif path=="/bt/disconnect":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                result=get_route(path)(q)
+                result=get_route(path)(_route_query(path, q))
                 if result.get("ok"): _keepalive_stop()
                 result.update({"keepalive":_keepalive_status()})
                 self.sj(200,result)
             elif path=="/bt/remove":
                 mac=(q.get("mac")or[""])[0].strip()
                 if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(q))
+                self.sj(200,get_route(path)(_route_query(path, q)))
             elif path=="/system/hw-stats":
                 def _cpu_sample():
                     out=[]
@@ -2663,7 +2544,7 @@ class H(BaseHTTPRequestHandler):
             else:
                 handler = get_route(path)
                 if handler:
-                    return self.sj(200, handler(q))
+                    return self.sj(200, handler(_route_query(path, q)))
                 self.st(404,"nf","text/plain")
         except Exception as e: self.sj(500,{"error":str(e)})
     def do_POST(self):
@@ -2724,124 +2605,12 @@ class H(BaseHTTPRequestHandler):
 # WS_PORT is imported from config
 
 async def term_handler(websocket):
-    client_ip = websocket.remote_address[0] if websocket.remote_address else None
-    if not client_ip or not _is_allowed_ip(client_ip):
-        try:
-            await websocket.close(1008, "Forbidden – IP not allowed")
-        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-        return
-    
-    # Require authentication token in first message or query parameter
-    authenticated = False
-    try:
-        # Check for token in query parameter
-        query = websocket.request.path if hasattr(websocket, 'request') and websocket.request else ""
-        if "token=" + WS_AUTH_TOKEN in query:
-            authenticated = True
-    except Exception:
-        pass
-    
-    if not authenticated:
-        # Wait for first message with auth token
-        try:
-            first_msg = await asyncio.wait_for(websocket.recv(), timeout=5.0)
-            data = json.loads(first_msg)
-            if data.get("action") == "auth" and data.get("token") == WS_AUTH_TOKEN:
-                authenticated = True
-            else:
-                await websocket.close(1008, "Authentication required")
-                return
-        except (asyncio.TimeoutError, json.JSONDecodeError, Exception):
-            try:
-                await websocket.close(1008, "Authentication required")
-            except Exception:
-                pass
-            return
-    
-    session_name = "RPi:0"
-    rows = 24
-    cols = 80
-    poll_task = None
-
-    async def resize_tmux():
-        try:
-            proc = await asyncio.create_subprocess_exec("tmux", "resize-pane", "-t", session_name, "-x", str(cols), "-y", str(rows),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            await asyncio.wait_for(proc.communicate(), timeout=1.0)
-        except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-
-    async def poll_output():
-        while True:
-            await asyncio.sleep(0.35)
-            try:
-                content = subprocess.run(["tmux", "capture-pane", "-t", session_name, "-p", "-S", f"-{rows}"],
-                    capture_output=True, text=True, timeout=2).stdout
-                cursor_raw = subprocess.run(["tmux", "display-message", "-t", session_name, "-p", "#{cursor_x} #{cursor_y}"],
-                    capture_output=True, text=True, timeout=1).stdout.strip().split()
-                cursor_x = int(cursor_raw[0]) if len(cursor_raw) >= 1 and cursor_raw[0].isdigit() else 0
-                cursor_y = int(cursor_raw[1]) if len(cursor_raw) >= 2 and cursor_raw[1].isdigit() else 0
-                all_lines = content.splitlines()
-                start = max(0, len(all_lines) - rows)
-                lines = all_lines[start:]
-                normalized = "\r\n".join(line[:cols] for line in lines)
-                # tmux cursor_y is already relative to the visible pane, not scrollback.
-                rel_y = max(0, min(rows - 1, cursor_y)) if all_lines else 0
-                rel_x = max(0, min(cols - 1, cursor_x))
-                await websocket.send(json.dumps({"output": normalized, "full": True, "cursor": {"x": rel_x, "y": rel_y}}))
-            except Exception:
-                break
-
-    try:
-        async for message in websocket:
-            try:
-                data = json.loads(message)
-            except Exception:
-                continue
-            if data.get("action") == "attach":
-                session_name = data.get("session", "RPi")
-                rows = max(10, min(80, int(data.get("rows") or rows)))
-                cols = max(40, min(220, int(data.get("cols") or cols)))
-                await resize_tmux()
-                if poll_task:
-                    poll_task.cancel()
-                poll_task = asyncio.create_task(poll_output())
-            elif data.get("resize"):
-                r = data.get("resize") or {}
-                rows = max(10, min(80, int(r.get("rows") or rows)))
-                cols = max(40, min(220, int(r.get("cols") or cols)))
-                await resize_tmux()
-            elif data.get("input"):
-                try:
-                    inp = data["input"]
-                    special_keys = {
-                        "\r": "Enter",
-                        "\n": "Enter",
-                        "\x7f": "BSpace",
-                        "\b": "BSpace",
-                        "\t": "Tab",
-                        "\x03": "C-c",
-                        "\x04": "C-d",
-                        "\x1b[A": "Up",
-                        "\x1b[B": "Down",
-                        "\x1b[C": "Right",
-                        "\x1b[D": "Left",
-                        "\x1b[3~": "Delete",
-                        "\x1b[H": "Home",
-                        "\x1b[F": "End",
-                    }
-                    if inp in special_keys:
-                        proc = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, special_keys[inp],
-                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                        await asyncio.wait_for(proc.communicate(), timeout=1.0)
-                    else:
-                        proc = await asyncio.create_subprocess_exec("tmux", "send-keys", "-t", session_name, "-l", inp,
-                            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                        await asyncio.wait_for(proc.communicate(), timeout=1.0)
-                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    finally:
-        if poll_task:
-            poll_task.cancel()
+    return await terminal_service.terminal_ws_handler(
+        websocket,
+        WS_AUTH_TOKEN,
+        _is_allowed_ip,
+        session_name="RPi:0",
+    )
 
 def start_ws_server():
     if not HAS_WS:
@@ -3173,7 +2942,9 @@ def start_resume_poller():
     t = threading.Thread(target=_poller, daemon=True)
     t.start()
 
-if __name__=="__main__":
+
+def main() -> None:
+    """Start the production WebUI/API server."""
     cleanup_stale_mpv_socket()
     start_ws_server()
     start_resume_poller()
@@ -3181,6 +2952,10 @@ if __name__=="__main__":
     start_https_server(HTTPS_PORT, "HTTPS")
     if HTTPS_PORT_ALT != HTTPS_PORT:
         start_https_server(HTTPS_PORT_ALT, "friendly HTTPS")
-    httpd=ThreadingHTTPServer((HOST,PORT),H)
-    print(f"RPi-TV HTTP on http://{HOST}:{PORT}",flush=True)
+    httpd = ThreadingHTTPServer((HOST, PORT), H)
+    print(f"RPi-TV HTTP on http://{HOST}:{PORT}", flush=True)
     httpd.serve_forever()
+
+
+if __name__=="__main__":
+    main()

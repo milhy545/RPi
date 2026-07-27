@@ -141,6 +141,35 @@ def test_route_registry_covers_webui_get_endpoints():
     assert missing == set()
 
 
+def test_legacy_routes_are_explicitly_marked():
+    legacy_endpoints = {
+        "/audio/bt",
+        "/audio/route/dlna-input/start",
+        "/cec/send",
+        "/mpv/seekabs",
+        "/system/hw-stats",
+        "/youtube/age-check",
+    }
+
+    for endpoint in legacy_endpoints:
+        assert routes.ROUTES[endpoint] is routes.legacy_webserver_endpoint
+
+
+def test_legacy_route_telemetry_records_hits():
+    routes.LEGACY_ROUTE_HITS.clear()
+    routes.LEGACY_ROUTE_LAST_HIT.clear()
+
+    payload = routes.legacy_webserver_endpoint({"_route": ["/audio/bt"]})
+    assert payload["legacy"] is True
+    assert payload["route"] == "/audio/bt"
+    assert payload["hits"] == 1
+    assert routes.LEGACY_ROUTE_HITS["/audio/bt"] == 1
+
+    payload = routes.legacy_webserver_endpoint({"_route": ["/audio/bt"]})
+    assert payload["hits"] == 2
+    assert routes.LEGACY_ROUTE_HITS["/audio/bt"] == 2
+
+
 def test_legacy_bt_connect_uses_adapter_aware_resolver(server_url):
     set_backend_for_tests(FakeBluetoothBackend.with_overlapping_remote())
     try:

@@ -44,7 +44,7 @@ KODI_PORT = 9090
 MPV_SOCKET = "/tmp/rpi-mpv.sock"
 
 # WS config
-WS_PORT = 8098
+WS_PORT = int(os.getenv("RPIDASHBOARD_WS_PORT", "8098"))
 
 # DLNA config
 PA_DLNA_PORT = "8088"

@@ -71,3 +71,5 @@
 
 
 - [ ] **Track: audio-multimixer-webui_20260725** — audio-multimixer-webui | [Plan](./tracks/audio-multimixer-webui_20260725/plan.md)
+
+- [x] **Track: report_1785101816_bug** — Bug report | [Plan](./tracks/report_1785101816_bug/plan.md)

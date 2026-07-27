@@ -62,6 +62,17 @@ def test_small_controls_have_touch_target_floor() -> None:
     assert "min-height: 2.25rem" in responsive_css
 
 
+def test_webui_mobile_shell_stacks_panels_for_small_screens() -> None:
+    """The production WebUI should collapse into a mobile-friendly stack."""
+    responsive_css = (REPO_ROOT / "rpi_dashboard/static/css/responsive.css").read_text()
+
+    assert ".webui-app .app-topbar" in responsive_css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in responsive_css
+    assert ".webui-app .app-statusbar" in responsive_css
+    assert ".audio-flow-canvas" in responsive_css
+    assert ".bt-top-actions" in responsive_css
+
+
 def test_bluetooth_webui_uses_gemini_control_center_shell() -> None:
     """The production Bluetooth tab should keep the saved Gemini design shape."""
     index_html = (REPO_ROOT / "rpi_dashboard/static/index.html").read_text()

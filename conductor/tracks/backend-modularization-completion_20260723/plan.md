@@ -1,28 +1,39 @@
 # Implementation Plan: Backend Modularization, Visual Redesign, and Legacy Retirement
 
-## Phase 1: Ownership and legacy inventory
+## Phase 1: Ownership and legacy inventory ✅ COMPLETED
 
-- [ ] Task: Map duplicate behavior, visible surfaces, legacy routes, and every
-  in-repository/documented external consumer; add characterization tests.
-- [ ] Task: Define the target service/API ownership map, versioned replacements,
-  migration order, deprecation signals, telemetry, and rollback per route.
-- [ ] Task: Add the package entrypoint with a focused startup test.
+- [x] Task: Map duplicate behavior, visible surfaces, legacy routes, and every
+  in-repository/documented external consumer; add characterization tests. ✅ Done
+- [x] Task: Define the target service/API ownership map, versioned replacements,
+  migration order, deprecation signals, telemetry, and rollback per route. ✅ Done
+- [x] Task: Add the package entrypoint with a focused startup test. ✅ Done
 
-## Phase 2: Information architecture and visual approval
+Phase artifacts:
+- `conductor/tracks/backend-modularization-completion_20260723/inventory.md`
+- `conductor/tracks/backend-modularization-completion_20260723/migration_map.md`
 
-- [ ] Task: Produce production WebUI and live TUI wireframes for task-oriented
-  sections, responsive widths, CZ/EN, keyboard, and gamepad navigation.
-- [ ] Task: Capture current desktop/tablet/mobile/TV/TUI baselines remotely and
-  obtain approval for the new visual direction before production replacement.
+## Phase 2: Information architecture and visual approval ✅ COMPLETED
 
-## Phase 3: Incremental backend extraction
+- [x] Task: Produce production WebUI and live TUI wireframes for task-oriented
+  sections, responsive widths, CZ/EN, keyboard, and gamepad navigation. ✅ Done
+- [x] Task: Capture current desktop/tablet/mobile/TV/TUI baselines remotely and
+  obtain approval for the new visual direction before production replacement. ✅ Done
 
-- [ ] Task: Move terminal WebSocket ownership behind its service boundary.
-- [ ] Task: Split remaining Audio responsibilities into cohesive modules.
+Phase artifacts:
+- `conductor/tracks/backend-modularization-completion_20260723/wireframes.md`
+- `conductor/tracks/backend-modularization-completion_20260723/baseline_capture.md`
+
+## Phase 3: Incremental backend extraction 🔄 IN PROGRESS
+
+- [x] Task: Move terminal WebSocket ownership behind its service boundary. ✅ Done
+- [ ] Task: Split remaining Audio responsibilities into cohesive modules. ⏳ Active
 - [ ] Task: Replace legacy endpoint bodies with tested versioned service/API
   delegation and migrate all in-repository consumers.
 - [ ] Task: Add per-phase startup, route, memory, latency, polling, and per-core
   CPU comparisons.
+
+Phase artifacts:
+- `rpi_dashboard/services/audio_routing.py`
 
 ## Phase 4: Production visual redesign
 

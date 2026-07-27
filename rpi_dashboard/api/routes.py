@@ -3,6 +3,7 @@
 Maps URL paths to handler functions.
 """
 
+import time
 from typing import Callable, Dict, Optional
 from .handlers import (
     handle_audio_state,
@@ -64,11 +65,28 @@ from .handlers import (
 )
 
 
+LEGACY_ROUTE_HITS: Dict[str, int] = {}
+LEGACY_ROUTE_LAST_HIT: Dict[str, float] = {}
+
+
+def _legacy_route_name(q: dict) -> str:
+    route = q.get("_route", "unknown")
+    if isinstance(route, list):
+        return str(route[0]) if route else "unknown"
+    return str(route)
+
+
 def legacy_webserver_endpoint(q: dict) -> dict:
     """Marker for endpoints still implemented by webserver.py legacy branches."""
+    route = _legacy_route_name(q)
+    LEGACY_ROUTE_HITS[route] = LEGACY_ROUTE_HITS.get(route, 0) + 1
+    LEGACY_ROUTE_LAST_HIT[route] = time.time()
     return {
         "ok": False,
         "legacy": True,
+        "route": route,
+        "hits": LEGACY_ROUTE_HITS[route],
+        "last_hit": LEGACY_ROUTE_LAST_HIT[route],
         "error": "endpoint remains implemented in webserver.py",
     }
 

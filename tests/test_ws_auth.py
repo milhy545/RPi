@@ -1,12 +1,12 @@
 """Tests for WebSocket terminal authentication."""
 
-import pytest
 from pathlib import Path
 
 
 # Discover project root dynamically
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WEBSERVER_FILE = PROJECT_ROOT / "webserver.py"
+TERMINAL_FILE = PROJECT_ROOT / "rpi_dashboard" / "services" / "terminal.py"
 
 
 def test_ws_auth_token_in_source():
@@ -22,13 +22,15 @@ def test_ws_auth_endpoint_in_source():
 
 
 def test_ws_auth_required_in_term_handler():
-    """Test that term_handler requires authentication."""
+    """Test that term_handler delegates to the terminal service and keeps auth."""
     source = WEBSERVER_FILE.read_text()
-    # Find the term_handler function
+    service_source = TERMINAL_FILE.read_text()
+
     assert 'async def term_handler' in source
-    # Check that it validates the auth token
+    assert 'terminal_service.terminal_ws_handler' in source
     assert 'WS_AUTH_TOKEN' in source
-    assert 'action' in source and 'auth' in source
+    assert 'async def terminal_ws_handler' in service_source
+    assert 'action' in service_source and 'auth' in service_source
 
 
 def test_secrets_imported():
