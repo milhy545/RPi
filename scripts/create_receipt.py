@@ -46,9 +46,17 @@ def main():
         import json
         json.dump(receipt, f, indent=2)
 
-    # Output for GitHub Actions
-    print(f"receipt={RECEIPT_FILE}")
-    print(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md")
+    # Note: REPORT_FILE is already written above
+    # Output for GitHub Actions - write to GITHUB_OUTPUT file
+    github_output = os.environ.get('GITHUB_OUTPUT')
+    if github_output:
+        with open(github_output, 'a') as f:
+            f.write(f"receipt={RECEIPT_FILE}\n")
+            f.write(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md\n")
+    else:
+        # Fallback for local testing
+        print(f"receipt={RECEIPT_FILE}")
+        print(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md")
 
 
 if __name__ == "__main__":
