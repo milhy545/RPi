@@ -1,0 +1,60 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+milhy777  299733 40.9 22.9 9983352 171572 pts/1  Rl+  čec26 534:52 pi
+root         641  0.8  8.2 1353220 62076 ?       Ssl  čec26  19:38 /usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+milhy777     716  3.7  6.1 752332 45948 tty1     Ssl+ čec26  82:49 /home/milhy777/rpi-dashboard/.venv/bin/python tui.py
+milhy777     831  0.8  3.4  95444 25880 ?        Ss   čec26  19:01 tmux new-session -d -s __tmux_boot_restore -c /home/milhy777
+milhy777  339611  0.1  1.3 1043752 10388 ?       SNl  čec26   1:48 .venv/bin/python webserver.py
+milhy777     821  6.1  1.1 469616  8260 ?        SLsl čec26 135:16 /usr/bin/wireplumber
+milhy777     816  2.5  0.6 194636  5140 ?        SLsl čec26  57:01 /usr/bin/pipewire
+root           1  0.0  0.6 168876  4804 ?        Ss   čec26   0:46 /sbin/init
+milhy777     822  0.3  0.6 179212  4600 ?        Ssl  čec26   7:05 /usr/bin/pipewire-pulse
+milhy777  593656  400  0.5  13744  4380 ?        R    13:37   0:00 ps aux --sort=-%mem
+milhy777     818  0.1  0.5 1273044 4272 ?        Ssl  čec26   2:15 /usr/bin/rpi-connectd -socket /run/user/1000/rpi-connect-wayvnc.sock
+root         616  0.0  0.5 265596  4072 ?        Ssl  čec26   1:36 /usr/sbin/NetworkManager --no-daemon
+root         274  0.1  0.5  66780  3800 ?        Ss   čec26   3:59 /lib/systemd/systemd-journald
+milhy777     673  0.0  0.4  20096  3400 ?        Ss   čec26   0:55 /lib/systemd/systemd --user
+milhy777  593638  0.9  0.4   9416  3036 ?        Ss   13:37   0:00 bash /tmp/capture_baseline.sh
+root      400979  0.0  0.3 179600  2836 ?        Ssl  00:00   0:13 /usr/sbin/cups-browsed
+milhy777     796  0.1  0.3 1229716 2432 ?        Ssl  čec26   3:05 /usr/local/bin/gmediarender -f RPi Renderer
+root         566  0.0  0.3  13924  2420 ?        Ss   čec26   0:52 /usr/libexec/bluetooth/bluetoothd
+polkitd     1000  0.0  0.3 310892  2408 ?        Ssl  čec26   1:37 /usr/lib/polkit-1/polkitd --no-debug
+root      400974  0.0  0.3  33516  2248 ?        Ss   00:00   0:00 /usr/sbin/cupsd -l
+milhy777  287623  0.0  0.2  10732  2236 pts/0    S+   čec26   0:00 tmux attach -t RPi
+milhy777  572889  0.0  0.2  17152  2204 pts/1    S+   12:22   0:00 ssh -N -L 19000:127.0.0.1:9200 -i /home/milhy777/.ssh/unified_ecosystem_key_2026 Milhy-PC
+root        1312  0.0  0.2  33720  2172 ?        Ss   čec26   0:00 /home/milhy777/rpi-dashboard/.venv/bin/python /home/milhy777/rpi-dashboard/keys2mpv.py
+message+     568  0.3  0.2   9288  2156 ?        Ss   čec26   8:18 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
+root         579  0.0  0.2  17280  2136 ?        Ss   čec26   0:05 /lib/systemd/systemd-logind
+milhy777  593657  0.0  0.2   8120  1956 ?        S    13:37   0:00 head -30
+colord       703  0.0  0.2 246772  1916 ?        Ssl  čec26   0:04 /usr/libexec/colord
+root         303  0.0  0.2  27336  1904 ?        Ss   čec26   0:21 /lib/systemd/systemd-udevd
+root         617  0.0  0.2  17300  1740 ?        Ss   čec26   0:07 /sbin/wpa_supplicant -u -s -O DIR=/run/wpa_supplicant GROUP=netdev
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+milhy777  593658  400  0.5  13744  4376 ?        R    13:37   0:00 ps aux --sort=-%cpu
+milhy777  299733 40.9 22.9 9983352 171572 pts/1  Rl+  čec26 534:52 pi
+milhy777     821  6.1  1.1 469616  8260 ?        SLsl čec26 135:16 /usr/bin/wireplumber
+milhy777     716  3.7  6.1 752332 45948 tty1     Ssl+ čec26  82:49 /home/milhy777/rpi-dashboard/.venv/bin/python tui.py
+milhy777     816  2.5  0.6 194636  5140 ?        SLsl čec26  57:01 /usr/bin/pipewire
+root         641  0.8  8.2 1353220 62076 ?       Ssl  čec26  19:38 /usr/sbin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=41641
+milhy777  593638  0.8  0.4   9416  3036 ?        Ss   13:37   0:00 bash /tmp/capture_baseline.sh
+milhy777     831  0.8  3.4  95444 25880 ?        Ss   čec26  19:01 tmux new-session -d -s __tmux_boot_restore -c /home/milhy777
+root      590148  0.8  0.0      0     0 ?        I    13:25   0:05 [kworker/3:2-events]
+avahi        565  0.4  0.1   7380  1356 ?        Ss   čec26  10:38 avahi-daemon: running [rpi-tv.local]
+message+     568  0.3  0.2   9288  2156 ?        Ss   čec26   8:18 /usr/bin/dbus-daemon --system --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
+milhy777     822  0.3  0.6 179212  4600 ?        Ssl  čec26   7:05 /usr/bin/pipewire-pulse
+root      588124  0.2  0.0      0     0 ?        I    13:19   0:02 [kworker/2:2-events]
+root      590133  0.2  0.0      0     0 ?        I    13:25   0:01 [kworker/0:2-events_freezable]
+root      593088  0.2  0.0      0     0 ?        I    13:34   0:00 [kworker/3:3-events]
+milhy777    6872  0.2  0.1  19868  1320 ?        S    čec26   4:42 sshd: milhy777@pts/0
+root         194  0.2  0.0      0     0 ?        S    čec26   4:45 [usb-storage]
+root      566275  0.2  0.0      0     0 ?        I    11:53   0:13 [kworker/1:2-events_power_efficient]
+root         274  0.1  0.5  66780  3800 ?        Ss   čec26   3:59 /lib/systemd/systemd-journald
+milhy777  339611  0.1  1.3 1043752 10388 ?       SNl  čec26   1:48 .venv/bin/python webserver.py
+milhy777     796  0.1  0.3 1229716 2432 ?        Ssl  čec26   3:05 /usr/local/bin/gmediarender -f RPi Renderer
+root          18  0.1  0.0      0     0 ?        I    čec26   2:49 [rcu_preempt]
+root          82  0.1  0.0      0     0 ?        S<   čec26   2:25 [vchiq-slot/0]
+milhy777     818  0.1  0.5 1273044 4272 ?        Ssl  čec26   2:15 /usr/bin/rpi-connectd -socket /run/user/1000/rpi-connect-wayvnc.sock
+milhy777     841  0.0  0.1   8308  1392 ?        Ss   čec26   1:56 /usr/bin/dbus-daemon --session --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only
+rtkit        981  0.0  0.1  22732  1216 ?        SNsl čec26   1:42 /usr/libexec/rtkit-daemon
+polkitd     1000  0.0  0.3 310892  2408 ?        Ssl  čec26   1:37 /usr/lib/polkit-1/polkitd --no-debug
+root         616  0.0  0.5 265596  4072 ?        Ssl  čec26   1:36 /usr/sbin/NetworkManager --no-daemon
+milhy777    3289  0.0  0.1   9316  1220 ?        S    čec26   1:35 bash -c while true; do pw-cat -p --target "$1" --format s16le --rate 48000 --channels 1 "$2" 2>/dev/null; sleep 0.5; done rpi-keepalive bluez_output.24_4B_03_92_0B_8C.1 /tmp/rpi-silent-48k.wav

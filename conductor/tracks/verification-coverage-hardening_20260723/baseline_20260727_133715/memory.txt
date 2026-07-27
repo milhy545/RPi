@@ -1,0 +1,12 @@
+               total        used        free      shared  buff/cache   available
+Mem:           731Mi       452Mi        59Mi       500Ki       291Mi       278Mi
+Swap:          255Mi       218Mi        37Mi
+Souborový systém Velikost Užito Volno Uži% Připojeno do
+udev                 232M     0  232M   0% /dev
+tmpfs                 74M  1,3M   72M   2% /run
+/dev/sda2            459G   12G  424G   3% /
+tmpfs                366M     0  366M   0% /dev/shm
+tmpfs                5,0M   16K  5,0M   1% /run/lock
+/dev/sda1            510M   58M  453M  12% /boot/firmware
+tmpfs                 74M  4,0K   74M   1% /run/user/1000
+temp=40.8'C

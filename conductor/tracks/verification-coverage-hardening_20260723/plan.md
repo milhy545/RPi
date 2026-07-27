@@ -2,8 +2,10 @@
 
 ## Phase 1: Reproducible baseline and ledger
 
-- [ ] Task: Capture a fresh-boot and 24-hour log/resource baseline and reconcile
+- [x] Task: Capture a fresh-boot and 24-hour log/resource baseline and reconcile
   every `log-audit.md` class with owner, impact, reproduction, and next check.
+  (Completed: baseline captured to `baseline_20260727/`, reconciliation in
+  `baseline_reconciliation.md`)
 - [ ] Task: Add focused tests for report worker units, dashboard shutdown,
   WebUI disconnects, tmux restore, logrotate, network recovery, and audio health.
 - [ ] Task: Record package coverage plus per-process/per-core CPU, RSS/PSS, swap
