@@ -59,6 +59,20 @@ def test_import_audio_routing():
     assert hasattr(audio_routing, '_dlnain_start')
 
 
+def test_import_audio_diagnostics():
+    """Test audio diagnostics module import."""
+    from rpi_dashboard.services import audio_diagnostics
+    assert hasattr(audio_diagnostics, 'diagnose_bt_audio_stutter')
+    assert hasattr(audio_diagnostics, 'fix_bt_audio_stutter')
+
+
+def test_import_audio_dlna():
+    """Test audio DLNA module import."""
+    from rpi_dashboard.services import audio_dlna
+    assert hasattr(audio_dlna, 'audio_select_dlna_renderer')
+    assert hasattr(audio_dlna, 'dlna_renderer_status')
+
+
 def test_import_api_routes():
     """Test API routes import."""
     from rpi_dashboard.api import routes

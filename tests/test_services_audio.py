@@ -117,7 +117,7 @@ def test_audio_matrix_link():
 def test_diagnose_bt_audio_stutter():
     """Test BT audio stutter diagnostics."""
     from rpi_dashboard.services.audio import diagnose_bt_audio_stutter
-    with patch("rpi_dashboard.services.audio._run") as mock_run:
+    with patch("rpi_dashboard.services.audio_diagnostics.audio._run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         result = diagnose_bt_audio_stutter()
         assert "pipewire_quantum" in result
@@ -127,7 +127,7 @@ def test_diagnose_bt_audio_stutter():
 def test_fix_bt_audio_stutter():
     """Test BT audio stutter fix."""
     from rpi_dashboard.services.audio import fix_bt_audio_stutter
-    with patch("rpi_dashboard.services.audio._run") as mock_run:
+    with patch("rpi_dashboard.services.audio_diagnostics.audio._run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = fix_bt_audio_stutter()
         assert "ok" in result
@@ -144,7 +144,7 @@ def test_bt_stutter_diagnostics_parse_real_pw_metadata_shape():
         "update: id:0 key:'clock.quantum' value:'1024' type:''\n",
     )
     wifi = MagicMock(returncode=0, stdout="Not connected.\n")
-    with patch("rpi_dashboard.services.audio._run", side_effect=[metadata, wifi]):
+    with patch("rpi_dashboard.services.audio_diagnostics.audio._run", side_effect=[metadata, wifi]):
         result = diagnose_bt_audio_stutter()
 
     assert result["pipewire_quantum"] == 1024
@@ -155,9 +155,9 @@ def test_bt_stutter_fix_does_not_mutate_an_already_stable_baseline():
     from rpi_dashboard.services.audio import fix_bt_audio_stutter
 
     with patch(
-        "rpi_dashboard.services.audio.diagnose_bt_audio_stutter",
+        "rpi_dashboard.services.audio_diagnostics.diagnose_bt_audio_stutter",
         return_value={"pipewire_quantum": 1024, "pipewire_rate": 48000},
-    ), patch("rpi_dashboard.services.audio._run") as run:
+    ), patch("rpi_dashboard.services.audio_diagnostics.audio._run") as run:
         result = fix_bt_audio_stutter(apply=True)
 
     assert result["fixes_applied"] == []
