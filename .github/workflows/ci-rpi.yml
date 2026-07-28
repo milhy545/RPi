@@ -1,0 +1,132 @@
+name: RPi Dashboard CI RPi
+
+on:
+  workflow_dispatch:
+    inputs:
+      rpi_hw_tests:
+        description: 'Run RPi hardware test suites'
+        type: boolean
+        default: false
+      suite:
+        description: 'Specific RPi suite to run'
+        type: string
+        required: false
+
+jobs:
+  rpi-hardware:
+    name: RPi Hardware Tests
+    runs-on: [self-hosted, rpi, linux, arm]
+    timeout-minutes: 60
+    if: github.event.inputs.rpi_hw_tests == 'true'
+    steps:
+      - name: Sync from GitHub
+        run: |
+          cd /home/milhy777/rpi-dashboard
+          git fetch origin
+          git checkout main
+          git pull origin main
+
+      - name: Install dependencies
+        run: |
+          cd /home/milhy777/rpi-dashboard
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]" --break-system-packages
+
+      - name: Run hardware suite
+        id: suite
+        run: |
+          cd /home/milhy777/rpi-dashboard
+          SUITE="${{ github.event.inputs.suite }}"
+          if [ -z "$SUITE" ]; then
+            SUITE="audio"
+          fi
+          case "$SUITE" in
+            audio)
+              .venv/bin/pytest tests/test_audio*.py -v --tb=short
+              ;;
+            bluetooth)
+              .venv/bin/pytest tests/test_bluetooth*.py -v --tb=short
+              ;;
+            gpio)
+              .venv/bin/pytest tests/test_gpio*.py tests/test_cec*.py -v --tb=short
+              ;;
+            usb)
+              .venv/bin/pytest tests/test_usb*.py -v --tb=short
+              ;;
+            soak-24h)
+              .venv/bin/python tools/soak_test.py --duration 24h
+              ;;
+            verify-done)
+              ./tools/verify-done.sh
+              ;;
+            *)
+              echo "Unknown suite: $SUITE"
+              exit 1
+              ;;
+          esac
+
+      - name: Check temperature
+        if: always()
+        run: |
+          vcgencmd measure_temp
+          cat /sys/class/thermal/thermal_zone0/temp
+
+      - name: Check memory
+        if: always()
+        run: |
+          free -h
+
+      - name: Upload RPi logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi-hardware-logs
+          path: /home/milhy777/rpi-dashboard/conductor/ci/reports/*.md
+
+  verify:
+    name: Verify Done (RPi)
+    runs-on: [self-hosted, rpi, linux, arm]
+    needs: [rpi-hardware]
+    if: always() && (needs.rpi-hardware.result == 'success' || needs.rpi-hardware.result == 'skipped')
+    timeout-minutes: 10
+    steps:
+      - name: Sync and verify
+        run: |
+          cd /home/milhy777/rpi-dashboard
+          git fetch origin
+          git checkout main
+          git pull origin main
+          ./tools/verify-done.sh
+
+      - name: Upload final receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-receipt
+          path: conductor/ci/receipts/*.json
+
+  status:
+    name: Pipeline Status
+    runs-on: ubuntu-latest
+    needs: [rpi-hardware, verify]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Summary
+        run: |
+          echo "## Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| RPi Hardware | ${{ needs.rpi-hardware.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Verify Done | ${{ needs.verify.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if any critical stage failed
+        if: |
+          (needs.rpi-hardware.result != 'success' && needs.rpi-hardware.result != 'skipped') ||
+          needs.verify.result != 'success'
+        run: exit 1

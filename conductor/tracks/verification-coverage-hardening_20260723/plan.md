@@ -6,8 +6,11 @@
   every `log-audit.md` class with owner, impact, reproduction, and next check.
   (Completed: baseline captured to `baseline_20260727/`, reconciliation in
   `baseline_reconciliation.md`)
-- [ ] Task: Add focused tests for report worker units, dashboard shutdown,
+- [x] Task: Add focused tests for report worker units, dashboard shutdown,
   WebUI disconnects, tmux restore, logrotate, network recovery, and audio health.
+  (Covered by tests/test_ci_handoff.py, tests/test_terminal_disconnect.py,
+  tests/test_services_system.py, tests/test_services_audio.py, and
+  tests/test_verification_hardening.py.)
 - [ ] Task: Record package coverage plus per-process/per-core CPU, RSS/PSS, swap
   activity, wakeups, I/O, API latency, TUI refreshes, and PipeWire xrun rates.
 

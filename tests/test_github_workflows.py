@@ -16,31 +16,47 @@ def _workflow(name: str) -> dict:
 def test_ci_approves_pull_requests_only_after_verification() -> None:
     workflow = _workflow("ci.yml")
 
-    # Verify workflow structure
     assert "on" in workflow
     assert "push" in workflow["on"]
     assert "pull_request" in workflow["on"]
     assert "workflow_dispatch" in workflow["on"]
 
-    # Verify jobs exist
     jobs = workflow["jobs"]
-    assert "local-sync" in jobs
-    assert "rpi-hardware" in jobs
-    assert "verify" in jobs
-    assert "status" in jobs
+    assert list(jobs) == ["local-sync"]
+    assert jobs["local-sync"]["uses"] == "./.github/workflows/ci-fast.yml"
 
-    # Verify local-sync runs on ubuntu
+
+def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
+    workflow = _workflow("ci-fast.yml")
+
+    assert "workflow_call" in workflow["on"]
+    assert "workflow_dispatch" in workflow["on"]
+
+    jobs = workflow["jobs"]
+    assert list(jobs) == ["local-sync"]
     assert jobs["local-sync"]["runs-on"] == "ubuntu-latest"
 
-    # Verify rpi-hardware runs on self-hosted RPi
+    steps = jobs["local-sync"]["steps"]
+    assert [step["name"] for step in steps[:5]] == [
+        "Checkout",
+        "Setup Python",
+        "Create virtual environment",
+        "Install dependencies",
+        "Python compile",
+    ]
+    assert steps[-2]["name"] == "Upload receipt"
+    assert steps[-1]["name"] == "Upload CI report"
+
+
+def test_ci_rpi_workflow_is_separate_and_self_hosted() -> None:
+    workflow = _workflow("ci-rpi.yml")
+
+    assert "workflow_dispatch" in workflow["on"]
+    jobs = workflow["jobs"]
     assert jobs["rpi-hardware"]["runs-on"] == ["self-hosted", "rpi", "linux", "arm"]
-
-    # Verify verify job needs local-sync and rpi-hardware
-    assert jobs["verify"]["needs"] == ["local-sync", "rpi-hardware"]
-    assert jobs["verify"]["runs-on"] == ["self-hosted", "rpi", "linux", "arm"]
-
-    # Verify status job needs all previous
-    assert jobs["status"]["needs"] == ["local-sync", "rpi-hardware", "verify"]
+    assert jobs["rpi-hardware"]["if"] == "github.event.inputs.rpi_hw_tests == 'true'"
+    assert jobs["verify"]["needs"] == ["rpi-hardware"]
+    assert jobs["status"]["needs"] == ["rpi-hardware", "verify"]
 
 
 def test_auto_merge_uses_safe_target_event_without_checkout() -> None:

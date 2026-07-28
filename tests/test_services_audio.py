@@ -151,6 +151,24 @@ def test_bt_stutter_diagnostics_parse_real_pw_metadata_shape():
     assert result["pipewire_rate"] == 48000
 
 
+def test_bt_stutter_diagnostics_flags_2_4ghz_overlap_and_low_quantum():
+    from rpi_dashboard.services.audio import diagnose_bt_audio_stutter
+
+    metadata = MagicMock(
+        returncode=0,
+        stdout="update: id:0 key:'clock.rate' value:'44100' type:''\n"
+        "update: id:0 key:'clock.quantum' value:'512' type:''\n",
+    )
+    wifi = MagicMock(returncode=0, stdout="Connected to AP freq: 2412\n")
+    with patch("rpi_dashboard.services.audio_diagnostics.audio._run", side_effect=[metadata, wifi]):
+        result = diagnose_bt_audio_stutter()
+
+    assert result["frequency_overlap"] is True
+    assert result["pipewire_quantum"] == 512
+    assert any("5GHz" in rec for rec in result["recommendations"])
+    assert any("quantum" in rec.lower() for rec in result["recommendations"])
+
+
 def test_bt_stutter_fix_does_not_mutate_an_already_stable_baseline():
     from rpi_dashboard.services.audio import fix_bt_audio_stutter
 
