@@ -1,51 +1,32 @@
-# Plan: MPV Optimization for Faster Video Playback
+<Implementation Plan: MPV Optimization 20260627>
+## Background
+Currently, Phase 1 (URL caching and socket pooling) optimizations exist in `webserver.py` (`_URLCache` and `_MPVSocketPool` classes) but not in the core `rpi_dashboard/services/player.py`, which still creates new socket connections per IPC command. Additionally, there is a mismatch in the IPC socket path: `player.py` uses `/tmp/rpi-mpv.sock` while `webserver.py` expects `/tmp/mpv-socket`. This plan outlines the migration of caching and pooling logic into the core player service, standardizing the socket path, and clearly delineating the hardware-dependent tasks for dynamic core pinning and memory profiling.
 
-## Phase 1: Service Consolidation ✅ COMPLETED
+## Phase 1: Consolidate Caching and Socket Pooling
+- [ ] Task: Standardize the MPV socket path to `/tmp/rpi-mpv.sock` in `webserver.py` by updating any references from `/tmp/mpv-socket`.
+- [ ] Task: Move the `_URLCache` class (L69-95) from `webserver.py` to `rpi_dashboard/services/player.py`.
+- [ ] Task: Move the `_MPVSocketPool` class (L150-212) from `webserver.py` to `rpi_dashboard/services/player.py`.
+- [ ] Task: Modify `rpi_dashboard/services/player.py` to ensure `_MPVSocketPool` uses the `MSOCK = "/tmp/rpi-mpv.sock"` constant.
+- [ ] Task: Refactor the `mcmd()`, `mget()`, and `mset()` functions in `rpi_dashboard/services/player.py` to utilize the `_MPVSocketPool` instance instead of creating new socket connections per command.
+- [ ] Task: Remove the `_URLCache` and `_MPVSocketPool` class definitions entirely from `webserver.py`.
+- [ ] Task: Update `webserver.py` to import `_URLCache` and `_MPVSocketPool` from `rpi_dashboard.services.player`.
+- [ ] Task: Update import statements in the test file (e.g., `tests/test_url_cache.py` or similar) to import `_URLCache` from `rpi_dashboard.services.player` instead of `webserver.py`.
+- [ ] Verify: `uv run ruff check webserver.py rpi_dashboard/services/player.py`
 
-### Tasks:
-1. **URL Metadata Caching** ✅ COMPLETED
-   - Added `_URLCache` class for file-based caching
-   - Integrated cache into `resolve()` function
-   - Added `/cache/stats` and `/cache/clear` API endpoints
+## Phase 2: Dynamic Core Pinning [HW-only — requires live RPi benchmark]
+- [ ] Task: Implement CPU core pinning logic (e.g., using `taskset`) in the MPV startup sequence within `rpi_dashboard/services/player.py`.
+- [ ] Verify: `echo "HW-only task, skipped for local env"`
 
-2. **Socket Connection Pooling** ✅ COMPLETED
-   - Added `_MPVSocketPool` class for connection reuse
-   - Integrated pool into `mcmd()` and `mpv_ipc_query()` functions
-   - Added `/pool/stats` and `/pool/clear` API endpoints
-   - Pool size: 3 connections max, auto-reconnect on failure
+## Phase 3: Memory Optimization and Benchmarks [HW-only — requires live RPi benchmark]
+- [ ] Task: Conduct memory and CPU profiling during MPV startup and playback on the target RPi hardware.
+- [ ] Task: Tune MPV arguments (e.g., hwdec, cache size) in `rpi_dashboard/services/player.py` based on profile results to meet RAM and CPU limits.
+- [ ] Verify: `echo "HW-only task, skipped for local env"`
 
-3. **Async Preloading** - PENDING (future optimization)
-
-## Phase 2: Resource Management - PENDING
-
-### Tasks:
-1. **Dynamic Core Pinning** - PENDING
-2. **Memory Optimization** - PENDING
-
-## Phase 3: Testing & Validation - PENDING
-
-### Tasks:
-1. **Performance Benchmarking** - PENDING
-2. **Regression Testing** - PENDING
-
-## Success Criteria
-
-- [x] URL caching for faster repeat plays
-- [x] Socket pooling for reduced connection overhead
-- [ ] Video content visible within 120 seconds
-- [ ] Memory usage < 300 MiB at peak
-- [ ] CPU usage < 35% during startup
-
-## Implementation Notes
-
-- **URL Cache**: File: `~/rpi-dashboard/url-cache.json`, TTL: 24 hours, Cache hit: <100ms
-- **Socket Pool**: Max size: 3 connections, Auto-reconnect on failure, Health check before reuse, Stats: `/pool/stats` endpoint
-- **Bugs Fixed During Development**:
-  - Reset Matrix button now works (added 'reset' action to audio/route/alexa-bt endpoint)
-  - Bluetooth scan timeout increased from 2s to 5s
-- **Tests**: All 284 tests pass
-
-## Completion
-
-Track completed on 2026-07-26. All phase1 tasks are finished. The next optimizations (async preloading, dynamic core pinning, memory optimization) are planned for future iterations.
-
+## Acceptance Criteria
+- [ ] Video playback becomes visible in <120s from startup
+- [ ] RAM usage remains <300 MiB peak during operation
+- [ ] CPU usage remains <35% during MPV startup
+- [ ] All existing tests pass: `uv run python -m pytest -q`
+- [ ] Lint passes: `uv run ruff check .`
+- [ ] `tools/verify-done.sh` passes
+</Implementation Plan: MPV Optimization 20260627>

@@ -7,7 +7,7 @@ PipeWire/PulseAudio primitives from ``rpi_dashboard.services.audio``.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 import subprocess
 import time
 

@@ -2,10 +2,8 @@
 """
 Create CI receipt and report files for RPi Dashboard.
 """
-import json
 import os
 import subprocess
-import sys
 from datetime import datetime
 
 

@@ -403,3 +403,21 @@ def test_audio_set_mute_rejects_invalid_kind():
     from rpi_dashboard.services.audio import audio_set_mute
 
     assert audio_set_mute("card", "bluez_card.phone", True)["ok"] is False
+
+
+def test_set_global_master_volume():
+    from rpi_dashboard.services.audio import set_global_master_volume
+
+    mock_state = {
+        "sinks": [
+            {"name": "alsa_output.pci-0000_00_1b.0.analog-stereo"},
+            {"name": "bluez_output.00_00_00_00_00_00.a2dp_sink"},
+        ]
+    }
+    with patch("rpi_dashboard.services.audio.audio_state", return_value=mock_state), \
+         patch("rpi_dashboard.services.audio._run", return_value=MagicMock(returncode=0)):
+        res = set_global_master_volume(75)
+        assert res["ok"] is True
+        assert res["volume"] == 75
+        assert len(res["updated_sinks"]) == 2
+

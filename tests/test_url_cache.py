@@ -1,26 +1,23 @@
 """Tests for URL metadata cache."""
 
-import pytest
-import os
-import json
-import time
 from pathlib import Path
 
 
 # Discover project root dynamically
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PLAYER_FILE = PROJECT_ROOT / "rpi_dashboard" / "services" / "player.py"
 WEBSERVER_FILE = PROJECT_ROOT / "webserver.py"
 
 
 def test_url_cache_class_exists():
-    """Test that _URLCache class is defined in webserver.py."""
-    source = WEBSERVER_FILE.read_text()
+    """Test that _URLCache class is defined in player.py."""
+    source = PLAYER_FILE.read_text()
     assert "class _URLCache:" in source
 
 
 def test_url_cache_global_instance():
     """Test that _url_cache global instance is created."""
-    source = WEBSERVER_FILE.read_text()
+    source = PLAYER_FILE.read_text()
     assert "_url_cache = _URLCache()" in source
 
 

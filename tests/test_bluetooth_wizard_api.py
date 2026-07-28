@@ -1,13 +1,10 @@
 """Tests for Bluetooth Setup Wizard backend API endpoints and service functions."""
 
-import pytest
 from unittest.mock import patch, MagicMock
 
 from rpi_dashboard.services.bluetooth import (
     reset_all_devices,
-    get_adapter_recommendations,
     set_phone_role,
-    start_discovery,
 )
 from rpi_dashboard.services.bluetooth.capabilities import (
     detect_adapter_bus_type,

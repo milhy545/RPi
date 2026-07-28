@@ -13,6 +13,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from rpi_dashboard.services.audio_diagnostics import (
+    diagnose_bt_audio_stutter as diagnose_bt_audio_stutter,
+    fix_bt_audio_stutter as fix_bt_audio_stutter,
+)
+
 # Constants
 AUDIO_LATENCY_FILE = os.path.expanduser("~/rpi-dashboard/.audio-latency.json")
 _DLNAIN_MODE_FILE = os.path.expanduser("~/rpi-dashboard/.dlnain-mode.json")
@@ -860,10 +865,19 @@ def audio_matrix_link(out_n: str, in_n: str, state: str) -> Dict[str, Any]:
 
 
 def audio_set_volume(kind: str, name: str, volume: int) -> Dict[str, Any]:
-    """Set volume for sink or source."""
+    """Set volume for sink or source and sync BT AVRCP if applicable."""
     vol = max(0, min(150, volume))
     cmd = ["pactl", "set-" + kind + "-volume", name, str(vol) + "%"]
     r = _run(cmd, t=5)
+
+    # Sync BT AVRCP if this is a Bluetooth sink
+    if kind == "sink" and ("bluez" in name or "bt" in name):
+        try:
+            from rpi_dashboard.services import bt
+            if hasattr(bt, "sync_avrcp_volume_for_sink"):
+                bt.sync_avrcp_volume_for_sink(name, vol)
+        except Exception:
+            pass
 
     # Propagate volume to sink inputs when adjusting sink volume
     if kind == "sink":
@@ -886,6 +900,21 @@ def audio_set_volume(kind: str, name: str, volume: int) -> Dict[str, Any]:
             pass
 
     return {"ok": r.returncode == 0, "volume": vol}
+
+
+def set_global_master_volume(percentage: int) -> Dict[str, Any]:
+    """Scale all active output sinks to percentage."""
+    vol = max(0, min(150, percentage))
+    state = audio_state()
+    sinks = state.get("sinks", [])
+    updated = []
+    for s in sinks:
+        s_name = s.get("name")
+        if s_name:
+            res = audio_set_volume("sink", s_name, vol)
+            if res.get("ok"):
+                updated.append(s_name)
+    return {"ok": True, "volume": vol, "updated_sinks": updated}
 
 
 def audio_set_default(name: str) -> Dict[str, Any]:
@@ -1023,10 +1052,3 @@ def _pa_dlna_running() -> bool:
         return False
 
 
-from .audio_diagnostics import diagnose_bt_audio_stutter, fix_bt_audio_stutter
-from .audio_dlna import (
-    audio_select_dlna_renderer,
-    dlna_renderer_status,
-    dlna_renderer_start,
-    dlna_renderer_stop,
-)

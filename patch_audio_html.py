@@ -1,4 +1,3 @@
-import sys
 
 with open('/home/milhy777/rpi-dashboard/rpi_dashboard/static/index.html', 'r') as f:
     content = f.read()

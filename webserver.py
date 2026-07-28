@@ -66,33 +66,7 @@ def _route_query(path: str, q: dict) -> dict:
     routed["_route"] = [path]
     return routed
 
-class _URLCache:
-    """Simple file-based cache for resolved YouTube URLs to avoid repeated yt-dlp calls."""
-    def __init__(self):
-        self._file = URL_CACHE_FILE
-        self._ttl = URL_CACHE_TTL
-        self._data = self._load()
-    def _load(self):
-        try:
-            if os.path.exists(self._file):
-                with open(self._file) as f: return json.load(f)
-        except Exception: pass
-        return {}
-    def _save(self):
-        try:
-            os.makedirs(os.path.dirname(self._file), exist_ok=True)
-            with open(self._file, "w") as f: json.dump(self._data, f)
-        except Exception: pass
-    def get(self, vid):
-        e = self._data.get(vid)
-        if e and time.time() - e.get("t", 0) < self._ttl:
-            return e.get("m")
-        if e: del self._data[vid]; self._save()
-        return None
-    def put(self, vid, meta):
-        self._data[vid] = {"m": meta, "t": time.time()}
-        self._save()
-_url_cache = _URLCache()
+from rpi_dashboard.services.player import _url_cache, _mpv_pool
 
 def resolve(url, q=None):
     vid=yt_id(url)
@@ -147,69 +121,7 @@ def kodi_rpc(m, p=None, t=3):
 
 _mpv=None; _mq=DQ; _mtitle=""; _murl=""
 
-class _MPVSocketPool:
-    """Pool of reusable Unix socket connections to mpv IPC."""
-    def __init__(self, path=MSOCK, max_size=3, timeout=2.0):
-        self._path = path
-        self._max_size = max_size
-        self._timeout = timeout
-        self._pool = []  # Available sockets
-        self._in_use = set()  # Currently in use
-    def _create_socket(self):
-        """Create a new socket connection."""
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(self._timeout)
-        s.connect(self._path)
-        return s
-    def get(self):
-        """Get a socket from the pool, or create a new one."""
-        # Try to reuse an existing socket
-        while self._pool:
-            s = self._pool.pop()
-            try:
-                # Test if socket is still alive
-                s.settimeout(0.1)
-                s.recv(1, socket.MSG_PEEK)
-                s.settimeout(self._timeout)
-                self._in_use.add(id(s))
-                return s
-            except (socket.timeout, BlockingIOError):
-                # Socket timed out waiting for data - it's alive but idle
-                self._in_use.add(id(s))
-                s.settimeout(self._timeout)
-                return s
-            except Exception:
-                # Socket is dead, close it
-                try: s.close()
-                except: pass
-        # Create new socket if pool is empty
-        try:
-            s = self._create_socket()
-            self._in_use.add(id(s))
-            return s
-        except Exception:
-            return None
-    def put(self, s):
-        """Return a socket to the pool for reuse."""
-        if s is None: return
-        self._in_use.discard(id(s))
-        if len(self._pool) < self._max_size:
-            self._pool.append(s)
-        else:
-            try: s.close()
-            except: pass
-    def close_all(self):
-        """Close all sockets in the pool."""
-        for s in self._pool:
-            try: s.close()
-            except: pass
-        self._pool.clear()
-        self._in_use.clear()
-    def stats(self):
-        """Return pool statistics."""
-        return {"available": len(self._pool), "in_use": len(self._in_use), "max_size": self._max_size}
-
-_mpv_pool = _MPVSocketPool()
+# _MPVSocketPool and _mpv_pool imported from rpi_dashboard.services.player
 
 def mcmd(*a):
     if not os.path.exists(MSOCK): return {"error":"not running"}

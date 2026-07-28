@@ -1,63 +1,46 @@
-# Implementation Plan: Runtime Reliability, Optimization, and Verification
+## Background
+The RPi Dashboard project currently has 312 tests passing and a baseline captured to `baseline_20260727/`. The goal of this track is to achieve >80% test coverage, harden shutdown/disconnect behaviors, tune hardware parameters (USB, Audio, Wi-Fi), and run memory/performance optimizations against the recorded baselines. Hardware-specific tasks are marked as `[HW-ONLY]`.
 
-## Phase 1: Reproducible baseline and ledger
+## Phase 1: Application Resilience and Coverage (DEV)
+- [ ] Task: Modify transport and RPC modules to catch `BrokenPipeError` and log it as a bounded transport outcome instead of a recursive traceback.
+- [ ] Task: Update dashboard and child-mode main loops to ensure graceful and bounded shutdown sequences on `SIGINT`/`SIGTERM`.
+- [ ] Task: Write mock-based tests in `tests/test_transport_disconnect.py` to verify `BrokenPipeError` is handled cleanly.
+- [ ] Task: Write tests in `tests/test_shutdown_behavior.py` to verify dashboard and child-mode exit within a bounded time.
+- [ ] Task: Fix `report-processor` unit identity, interpreter, and timer behavior in its service module.
+- [ ] Task: Add focused tests across the `tests/` directory to meaningfully exceed 80% test coverage.
+- [ ] Verify: `uv run python -m pytest -q tests/test_transport_disconnect.py tests/test_shutdown_behavior.py --cov=src --cov-fail-under=80`
 
-- [x] Task: Capture a fresh-boot and 24-hour log/resource baseline and reconcile
-  every `log-audit.md` class with owner, impact, reproduction, and next check.
-  (Completed: baseline captured to `baseline_20260727/`, reconciliation in
-  `baseline_reconciliation.md`)
-- [x] Task: Add focused tests for report worker units, dashboard shutdown,
-  WebUI disconnects, tmux restore, logrotate, network recovery, and audio health.
-  (Covered by tests/test_ci_handoff.py, tests/test_terminal_disconnect.py,
-  tests/test_services_system.py, tests/test_services_audio.py, and
-  tests/test_verification_hardening.py.)
-- [ ] Task: Record package coverage plus per-process/per-core CPU, RSS/PSS, swap
-  activity, wakeups, I/O, API latency, TUI refreshes, and PipeWire xrun rates.
+## Phase 2: Hardware Baseline Metrics [HW-ONLY]
+- [ ] Task: Record baseline system metrics (per-process/per-core CPU, RSS/PSS, swap activity, wakeups, I/O) on live hardware.
+- [ ] Task: Record API latency, TUI refresh rates, and PipeWire xrun rates on live hardware.
+- [ ] Task: Save the captured metrics into `baseline_20260727/performance_metrics.json`.
+- [ ] Verify: `cat baseline_20260727/performance_metrics.json | grep -q "cpu"`
 
-## Phase 2: Service and shutdown failures
+## Phase 3: Hardware Diagnostics & Recovery [HW-ONLY]
+- [ ] Task: Diagnose and fix or retire `tmux-restore.service` (tmux restore disposition).
+- [ ] Task: Correlate USB device 5 FIQ losses with audio xruns by analyzing `dmesg` and PipeWire logs.
+- [ ] Task: Tune PipeWire, WirePlumber, and loopback parameters and prepare for soak tests.
+- [ ] Task: Fix `triggerhappy` hotplug command failures.
+- [ ] Task: Diagnose Wi-Fi scan errors and add bounded recovery logic.
+- [ ] Task: Retain logrotate regression check and verify logs are rotating correctly.
+- [ ] Verify: `journalctl -u tmux-restore.service -n 50`
 
-- [ ] Task: Fix the user report-processor unit identity/interpreter/timer behavior
-  and prove one successful, non-overlapping report-processing cycle.
-- [ ] Task: Diagnose and fix or intentionally retire `tmux-restore.service` with
-  tested session-recovery behavior.
-- [ ] Task: Make dashboard and child-mode shutdown graceful and bounded; verify
-  that systemd does not reach forced-kill timeout.
-- [ ] Task: Treat client disconnects as bounded WebUI transport outcomes without
-  recursive BrokenPipe tracebacks.
+## Phase 4: Measured Optimization [HW-ONLY]
+- [ ] Task: Profile live `tui.py` memory, refresh timers, subprocesses, and caches.
+- [ ] Task: Profile WebUI, PipeWire, tmux, Tailscale, and report timers for resource usage.
+- [ ] Task: Document before/after metrics comparison in `baseline_20260727/optimization_results.md`.
+- [ ] Verify: `ls -l baseline_20260727/optimization_results.md`
 
-## Phase 3: USB, audio, input, and network reliability
+## Phase 5: Final Validation & Soak [HW-ONLY]
+- [ ] Task: Define stable remote Playwright baselines for WebUI verification.
+- [ ] Task: Run a fresh-boot followed by a 24-hour soak test.
+- [ ] Task: Review the 24-hour soak logs and close every log ledger item without unexplained errors.
+- [ ] Verify: `uv run python -m pytest -q tests/`
 
-- [ ] Task: Correlate USB device 5 FIQ losses with audio xruns and isolate power,
-  bus scheduling, driver, sample-rate, buffer, and graph-load causes safely.
-- [ ] Task: Tune the smallest proven PipeWire/WirePlumber/loopback parameters and
-  run HDMI, USB, Bluetooth input/output, and headset soak tests.
-- [ ] Task: Fix triggerhappy hotplug command failures and verify keyboard/Xbox
-  hotplug without error storms or duplicated input.
-- [ ] Task: Diagnose Wi-Fi scan errors and add bounded recovery/health reporting
-  for local Wi-Fi plus transient Tailscale DNS/control failures.
-- [ ] Task: Retain a regression check for successful logrotate handling of the
-  former `/tmp/tui_fresh.log` permissions failure.
-
-## Phase 4: Measured optimization
-
-- [ ] Task: Profile live `tui.py` memory, refresh timers, subprocesses, caches,
-  and state duplication; reduce RSS and wakeups without losing behavior.
-- [ ] Task: Profile WebUI, PipeWire, tmux, Tailscale, report timers, and other
-  resident project-owned processes; remove duplicated polling and idle work.
-- [ ] Task: Compare before/after CPU per core (especially core 0), RSS/PSS, swap
-  activity, wakeups, API latency, startup, xruns, and mode-switch latency.
-
-## Phase 5: Coverage and remote visual evidence
-
-- [ ] Task: Add focused CEC, terminal, route, EOF, service, audio, network, and
-  negative-path tests until package coverage exceeds 80% meaningfully.
-- [ ] Task: Define stable remote Playwright baselines and run desktop, tablet,
-  and mobile checks from Milhy-PC.
-- [ ] Task: Run a fresh-boot plus 24-hour soak and close every log ledger item
-  with evidence or explicit external/informational disposition.
-
-## Completion
-
-- [ ] Acceptance criteria verified.
-- [ ] Full CI, lint, type, Bandit, documentation, and hardware checks passed.
-- [ ] `tools/verify-done.sh` passed with a valid receipt.
+## Acceptance Criteria
+- [ ] Coverage exceeds 80% with meaningful tests.
+- [ ] Graceful shutdown and `BrokenPipe` recovery implemented and tested.
+- [ ] 24-hour hardware soak test completes with zero unexplained log ledger items.
+- [ ] All existing tests pass: `uv run python -m pytest -q`
+- [ ] Lint passes: `uv run ruff check .`
+- [ ] `tools/verify-done.sh` passes

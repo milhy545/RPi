@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Optional, Dict, List
 
+from rpi_dashboard.services.input_devices import find_all_input_devices_by_name_pattern
+
 # We will import mode_switcher lazily to avoid circular imports
 from mode_switcher import ModeSwitcher
 
@@ -197,25 +199,7 @@ def _xbox_listener_loop() -> None:
 
     def _scan_for_xbox_devices() -> List[str]:
         """Return list of /dev/input/event* paths that appear to be Xbox controllers."""
-        devices = []
-        try:
-            for entry in os.listdir('/dev/input'):
-                if not entry.startswith('event'):
-                    continue
-                path = os.path.join('/dev/input', entry)
-                # Try to read device name via sysfs
-                name_path = os.path.join('/sys/class/input', entry, 'device', 'name')
-                try:
-                    with open(name_path, 'r', errors='ignore') as f:
-                        name = f.read().strip().lower()
-                except Exception:
-                    # If we can't read name, skip
-                    continue
-                if 'xbox' in name:
-                    devices.append(path)
-        except Exception:
-            pass
-        return devices
+        return find_all_input_devices_by_name_pattern("xbox")
 
     def _open_device(path: str) -> Optional[int]:
         """Open device for non-blocking reading, return fd or None."""
@@ -279,22 +263,10 @@ def _xbox_listener_loop() -> None:
 
                 if ev_type == 1 and ev_code == BTN_EAST:  # EV_KEY, BTN_EAST
                     if ev_value == 1:  # key down
-                        press_times[fd] = time.time()
+                        if press_times.get(fd) is None:
+                            press_times[fd] = time.time()
                     elif ev_value == 0:  # key up
-                        start = press_times.get(fd)
-                        if start is not None:
-                            duration = time.time() - start
-                            if xbox_enabled and duration >= xbox_duration:
-                                # Long press detected
-                                try:
-                                    return_to_dashboard(
-                                        reason="xbox_b_long_hold",
-                                        source="xbox_b"
-                                    )
-                                except Exception:
-                                    pass
-                            # Reset press time regardless
-                            press_times[fd] = None
+                        press_times[fd] = None
             except OSError:
                 # Device likely disconnected; close and remove
                 try:
@@ -308,6 +280,24 @@ def _xbox_listener_loop() -> None:
             except Exception:
                 # Other errors, ignore to keep thread alive
                 pass
+
+        # Check elapsed press durations while key is still held down
+        config = get_config()
+        xbox_enabled = config.get("xbox_b_hold_enabled", True)
+        xbox_duration = config.get("xbox_b_hold_duration_sec", 2.0)
+
+        now_time = time.time()
+        for fd, start in list(press_times.items()):
+            if start is not None and xbox_enabled:
+                if now_time - start >= xbox_duration:
+                    press_times[fd] = None  # Reset so it doesn't re-trigger continuously
+                    try:
+                        return_to_dashboard(
+                            reason="xbox_b_long_hold",
+                            source="xbox_b"
+                        )
+                    except Exception:
+                        pass
         # Small sleep to prevent busy loop when no events
         time.sleep(0.01)
 

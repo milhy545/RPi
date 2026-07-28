@@ -163,18 +163,36 @@ function toggleHwLive(){
     let b=$('#hw-live-btn');
     if(hwLiveTimer){clearInterval(hwLiveTimer);hwLiveTimer=null;if(b)b.textContent='▶ Live monitoring';msg('Live monitoring off','info');return}
     loadHwStats();loadSysStatus();
-    hwLiveTimer=setInterval(()=>{if($('#p-terminal')&&$('#p-terminal').classList.contains('active')){loadHwStats();loadSysStatus()}},3000);
+    hwLiveTimer=setInterval(()=>{loadHwStats();if($('#p-terminal')&&$('#p-terminal').classList.contains('active')){loadSysStatus()}},4000);
     if(b)b.textContent='⏸ Live monitoring';msg('Live monitoring on','ok');
 }
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
-    if(r.error){$('#hw-stats').textContent='Chyba: '+r.error;return}
+    if(r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+r.error;return}
+    updateGlobalStatusBar(r);
     let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
     let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
     let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
     let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
     let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
-    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
+    if($('#hw-stats'))$('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
+}
+
+function updateGlobalStatusBar(r){
+    if(!r)return;
+    let cpuEl=$('#status-cpu')||$('.status-cpu');
+    let ramEl=$('#status-ram')||$('.status-ram');
+    let tempEl=$('#status-temp')||$('.status-temp');
+    if(cpuEl&&r.cpu&&r.cpu.length){
+        let avg=Math.round(r.cpu.reduce((a,b)=>a+b,0)/r.cpu.length);
+        cpuEl.textContent=avg+'%';
+    }
+    if(ramEl&&r.ram){
+        ramEl.textContent=r.ram.used_mb+'MB';
+    }
+    if(tempEl){
+        tempEl.textContent=(r.temp_c===null||r.temp_c===undefined)?'?':Math.round(r.temp_c)+'°C';
+    }
 }
 
 async function loadSysStatus(){

@@ -182,6 +182,12 @@ class ModeSwitcher:
         return False
 
     def _handle_sigterm(self):
+        try:
+            from rpi_dashboard.services import return_service
+            return_service.return_to_dashboard(reason="signal_sigterm", source="mode_switcher")
+        except Exception:
+            pass
+
         if self._loop is None:
             if self.state == ModeSwitcherState.IDLE:
                 self.app.exit()
@@ -199,6 +205,12 @@ class ModeSwitcher:
             self.app.exit()
 
     def _handle_sigint(self):
+        try:
+            from rpi_dashboard.services import return_service
+            return_service.return_to_dashboard(reason="signal_sigint", source="mode_switcher")
+        except Exception:
+            pass
+
         if self._loop is None:
             return
 

@@ -8,7 +8,6 @@ continuously for the specified duration.
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import time
@@ -128,7 +127,7 @@ class SoakTest:
 
         # Journal errors (last interval)
         rc, out, _ = self.run_command(
-            f"journalctl --since '1 minute ago' -p err --no-pager -n 20"
+            "journalctl --since '1 minute ago' -p err --no-pager -n 20"
         )
         if rc == 0 and out:
             snapshot["journal_errors"] = out.strip()

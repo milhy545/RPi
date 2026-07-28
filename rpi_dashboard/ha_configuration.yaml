@@ -1,0 +1,32 @@
+# Home Assistant YAML Configuration for RPi-TV Dashboard (192.168.0.205:8090)
+
+rest_command:
+  rpi_tv_play:
+    url: "http://192.168.0.205:8090/mpv/play?url={{ url }}"
+    method: post
+  rpi_tv_stop:
+    url: "http://192.168.0.205:8090/mpv/stop"
+    method: post
+  rpi_tv_cec_power_on:
+    url: "http://192.168.0.205:8090/cec/power?state=on"
+    method: post
+  rpi_tv_cec_power_off:
+    url: "http://192.168.0.205:8090/cec/power?state=standby"
+    method: post
+
+media_player:
+  - platform: rest
+    name: "RPi TV"
+    resource: "http://192.168.0.205:8090/mpv/status"
+    value_template: "{{ value_json.status }}"
+
+sensor:
+  - platform: rest
+    name: "RPi TV System"
+    resource: "http://192.168.0.205:8090/system/stats"
+    value_template: "{{ value_json.ram_used_mb }}"
+    json_attributes:
+      - cpu
+      - ram_used_mb
+      - ram_total_mb
+      - temp_c

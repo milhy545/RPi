@@ -11,6 +11,7 @@ dependencies = [
     "textual>=8.2.7",
     "websockets>=12.0",
     "yt-dlp>=2024.10.22",
+    "paho-mqtt>=2.1.0",
 ]
 
 [project.optional-dependencies]

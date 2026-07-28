@@ -9,6 +9,7 @@ from .handlers import (
     handle_audio_state,
     handle_audio_default_sink,
     handle_audio_volume,
+    handle_audio_volume_global,
     handle_audio_matrix,
     handle_audio_matrix_link,
     handle_audio_latency,
@@ -107,6 +108,7 @@ from .handlers import (
     handle_return_config_get,
     handle_return_config_set,
     handle_return_last,
+    handle_ha_config,
 )
 
 
@@ -142,6 +144,7 @@ ROUTES: Dict[str, Callable] = {
     "/audio/state": handle_audio_state,
     "/audio/default-sink": handle_audio_default_sink,
     "/audio/volume": handle_audio_volume,
+    "/audio/volume/global": handle_audio_volume_global,
     "/audio/matrix": handle_audio_matrix,
     "/audio/matrix/link": handle_audio_matrix_link,
     "/audio/latency": handle_audio_latency,
@@ -253,6 +256,7 @@ ROUTES: Dict[str, Callable] = {
     "/return/config": handle_return_config_get,
     "/return/config/set": handle_return_config_set,
     "/return/last": handle_return_last,
+    "/ha/config": handle_ha_config,
 }
 
 

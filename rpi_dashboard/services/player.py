@@ -9,7 +9,6 @@ import os
 import re
 import socket
 import subprocess
-import sys
 import time
 from . import return_service
 from typing import Any, Dict, Optional
@@ -18,6 +17,122 @@ from typing import Any, Dict, Optional
 MSOCK = "/tmp/rpi-mpv.sock"
 SOCKET_RECV_SIZE = 4096
 MPV_CONNECT_TIMEOUT = 2
+URL_CACHE_FILE = "/tmp/rpi-yt-cache.json"
+URL_CACHE_TTL = 86400  # 24 hours
+
+
+class _URLCache:
+    """Simple file-based cache for resolved YouTube URLs to avoid repeated yt-dlp calls."""
+
+    def __init__(self, cache_file=URL_CACHE_FILE, ttl=URL_CACHE_TTL):
+        self._file = cache_file
+        self._ttl = ttl
+        self._data = self._load()
+
+    def _load(self):
+        try:
+            if os.path.exists(self._file):
+                with open(self._file) as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
+    def _save(self):
+        try:
+            os.makedirs(os.path.dirname(self._file), exist_ok=True)
+            with open(self._file, "w") as f:
+                json.dump(self._data, f)
+        except Exception:
+            pass
+
+    def get(self, vid):
+        e = self._data.get(vid)
+        if e and time.time() - e.get("t", 0) < self._ttl:
+            return e.get("m")
+        if e:
+            del self._data[vid]
+            self._save()
+        return None
+
+    def put(self, vid, meta):
+        self._data[vid] = {"m": meta, "t": time.time()}
+        self._save()
+
+
+class _MPVSocketPool:
+    """Pool of reusable Unix socket connections to mpv IPC."""
+
+    def __init__(self, path=MSOCK, max_size=3, timeout=2.0):
+        self._path = path
+        self._max_size = max_size
+        self._timeout = timeout
+        self._pool = []  # Available sockets
+        self._in_use = set()  # Currently in use
+
+    def _create_socket(self):
+        """Create a new socket connection."""
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(self._timeout)
+        s.connect(self._path)
+        return s
+
+    def get(self):
+        """Get a socket from the pool, or create a new one."""
+        while self._pool:
+            s = self._pool.pop()
+            try:
+                s.settimeout(0.1)
+                s.recv(1, socket.MSG_PEEK)
+                s.settimeout(self._timeout)
+                self._in_use.add(id(s))
+                return s
+            except (socket.timeout, BlockingIOError):
+                self._in_use.add(id(s))
+                s.settimeout(self._timeout)
+                return s
+            except Exception:
+                try:
+                    s.close()
+                except Exception:
+                    pass
+        try:
+            s = self._create_socket()
+            self._in_use.add(id(s))
+            return s
+        except Exception:
+            return None
+
+    def put(self, s):
+        """Return a socket to the pool for reuse."""
+        if s is None:
+            return
+        self._in_use.discard(id(s))
+        if len(self._pool) < self._max_size:
+            self._pool.append(s)
+        else:
+            try:
+                s.close()
+            except Exception:
+                pass
+
+    def close_all(self):
+        """Close all sockets in the pool."""
+        for s in self._pool:
+            try:
+                s.close()
+            except Exception:
+                pass
+        self._pool.clear()
+        self._in_use.clear()
+
+    def stats(self):
+        """Return pool statistics."""
+        return {"available": len(self._pool), "in_use": len(self._in_use), "max_size": self._max_size}
+
+
+_url_cache = _URLCache()
+_mpv_pool = _MPVSocketPool(path=MSOCK)
 
 # YouTube URL pattern
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
@@ -40,12 +155,12 @@ def _run(cmd, t=5):
 def mpv_ipc_socket_live() -> bool:
     """Check if mpv IPC socket is alive."""
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(MPV_CONNECT_TIMEOUT)
-        s.connect(MSOCK)
+        s = _mpv_pool.get()
+        if not s:
+            return False
         s.sendall(json.dumps({"command": ["get_property", "idle-active"]}).encode() + b"\n")
         d = s.recv(SOCKET_RECV_SIZE)
-        s.close()
+        _mpv_pool.put(s)
         return bool(d)
     except Exception:
         return False
@@ -53,14 +168,14 @@ def mpv_ipc_socket_live() -> bool:
 
 def mcmd(*a) -> Any:
     """Send command to mpv via IPC socket."""
+    s = _mpv_pool.get()
+    if not s:
+        return None
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(MPV_CONNECT_TIMEOUT)
-        s.connect(MSOCK)
         r = {"jsonrpc": "2.0", "method": "command", "params": list(a), "id": 1}
         s.sendall(json.dumps(r).encode() + b"\n")
         d = s.recv(SOCKET_RECV_SIZE)
-        s.close()
+        _mpv_pool.put(s)
         dec = json.JSONDecoder()
         probe = d.decode("utf-8", "replace").lstrip()
         obj, _ = dec.raw_decode(probe)
@@ -342,7 +457,6 @@ def mpv_auto_return_on_eof() -> Dict[str, Any]:
     """Set up mpv to auto-return to dashboard on EOF."""
     def on_eof():
         save_mpv_resume_memory()
-        from . import return_service
         return_service.return_to_dashboard(reason="eof", source="mpv_eof")
     
     return {"ok": mpv_listen_for_eof(callback=on_eof)}

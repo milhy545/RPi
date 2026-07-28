@@ -3,6 +3,7 @@
 Implements request handlers for all API endpoints.
 """
 
+from pathlib import Path
 from typing import Any, Dict
 from ..services import audio, audio_dlna, audio_routing as audio_routing_service, media, player, devices, cec, system, terminal
 from ..services.bluetooth import service as bluetooth_service
@@ -42,6 +43,16 @@ def handle_audio_volume(q: Dict[str, Any]) -> Dict[str, Any]:
     except ValueError:
         return {"ok": False, "error": "volume must be integer"}
     return audio.audio_set_volume(kind, name, vol)
+
+
+def handle_audio_volume_global(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Set global master volume for all sinks."""
+    volume = _get(q, "volume", "100")
+    try:
+        vol = int(volume)
+    except ValueError:
+        return {"ok": False, "error": "volume must be integer"}
+    return audio.set_global_master_volume(vol)
 
 
 def handle_audio_matrix(q: Dict[str, Any]) -> Dict[str, Any]:
@@ -822,4 +833,12 @@ def handle_return_config_set(q: Dict[str, Any]) -> Dict[str, Any]:
 def handle_return_last(q: Dict[str, Any]) -> Dict[str, Any]:
     """Get last return event."""
     return {"ok": True, "last_return": return_service.get_last_return()}
+
+
+def handle_ha_config(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Return Home Assistant YAML integration configuration."""
+    yaml_path = Path(__file__).resolve().parents[1] / "ha_configuration.yaml"
+    if yaml_path.exists():
+        return {"ok": True, "yaml": yaml_path.read_text()}
+    return {"ok": False, "error": "ha_configuration.yaml not found"}
 
