@@ -60,15 +60,15 @@
 - [x] **Track: milhy-pc-firewall_20260611** — Install and verify a default-deny Milhy-PC firewall for CI port 9000 and approved services | [Plan](./tracks/milhy-pc-firewall_20260611/plan.md)
 - [x] **Track: bluetooth-dbus-live-events_20260723** — Complete two-adapter Bluetooth hub with Windows/Linux profiles, audio/headset/control, OBEX files, and autoconnect | [Plan](./tracks/bluetooth-dbus-live-events_20260723/plan.md)
 - [x] **Track: dashboard-security-cleanup_20260723** — Move Wi-Fi settings to Network and close credential, WebSocket, and static-analysis security gaps — all phases verified complete | [Plan](./tracks/dashboard-security-cleanup_20260723/plan.md)
-- [x] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
-- [x] **Track: unified-ui-ux-refactor_20260728** — Unified UI/UX Refactor & Theme Engine (Mobile-first, Active Status Bar, TUI parity) | [Plan](./tracks/unified-ui-ux-refactor_20260728/plan.md)
-- [x] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
+- [ ] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
+- [ ] **Track: unified-ui-ux-refactor_20260728** — Unified UI/UX Refactor & Theme Engine (Mobile-first, Active Status Bar, TUI parity) | [Plan](./tracks/unified-ui-ux-refactor_20260728/plan.md)
+- [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
 - [x] **Track: mpv-eof-runtime-return_20260723** — Unify return-to-dashboard across all modes, MPV EOF, keyboard shortcut, and Xbox B hold | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
 
 - [x] **Track: report_1784787193_bug** — HDMI Audio Mixer Routing Fix — module-loopback for non-player sources | [Plan](./tracks/report_1784787193_bug/plan.md)
 - [x] **Track: bluetooth-setup-wizard_20260724** — Bluetooth Setup Wizard | [Plan](./tracks/bluetooth-setup-wizard_20260724/plan.md)
 - [x] **Track: multi-output-audio-mpv_20260725** — Multi-Output Audio Distribution for BT Source (Realme 8) & MPV Player | [Plan](./tracks/multi-output-audio-mpv_20260725/plan.md)
-- [x] **Track: audio-fullstack-refactor_20260725** — Audio Full-Stack Refactor: Modular Backend, WebUI Topology Canvas, TUI Modernization, BT Volume Sync & Global Master Volume (absorbs audio-multimixer-webui and report_1785203244_bug) | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
+- [ ] **Track: audio-fullstack-refactor_20260725** — Audio Full-Stack Refactor: Modular Backend, WebUI Topology Canvas, TUI Modernization, BT Volume Sync & Global Master Volume (absorbs audio-multimixer-webui and report_1785203244_bug) | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
 
 
 - [x] **Track: audio-multimixer-webui_20260725** — Absorbed into audio-fullstack-refactor_20260725 | [Plan](./tracks/audio-multimixer-webui_20260725/plan.md)
