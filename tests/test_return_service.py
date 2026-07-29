@@ -33,13 +33,31 @@ def test_return_config_get_set(tmp_path, monkeypatch):
     config_file = tmp_path / "return_config.json"
     monkeypatch.setattr(return_service, "_CONFIG_PATH", config_file)
 
+    # Reset cached config so the test reads from the fresh tmp_path file.
+    monkeypatch.setattr(return_service, "_config", {})
+
     cfg = return_service.get_config()
     assert cfg["keyboard_shortcut_enabled"] is True
     assert cfg["xbox_b_hold_enabled"] is True
 
+    # get_config must return a defensive copy -- mutating it must not
+    # affect the internal cache.
+    cfg["keyboard_shortcut_enabled"] = False
+    cfg2 = return_service.get_config()
+    assert cfg2["keyboard_shortcut_enabled"] is True
+
     updated = return_service.update_config({"xbox_b_hold_duration_sec": 3.5})
     assert updated["xbox_b_hold_duration_sec"] == 3.5
     assert config_file.exists()
+
+    # Verify type conversion for bool keys.
+    updated2 = return_service.update_config({"xbox_b_hold_enabled": 0})
+    assert updated2["xbox_b_hold_enabled"] is False
+    assert isinstance(updated2["xbox_b_hold_enabled"], bool)
+
+    # Unknown keys are silently ignored.
+    updated3 = return_service.update_config({"unknown_key": 42})
+    assert "unknown_key" not in updated3
 
 
 def test_request_stop_alias():

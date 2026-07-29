@@ -1,5 +1,6 @@
 """Tests for system service module."""
 
+import subprocess
 from unittest.mock import patch, MagicMock
 
 
@@ -134,3 +135,88 @@ def test_get_service_status():
         result = get_service_status("rpi-dashboard")
         assert result["active"] is True
         assert result["status"] == "active"
+
+
+def test_get_system_status_tolerates_all_command_failures():
+    """A missing systemctl or inactive unit must not raise HTTP 500."""
+    from rpi_dashboard.services.system import get_system_status
+
+    with patch(
+        "rpi_dashboard.services.system.subprocess.check_output",
+        side_effect=subprocess.CalledProcessError(1, ["pgrep", "-x", "mpv"]),
+    ), patch(
+        "rpi_dashboard.services.system._run",
+        side_effect=FileNotFoundError("systemctl not found"),
+    ):
+        result = get_system_status()
+
+    for key in ("mpv", "dashboard", "keys2mpv", "webserver", "pipewire", "wireplumber"):
+        entry = result[key]
+        assert entry["pid"] == "", f"{key} pid should be empty on failure"
+        assert entry["mask"] == "N/A", f"{key} mask should be N/A on failure"
+    assert "summary" in result
+
+
+def test_get_system_status_partial_failure():
+    """Some services succeed, others fail -- the response must still be complete."""
+    from rpi_dashboard.services.system import get_system_status
+
+    # Simulate: mpv not running, dashboard alive, rest fail
+    def _run_side_effect(cmd, t=5):
+        unit = cmd[cmd.index("show") + 1] if "show" in cmd else ""
+        if unit == "dashboard@milhy777":
+            return MagicMock(returncode=0, stdout="1234")
+        if cmd[0] == "pgrep":
+            return MagicMock(returncode=1, stdout="", stderr="no mpv")
+        # Every other systemctl call fails
+        raise FileNotFoundError("no such binary")
+
+    with patch(
+        "rpi_dashboard.services.system.subprocess.check_output",
+        side_effect=subprocess.CalledProcessError(1, ["pgrep", "-x", "mpv"]),
+    ), patch("rpi_dashboard.services.system._run", side_effect=_run_side_effect):
+        result = get_system_status()
+
+    assert result["mpv"]["pid"] == ""
+    assert result["dashboard"]["pid"] == "1234"
+    assert result["keys2mpv"]["pid"] == ""
+    assert result["webserver"]["pid"] == ""
+    assert result["pipewire"]["pid"] == ""
+    assert result["wireplumber"]["pid"] == ""
+
+
+def test_unit_main_pid_user_flag_command_shape():
+    """The helper must pass --user for user units and omit it for system units."""
+    from rpi_dashboard.services.system import _unit_main_pid
+
+    calls = []
+
+    def _capture(cmd, t=5):
+        calls.append(cmd)
+        return MagicMock(returncode=0, stdout="99")
+
+    with patch("rpi_dashboard.services.system._run", side_effect=_capture):
+        pid_sys = _unit_main_pid("dashboard@milhy777")
+        pid_user = _unit_main_pid("pipewire", user=True)
+
+    assert pid_sys == "99"
+    assert pid_user == "99"
+    assert calls[0] == ["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"]
+    assert calls[1] == ["systemctl", "--user", "show", "pipewire", "-p", "MainPID", "--value"]
+
+
+def test_unit_main_pid_handles_expected_command_failures():
+    """Non-zero commands and timeouts should produce an empty PID."""
+    from rpi_dashboard.services.system import _unit_main_pid
+
+    with patch(
+        "rpi_dashboard.services.system._run",
+        return_value=MagicMock(returncode=1, stdout="", stderr="unit missing"),
+    ):
+        assert _unit_main_pid("missing") == ""
+
+    with patch(
+        "rpi_dashboard.services.system._run",
+        side_effect=subprocess.TimeoutExpired(["systemctl"], timeout=5),
+    ):
+        assert _unit_main_pid("slow") == ""

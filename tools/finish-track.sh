@@ -188,17 +188,32 @@ if [[ "$CI_REPORT" =~ ^/ || "$CI_REPORT" == *".."* ]]; then
   echo "FATAL: CI_REPORT path is not a safe relative path: $CI_REPORT" >&2
   exit 1
 fi
-# Copy the CI report back to local reports if it exists on remote
+# Copy the CI report back to local reports if it exists on remote.
+# Download to a temporary sibling first, then atomically mv into place.
+# This prevents self-copy truncation when MILHY_PC_HOST is localhost
+# and MILHY_PC_REPO equals ROOT.
 if [[ -n "$CI_REPORT" ]]; then
   REPORT_DIR="conductor/ci/reports"
   LOCAL_CI_REPORT_PATH="$REPORT_DIR/$(basename "$CI_REPORT")"
-  scp "$MILHY_PC_HOST:$MILHY_PC_REPO/$CI_REPORT" "$LOCAL_CI_REPORT_PATH" || {
+  LOCAL_CI_REPORT_TMP="${LOCAL_CI_REPORT_PATH}.$$.tmp"
+  trap 'rm -f "$LOCAL_CI_REPORT_TMP"' ERR
+  scp "$MILHY_PC_HOST:$MILHY_PC_REPO/$CI_REPORT" "$LOCAL_CI_REPORT_TMP" || {
+    rm -f "$LOCAL_CI_REPORT_TMP"
     echo "FATAL: Failed to copy CI report $CI_REPORT from Milhy-PC" >&2
     exit 1
   }
-  # Verify the file exists after copy
+  if [[ ! -s "$LOCAL_CI_REPORT_TMP" ]]; then
+    rm -f "$LOCAL_CI_REPORT_TMP"
+    echo "FATAL: Copied CI report is empty at $LOCAL_CI_REPORT_TMP" >&2
+    exit 1
+  fi
+  mv "$LOCAL_CI_REPORT_TMP" "$LOCAL_CI_REPORT_PATH" || {
+    rm -f "$LOCAL_CI_REPORT_TMP"
+    echo "FATAL: Failed to move CI report into place at $LOCAL_CI_REPORT_PATH" >&2
+    exit 1
+  }
   if [[ ! -f "$LOCAL_CI_REPORT_PATH" ]]; then
-    echo "FATAL: Copied CI report not found at $LOCAL_CI_REPORT_PATH" >&2
+    echo "FATAL: CI report not found at $LOCAL_CI_REPORT_PATH after move" >&2
     exit 1
   fi
 fi

@@ -870,15 +870,6 @@ def audio_set_volume(kind: str, name: str, volume: int) -> Dict[str, Any]:
     cmd = ["pactl", "set-" + kind + "-volume", name, str(vol) + "%"]
     r = _run(cmd, t=5)
 
-    # Sync BT AVRCP if this is a Bluetooth sink
-    if kind == "sink" and ("bluez" in name or "bt" in name):
-        try:
-            from rpi_dashboard.services import bt
-            if hasattr(bt, "sync_avrcp_volume_for_sink"):
-                bt.sync_avrcp_volume_for_sink(name, vol)
-        except Exception:
-            pass
-
     # Propagate volume to sink inputs when adjusting sink volume
     if kind == "sink":
         try:

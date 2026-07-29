@@ -187,6 +187,24 @@ def get_system_stats() -> Dict[str, Any]:
     }
 
 
+def _unit_main_pid(unit: str, user: bool = False) -> str:
+    """Return the MainPID for *unit*, or ``""`` on any failure.
+
+    Uses ``_run`` (``subprocess.run``) for consistency with the rest of the
+    module.  Catches command failures, timeouts, and missing binaries so that
+    a single absent unit never tears down the whole status response.
+    """
+    cmd = ["systemctl"]
+    if user:
+        cmd.append("--user")
+    cmd += ["show", unit, "-p", "MainPID", "--value"]
+    try:
+        r = _run(cmd, t=5)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def _taskset_mask(pid: str) -> str:
     if not pid or pid == "0":
         return "N/A"
@@ -212,11 +230,11 @@ def get_system_status() -> Dict[str, Any]:
         mpv_pid = subprocess.check_output(["pgrep", "-x", "mpv"], text=True).strip().splitlines()[0]
     except Exception:
         mpv_pid = ""
-    dash_pid = subprocess.check_output(["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"], text=True).strip()
-    keys_pid = subprocess.check_output(["systemctl", "show", "keys2mpv", "-p", "MainPID", "--value"], text=True).strip()
-    ws_pid = subprocess.check_output(["systemctl", "show", "webserver", "-p", "MainPID", "--value"], text=True).strip()
-    pw_pid = subprocess.check_output(["systemctl", "--user", "show", "pipewire", "-p", "MainPID", "--value"], text=True).strip()
-    wp_pid = subprocess.check_output(["systemctl", "--user", "show", "wireplumber", "-p", "MainPID", "--value"], text=True).strip()
+    dash_pid = _unit_main_pid("dashboard@milhy777")
+    keys_pid = _unit_main_pid("keys2mpv")
+    ws_pid = _unit_main_pid("webserver")
+    pw_pid = _unit_main_pid("pipewire", user=True)
+    wp_pid = _unit_main_pid("wireplumber", user=True)
     mpv_mask = _taskset_mask(mpv_pid)
     dash_mask = _taskset_mask(dash_pid)
     keys_mask = _taskset_mask(keys_pid)

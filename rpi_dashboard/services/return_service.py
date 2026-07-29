@@ -52,42 +52,73 @@ _config: Dict = {}
 _config_lock = threading.Lock()
 
 
-def _load_config() -> Dict:
-    """Load configuration from file, falling back to defaults."""
+def _load_config_unlocked() -> Dict:
+    """Load configuration from file without acquiring ``_config_lock``.
+
+    Must only be called while ``_config_lock`` is held by the caller.
+    """
     global _config
-    with _config_lock:
-        if _config:
-            return _config
-        try:
-            if _CONFIG_PATH.exists():
-                with open(_CONFIG_PATH, 'r') as f:
-                    _config = {**_DEFAULT_CONFIG, **json.load(f)}
-            else:
-                _config = _DEFAULT_CONFIG.copy()
-        except Exception:
-            _config = _DEFAULT_CONFIG.copy()
+    if _config:
         return _config
+    try:
+        if _CONFIG_PATH.exists():
+            with open(_CONFIG_PATH, 'r') as f:
+                _config = {**_DEFAULT_CONFIG, **json.load(f)}
+        else:
+            _config = _DEFAULT_CONFIG.copy()
+    except Exception:
+        _config = _DEFAULT_CONFIG.copy()
+    return _config
+
+
+def _save_config_unlocked() -> None:
+    """Save configuration to file without acquiring ``_config_lock``.
+
+    Must only be called while ``_config_lock`` is held by the caller.
+    """
+    global _config
+    _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_CONFIG_PATH, 'w') as f:
+        json.dump(_config, f, indent=2)
+
+
+def _load_config() -> Dict:
+    """Load configuration from file, falling back to defaults.
+
+    Acquires ``_config_lock`` exactly once and returns a defensive copy
+    while the lock is still held.
+    """
+    with _config_lock:
+        _load_config_unlocked()
+        return {**_config}
 
 
 def _save_config() -> None:
-    """Save configuration to file."""
-    global _config
+    """Save configuration to file.
+
+    Acquires ``_config_lock`` exactly once.
+    """
     with _config_lock:
-        _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_CONFIG_PATH, 'w') as f:
-            json.dump(_config, f, indent=2)
+        _save_config_unlocked()
 
 
 def get_config() -> Dict:
-    """Get current configuration."""
-    return {**_load_config()}
+    """Get current configuration.
+
+    Returns a defensive copy so callers cannot mutate internal state.
+    """
+    return _load_config()
 
 
 def update_config(updates: Dict) -> Dict:
-    """Update configuration with new values."""
+    """Update configuration with new values.
+
+    Acquires ``_config_lock`` exactly once and uses private unlocked helpers
+    to avoid nested / re-entrant locking.
+    """
     global _config
     with _config_lock:
-        _config = _load_config()
+        _load_config_unlocked()
         for key, value in updates.items():
             if key in _DEFAULT_CONFIG:
                 # Type conversion for known keys
@@ -97,8 +128,8 @@ def update_config(updates: Dict) -> Dict:
                     _config[key] = float(value)
                 else:
                     _config[key] = value
-        _save_config()
-    return get_config()
+        _save_config_unlocked()
+        return {**_config}
 
 
 def set_mode_switcher(ms: Optional[ModeSwitcher]) -> None:

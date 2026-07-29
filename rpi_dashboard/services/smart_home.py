@@ -5,10 +5,13 @@ import os
 import threading
 from typing import Any, Callable, Dict, Optional
 
+mqtt: Any = None
+
 try:
-    import paho.mqtt.client as mqtt
+    import paho.mqtt.client as _mqtt_mod
+    mqtt = _mqtt_mod
 except ImportError:
-    mqtt = None  # Fallback for environments without paho-mqtt
+    pass
 
 
 class MQTTBridge:

@@ -421,3 +421,25 @@ def test_set_global_master_volume():
         assert res["volume"] == 75
         assert len(res["updated_sinks"]) == 2
 
+
+def test_bt_sink_volume_sets_pactl_and_propagates_input():
+    """BlueZ sink volume request invokes pactl set-sink-volume and propagates to input routing."""
+    from rpi_dashboard.services.audio import audio_set_volume
+
+    bt_sink = "bluez_output.00_11_22_33_44_55.a2dp_sink"
+
+    with patch("rpi_dashboard.services.audio._run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = audio_set_volume("sink", bt_sink, 80)
+        assert result["ok"] is True
+        assert result["volume"] == 80
+        all_calls = [call.args[0] for call in mock_run.call_args_list]
+        assert ["pactl", "set-sink-volume", bt_sink, "80%"] in all_calls
+
+    with patch("rpi_dashboard.services.audio._run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        result = audio_set_volume("sink", bt_sink, 200)
+        assert result["volume"] == 150
+        result = audio_set_volume("sink", bt_sink, -10)
+        assert result["volume"] == 0
+

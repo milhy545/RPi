@@ -1,3 +1,5 @@
+from typing import Any
+
 from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -340,6 +342,7 @@ class ModeStatus(Static):
 class RPiDashboard(App):
     """Hacker-style TUI Dashboard pro RPi."""
     language = reactive(normalize_lang(os.getenv("RPIDASHBOARD_LANG", "cz")))
+    _bt_pending_file_send: tuple[str, str] | None = None
 
     CSS = """
     Screen {
@@ -1508,7 +1511,7 @@ class RPiDashboard(App):
 
         target = self.selected_bluetooth_target()
         selected_key = target.get("device_key")
-        device = next(
+        device: dict[str, Any] = next(
             (
                 item
                 for item in getattr(self, "_bluetooth_devices_snapshot", [])
@@ -2302,7 +2305,7 @@ class RPiDashboard(App):
                     (getattr(self, "_bluetooth_state_snapshot", {}).get("diagnostics") or {}).get("media")
                     or {}
                 )
-                player = next(
+                player: dict[str, Any] = next(
                     (
                         item
                         for item in media.get("players") or []

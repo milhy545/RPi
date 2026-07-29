@@ -13,8 +13,22 @@ CURRENT_BRANCH="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 BRANCH="${BRANCH:-$CURRENT_BRANCH}"
 POLL_SECONDS="${POLL_SECONDS:-0}"
 REPORT_DIR="${REPORT_DIR:-conductor/ci/reports}"
-STATE_FILE="${STATE_FILE:-.git/rpi-ci-agent-last-sha}"
+_resolve_state_path() {
+  local gitpath
+  gitpath="$(git rev-parse --git-path "rpi-ci-agent-last-sha" 2>/dev/null)" || true
+  if [[ -n "$gitpath" ]]; then
+    printf '%s' "$gitpath"
+  else
+    printf '%s' ".git/rpi-ci-agent-last-sha"
+  fi
+}
+
+STATE_FILE="${STATE_FILE:-}"
+if [[ -z "$STATE_FILE" ]]; then
+  STATE_FILE="$(_resolve_state_path)"
+fi
 mkdir -p "$REPORT_DIR"
+mkdir -p "$(dirname "$STATE_FILE")"
 
 refresh_branch() {
   if [[ -z "$BRANCH_OVERRIDE" ]]; then
@@ -43,6 +57,17 @@ notify_fail() {
   if command -v notify-send >/dev/null 2>&1; then
     notify-send "RPi CI failed" "$msg" || true
   fi
+}
+
+dispatch_ci() {
+  if [[ "$BRANCH" == "main" ]]; then
+    return 0
+  fi
+  if ! gh workflow run ci.yml --ref "$BRANCH"; then
+    notify_fail "Failed to dispatch CI workflow for branch $BRANCH"
+    return 1
+  fi
+  echo "Dispatched ci.yml for branch $BRANCH"
 }
 
 latest_report() {
@@ -117,6 +142,9 @@ run_once() {
     echo "CI passed for $source_sha. Pushing to $TARGET_REMOTE/$BRANCH"
     if GIT_TERMINAL_PROMPT=0 git push "$TARGET_REMOTE" "$BRANCH:$BRANCH"; then
       echo "Pushed $source_sha to GitHub remote $TARGET_REMOTE."
+      if ! dispatch_ci; then
+        return 1
+      fi
       # Discover GitHub Actions run for this SHA with bounded retries and strict matching
       MAX_RETRIES=12
       RETRY=0
