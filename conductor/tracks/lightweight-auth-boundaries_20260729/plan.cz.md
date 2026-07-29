@@ -60,7 +60,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit který přidal `hash_password`/`verify_password`.
 
-- [ ] Úkol: Implementovat třídu `AuthStore` s `threading.Lock` chránící
+- [x] Úkol: Implementovat třídu `AuthStore` s `threading.Lock` chránící
   každé sdílené čtení a zápis (non-nested získávání, privátní `_unlocked`
   helpery volané pouze když volající drží lock):
   - `__init__(path)`: nastaví cestu konfigurace, načte pokud existuje.

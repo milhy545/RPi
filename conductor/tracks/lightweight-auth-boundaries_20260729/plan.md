@@ -61,7 +61,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the commit that added `hash_password`/`verify_password`.
 
-- [ ] Task: Implement `AuthStore` class with `threading.Lock` protecting
+- [x] Task: Implement `AuthStore` class with `threading.Lock` protecting
   every shared read and write (non-nested acquisition, private `_unlocked`
   helpers called only while caller holds the lock):
   - `__init__(path)`: sets config path, loads if exists.

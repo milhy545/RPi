@@ -4,12 +4,172 @@ from __future__ import annotations
 
 import base64
 import binascii
+import copy
 import hashlib
 import hmac
+import json
+import os
 import secrets
+import shutil
+import tempfile
+import threading
 import time
 from enum import IntEnum
+from pathlib import Path
 from statistics import median
+
+
+class AuthStore:
+    def __init__(self, path: str | Path) -> None:
+        self._path = Path(path)
+        self._lock = threading.Lock()
+        self._data: dict[str, object] = {}
+        with self._lock:
+            self._data = self._load_unlocked()
+
+    def _load_unlocked(self) -> dict[str, object]:
+        try:
+            with self._path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
+            return {}
+
+        if not isinstance(data, dict):
+            raise ValueError("auth store must contain a top-level JSON object")
+        return data
+
+    def load(self) -> dict[str, object]:
+        with self._lock:
+            self._data = self._load_unlocked()
+            return copy.deepcopy(self._data)
+
+    def _get_hash_unlocked(self, key: str) -> dict[str, object] | None:
+        value = self._data.get(key)
+        if isinstance(value, dict):
+            return copy.deepcopy(value)
+        return None
+
+    def get_expert_hash(self) -> dict[str, object] | None:
+        with self._lock:
+            return self._get_hash_unlocked("expert")
+
+    def get_admin_hash(self) -> dict[str, object] | None:
+        with self._lock:
+            return self._get_hash_unlocked("admin")
+
+    def is_role_provisioned(self, role: Role) -> bool:
+        with self._lock:
+            expert = self._data.get("expert")
+            admin = self._data.get("admin")
+            if role is Role.BASIC:
+                return True
+            if role is Role.EXPERT:
+                return isinstance(expert, dict) or isinstance(admin, dict)
+            if role is Role.ADMIN:
+                return isinstance(admin, dict)
+            raise ValueError("unknown role")
+
+    def _backup_unlocked(self) -> None:
+        if not self._path.exists():
+            return
+
+        backup_path = self._path.with_name(f"{self._path.name}.bak")
+        shutil.copyfile(self._path, backup_path)
+        os.chmod(backup_path, 0o600)
+        backup_fd = os.open(backup_path, os.O_RDONLY)
+        try:
+            os.fsync(backup_fd)
+        finally:
+            os.close(backup_fd)
+
+    def create_api_key(self, raw_token: str, role: Role, label: str) -> None:
+        if not raw_token:
+            raise ValueError("raw_token must not be empty")
+        digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        record = {"role": role.name.lower(), "label": label, "created": int(time.time())}
+
+        with self._lock:
+            self._data = self._load_unlocked()
+            if self._path.exists():
+                self._backup_unlocked()
+            payload = copy.deepcopy(self._data)
+            api_keys = payload.get("api_keys")
+            if not isinstance(api_keys, dict):
+                api_keys = {}
+                payload["api_keys"] = api_keys
+            api_keys[digest] = record
+            self._save_unlocked(payload)
+            self._data = payload
+
+    def get_api_key_role(self, raw_token: str) -> Role | None:
+        digest = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+        with self._lock:
+            self._data = self._load_unlocked()
+            api_keys = self._data.get("api_keys")
+            if not isinstance(api_keys, dict):
+                return None
+            record = api_keys.get(digest)
+            if not isinstance(record, dict):
+                return None
+            role = record.get("role")
+            if not isinstance(role, str):
+                return None
+            try:
+                return Role[role.upper()]
+            except KeyError:
+                return None
+
+    def _save_unlocked(self, data: dict[str, object]) -> None:
+        parent = self._path.parent
+        created_parent = not parent.exists()
+        if created_parent:
+            parent.mkdir(parents=True, mode=0o700)
+            os.chmod(parent, 0o700)
+
+        temp_fd, temp_name = tempfile.mkstemp(dir=str(parent))
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                json.dump(data, handle)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, self._path)
+        finally:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+    def save(self, data: dict[str, object]) -> None:
+        with self._lock:
+            payload = copy.deepcopy(data)
+            self._save_unlocked(payload)
+            self._data = payload
+
+    def _set_password(self, key: str, password: str) -> None:
+        credential = hash_password(password)
+        with self._lock:
+            self._data = self._load_unlocked()
+            if self._path.exists():
+                self._backup_unlocked()
+            payload = copy.deepcopy(self._data)
+            payload[key] = credential
+            self._save_unlocked(payload)
+            self._data = payload
+
+    def set_expert(self, password: str) -> None:
+        self._set_password("expert", password)
+
+    def set_admin(self, password: str) -> None:
+        self._set_password("admin", password)
+
+    def is_provisioned(self) -> bool:
+        with self._lock:
+            expert = self._data.get("expert")
+            admin = self._data.get("admin")
+            return isinstance(expert, dict) or isinstance(admin, dict)
 
 
 class Role(IntEnum):
