@@ -31,7 +31,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit z fáze 2 který přidal `auth.py`.
 
-- [ ] Úkol: Implementovat `calibrate_pbkdf2(target_ms=200, samples=3)`
+- [x] Úkol: Implementovat `calibrate_pbkdf2(target_ms=200, samples=3)`
   který benchmarkuje `hashlib.pbkdf2_hmac("sha256", password_bytes, salt, n)`
   pro každý kandidátní počet iterací v `[100_000, 200_000, 400_000,
   600_000, 800_000, 1_000_000]`. Pro každého kandidáta spustí `samples`

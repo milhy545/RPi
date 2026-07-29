@@ -31,7 +31,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the Phase 2 commit that added `auth.py`.
 
-- [ ] Task: Implement `calibrate_pbkdf2(target_ms=200, samples=3)` that
+- [x] Task: Implement `calibrate_pbkdf2(target_ms=200, samples=3)` that
   benchmarks `hashlib.pbkdf2_hmac("sha256", password_bytes, salt, n)`
   for each candidate iteration count in `[100_000, 200_000, 400_000,
   600_000, 800_000, 1_000_000]`. For each candidate, run `samples`
