@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import hmac
+import secrets
 import time
 from enum import IntEnum
 from statistics import median
@@ -65,3 +69,50 @@ def calibrate_pbkdf2(target_ms: int = 200, samples: int = 3) -> int:
             "check target hardware load and retry provisioning"
         )
     return selected
+
+
+def hash_password(password: str) -> dict[str, object]:
+    iterations = calibrate_pbkdf2()
+    salt = secrets.token_bytes(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return {
+        "password_hash": base64.b64encode(password_hash).decode("ascii"),
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "iterations": iterations,
+    }
+
+
+def verify_password(password: str, stored: dict) -> bool:
+    try:
+        password_hash_b64 = stored["password_hash"]
+        salt_b64 = stored["salt"]
+        iterations = stored["iterations"]
+    except (KeyError, TypeError):
+        return False
+
+    if not isinstance(password_hash_b64, str) or not isinstance(salt_b64, str):
+        return False
+    if type(iterations) is not int or not 100_000 <= iterations <= 1_000_000:
+        return False
+
+    try:
+        expected_password_hash = base64.b64decode(password_hash_b64, validate=True)
+        salt = base64.b64decode(salt_b64, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+
+    if len(salt) != 16 or len(expected_password_hash) != hashlib.sha256().digest_size:
+        return False
+
+    derived_password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        iterations,
+    )
+    return hmac.compare_digest(derived_password_hash, expected_password_hash)

@@ -51,7 +51,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the commit that added `calibrate_pbkdf2`.
 
-- [ ] Task: Implement `hash_password(password: str) -> dict` returning
+- [x] Task: Implement `hash_password(password: str) -> dict` returning
   `{password_hash: base64, salt: base64, iterations: int}` and
   `verify_password(password: str, stored: dict) -> bool`.
   - **Test:** `test_hash_and_verify_roundtrip`: hash then verify

@@ -50,7 +50,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit který přidal `calibrate_pbkdf2`.
 
-- [ ] Úkol: Implementovat `hash_password(password: str) -> dict` vracející
+- [x] Úkol: Implementovat `hash_password(password: str) -> dict` vracející
   `{password_hash: base64, salt: base64, iterations: int}` a
   `verify_password(password: str, stored: dict) -> bool`.
   - **Test:** `test_hash_and_verify_roundtrip`: hash poté verify úspěch.
