@@ -1,0 +1,18 @@
+{
+  "track_id": "lightweight-auth-boundaries_20260729",
+  "title": "Lightweight Auth Boundaries",
+  "type": "security",
+  "status": "planned",
+  "created_at": "2026-07-29T00:00:00Z",
+  "updated_at": "2026-07-29T00:00:00Z",
+  "tags": ["security", "auth", "rbac", "session", "csrf", "provisioning"],
+  "dependencies": {
+    "hard": [
+      "dashboard-security-cleanup_20260723"
+    ],
+    "blocked_by": [],
+    "blocks": [
+      "unified-ui-ux-refactor_20260728"
+    ]
+  }
+}
