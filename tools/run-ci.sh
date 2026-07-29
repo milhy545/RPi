@@ -128,12 +128,12 @@ if [[ "${EXTENDED_CI:-0}" == "1" ]]; then
   fi
 fi
 # Run full pytest suite to ensure comprehensive test coverage
-if [[ -f .venv/bin/pytest ]]; then
-  run_step "Run full pytest suite" .venv/bin/pytest -q
-elif [[ -f "$HOME/.local/bin/uv" ]]; then
-  run_step "Run full pytest suite" "$HOME/.local/bin/uv" run pytest -q
+if [[ -f "$HOME/.local/bin/uv" ]]; then
+  run_step "Run full pytest suite" "$HOME/.local/bin/uv" run --extra dev pytest -q
 elif command -v uv >/dev/null 2>&1; then
-  run_step "Run full pytest suite" uv run pytest -q
+  run_step "Run full pytest suite" uv run --extra dev pytest -q
+elif [[ -x .venv/bin/pytest ]]; then
+  run_step "Run full pytest suite" .venv/bin/pytest -q
 elif command -v pytest >/dev/null 2>&1; then
   run_step "Run full pytest suite" pytest -q
 else
