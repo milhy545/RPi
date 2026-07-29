@@ -23,7 +23,7 @@
 
 ## Phase 2: Auth Core (`rpi_dashboard/auth.py`)
 
-- [ ] Task: Create `rpi_dashboard/auth.py` with `Role` enum
+- [x] Task: Create `rpi_dashboard/auth.py` with `Role` enum
   (`BASIC = 0`, `EXPERT = 1`, `ADMIN = 2`), comparison operators,
   and `Role.__ge__` for hierarchy checks.
   - **Test:** `test_role_hierarchy`: `ADMIN >= EXPERT >= BASIC` is True;

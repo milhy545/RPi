@@ -23,7 +23,7 @@
 
 ## Fáze 2: Auth jádro (`rpi_dashboard/auth.py`)
 
-- [ ] Úkol: Vytvořit `rpi_dashboard/auth.py` s enum `Role`
+- [x] Úkol: Vytvořit `rpi_dashboard/auth.py` s enum `Role`
   (`BASIC = 0`, `EXPERT = 1`, `ADMIN = 2`), operátory porovnání
   a `Role.__ge__` pro kontrolu hierarchie.
   - **Test:** `test_role_hierarchy`: `ADMIN >= EXPERT >= BASIC` je True;
