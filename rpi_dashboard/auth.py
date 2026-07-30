@@ -15,7 +15,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from enum import IntEnum
 from ipaddress import ip_address, ip_network
 from pathlib import Path
@@ -916,3 +916,83 @@ def _origin_allowed(source: str, allowed_subnets: list[str]) -> bool:
         return any(ip in ip_network(net) for net in allowed_subnets)
     except ValueError:
         return False
+
+
+class LoginAttemptLimiter:
+    """Concurrent-safe login attempt limiter with rolling 60-second window.
+
+    - At most 5 attempts per IP within any rolling 60-second window.
+    - At most 1024 distinct IP buckets stored at any time.
+    - When a new IP would exceed the bucket limit, the oldest bucket
+      (by earliest recorded attempt) is evicted under the same lock.
+    - Uses an injected monotonic clock for deterministic tests.
+    - All operations protected by a single threading.Lock with no nested
+      acquisition.
+    """
+
+    MAX_ATTEMPTS = 5
+    WINDOW_SECONDS = 60
+    MAX_BUCKETS = 1024
+
+    def __init__(
+        self,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
+        """Create a new limiter.
+
+        Args:
+            clock: Optional callable returning a monotonic timestamp
+                (e.g. ``time.monotonic``).  Defaults to ``time.monotonic``.
+                Injected for deterministic tests (e.g. a mutable list
+                wrapped in a lambda).
+        """
+        self._lock = threading.Lock()
+        # ip -> list[timestamp] (monotonic, oldest first)
+        self._buckets: dict[str, list[float]] = {}
+        self._clock = clock if clock is not None else time.monotonic
+
+    def check_and_record(self, ip: str) -> bool:
+        """Check if an attempt is allowed and record it if so.
+
+        Returns True if the attempt is allowed (<= 5 in the last 60s),
+        False if the rate limit is exceeded.  The timestamp is recorded
+        only when the attempt is allowed.
+        """
+        if not isinstance(ip, str) or ip == "":
+            return False
+        now = self._clock()
+        window_start = now - self.WINDOW_SECONDS
+
+        with self._lock:
+            # Globally prune expired timestamps from ALL buckets
+            expired_ips = []
+            for k, timestamps in self._buckets.items():
+                # Remove timestamps <= window_start (exactly 60s ago is expired)
+                while timestamps and timestamps[0] <= window_start:
+                    timestamps.pop(0)
+                if not timestamps:
+                    expired_ips.append(k)
+            for k in expired_ips:
+                del self._buckets[k]
+
+            bucket = self._buckets.get(ip)
+            current_count = len(bucket) if bucket is not None else 0
+            if current_count >= self.MAX_ATTEMPTS:
+                return False
+
+            # Before recording a new IP, enforce bucket limit
+            if bucket is None:
+                if len(self._buckets) >= self.MAX_BUCKETS:
+                    # Evict the oldest bucket (by earliest timestamp)
+                    oldest_ip = min(
+                        self._buckets,
+                        key=lambda k: self._buckets[k][0] if self._buckets[k] else float("inf"),
+                    )
+                    del self._buckets[oldest_ip]
+                new_bucket: list[float] = []
+                self._buckets[ip] = new_bucket
+                bucket = new_bucket
+
+            # Record this attempt
+            bucket.append(now)
+            return True
