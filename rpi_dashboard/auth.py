@@ -378,7 +378,7 @@ class SessionStore:
         token = secrets.token_bytes(32)
         cookie_hex = token.hex()
         key = hashlib.sha256(token).hexdigest()
-        csrf_token = secrets.token_bytes(16).hex()
+        csrf_token = generate_csrf_token().hex()
         now = self._now
         session = _Session(role, csrf_token, now)
         with self._lock:
@@ -750,6 +750,116 @@ def validate_basic_csrf(
         return True
     # Accept same-origin / same-site via Sec-Fetch-Site if present
     if sec_fetch_site and sec_fetch_site.lower() in ("same-origin", "same-site"):
+        return True
+    return False
+
+
+def generate_csrf_token() -> bytes:
+    """Generate a CSRF synchroniser token using secrets.token_bytes(16)."""
+    return secrets.token_bytes(16)
+
+
+def validate_csrf(
+    session: SessionSnapshot,
+    x_csrf_header: str | None,
+    rpi_csrf_cookie: str | None,
+    origin: str | None,
+    referer: str | None,
+    sec_fetch_site: str | None,
+    is_loopback: bool,
+    allowed_subnets: list[str] | None = None,
+) -> bool:
+    """Validate CSRF token and provenance for Expert/Admin routes.
+
+    Returns True if the request passes CSRF protection.
+
+    Strict absence semantics:
+    - ``None`` means absent for cookie, origin, referer, sec_fetch_site.
+    - ``None`` is rejected for session, x_csrf_header, is_loopback.
+    - Empty or non-string values for any parameter are rejected.
+    - ``session`` must be a ``SessionSnapshot`` whose ``csrf_token`` is
+      a non-empty 32-character lowercase hexadecimal string.
+    - ``allowed_subnets`` after defaulting must be a list of valid
+      networks; malformed type/entries reject before any provenance
+      check (including loopback).
+    - ``is_loopback`` must be an exact ``bool``.
+    - All comparisons use ``hmac.compare_digest``.
+    """
+    # 0. Validate allowed_subnets early (before any provenance logic)
+    if allowed_subnets is None:
+        allowed_subnets = list(ALLOWED_SUBNETS)
+    if not isinstance(allowed_subnets, list):
+        return False
+    for net in allowed_subnets:
+        if not isinstance(net, str) or not net:
+            return False
+        try:
+            ip_network(net)
+        except ValueError:
+            return False
+
+    # 1. Validate session is a SessionSnapshot with valid csrf_token
+    if not isinstance(session, SessionSnapshot):
+        return False
+    csrf = session.csrf_token
+    if not isinstance(csrf, str) or len(csrf) != 32:
+        return False
+    # Explicit exact character-set check: only 0-9 and a-f allowed
+    if not all(ch in "0123456789abcdef" for ch in csrf):
+        return False
+
+    # 2. Require non-empty string X-CSRF-Token header
+    if not isinstance(x_csrf_header, str) or not x_csrf_header:
+        return False
+
+    # 3. Constant-time compare header against session's csrf_token
+    if not hmac.compare_digest(x_csrf_header, csrf):
+        return False
+
+    # 4. Validate and check rpi_csrf cookie
+    #    None = absent; any other value must be non-empty str matching header
+    if rpi_csrf_cookie is not None:
+        if not isinstance(rpi_csrf_cookie, str) or not rpi_csrf_cookie:
+            return False
+        if not hmac.compare_digest(x_csrf_header, rpi_csrf_cookie):
+            return False
+
+    # 5. Validate sec_fetch_site (None or str)
+    if sec_fetch_site is not None and not isinstance(sec_fetch_site, str):
+        return False
+
+    # 6. Validate is_loopback (exact bool)
+    if not isinstance(is_loopback, bool):
+        return False
+
+    # 7. Reject cross-site Sec-Fetch-Site (case-insensitive)
+    if isinstance(sec_fetch_site, str) and sec_fetch_site.lower() == "cross-site":
+        return False
+
+    # 8. Validate Origin and Referer
+    #    None = absent; any other value must be non-empty str and pass _origin_allowed
+    if origin is not None:
+        if not isinstance(origin, str) or not origin:
+            return False
+        if not _origin_allowed(origin, allowed_subnets):
+            return False
+
+    if referer is not None:
+        if not isinstance(referer, str) or not referer:
+            return False
+        if not _origin_allowed(referer, allowed_subnets):
+            return False
+
+    if origin is not None or referer is not None:
+        return True
+
+    # 9. Neither Origin nor Referer present
+    if is_loopback:
+        return True
+    if isinstance(sec_fetch_site, str) and sec_fetch_site.lower() in (
+        "same-origin",
+        "same-site",
+    ):
         return True
     return False
 

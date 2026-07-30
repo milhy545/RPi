@@ -1,6 +1,7 @@
 """Tests for auth role hierarchy and calibration."""
 
 import hashlib
+import hmac
 import json
 import random
 import stat
@@ -9,6 +10,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import base64
@@ -1321,3 +1323,509 @@ def test_basic_csrf_lowercase_method():
 
     # Non-mutating route with lowercase method bypasses
     assert auth.validate_basic_csrf("/mpv/status", "get", headers, False) is True
+
+
+# -- Phase 5: CSRF Protection (Expert/Admin) --------------------------------
+
+
+def test_generate_csrf_token_length_and_uniqueness():
+    """generate_csrf_token returns 16 bytes; consecutive calls differ."""
+    t1 = auth.generate_csrf_token()
+    t2 = auth.generate_csrf_token()
+
+    assert isinstance(t1, bytes)
+    assert isinstance(t2, bytes)
+    assert len(t1) == 16
+    assert len(t2) == 16
+    assert t1 != t2
+
+
+def test_generate_csrf_token_session_integration():
+    """SessionStore.create uses generate_csrf_token, preserving 32-char hex."""
+    store = auth.SessionStore()
+    token_hex, snapshot = store.create(Role.EXPERT)
+
+    assert isinstance(snapshot.csrf_token, str)
+    assert len(snapshot.csrf_token) == 32
+    # Verify it is valid lowercase hex
+    int(snapshot.csrf_token, 16)
+
+    # Re-validate the session returns the same csrf_token
+    _, validated = store.validate(token_hex)
+    assert validated is not None
+    assert validated.csrf_token == snapshot.csrf_token
+
+
+def _valid_csrf_session() -> tuple[auth.SessionSnapshot, str, auth.SessionStore]:
+    """Helper: create a session and return (snapshot, token_hex, store)."""
+    store = auth.SessionStore()
+    token_hex, snapshot = store.create(Role.EXPERT)
+    return snapshot, token_hex, store
+
+
+def test_csrf_valid_header_and_origin_passes():
+    """Matching X-CSRF-Token header + valid origin returns True."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_mismatched_header_fails():
+    """Wrong X-CSRF-Token header value returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header="a" * 32,  # wrong token
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_bad_origin_fails():
+    """Valid header but unknown Origin host returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="https://evil.example",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_cross_site_rejected():
+    """Sec-Fetch-Site: cross-site with valid header returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer=None,
+        sec_fetch_site="cross-site",
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_same_origin_accepted():
+    """No Origin/Referer, Sec-Fetch-Site: same-origin, non-loopback returns True."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin=None,
+        referer=None,
+        sec_fetch_site="same-origin",
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_same_site_accepted():
+    """No Origin/Referer, Sec-Fetch-Site: same-site, non-loopback returns True."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin=None,
+        referer=None,
+        sec_fetch_site="same-site",
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_missing_provenance_non_loopback_rejected():
+    """No Origin, Referer, or Sec-Fetch-Site on non-loopback returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin=None,
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_missing_provenance_loopback_accepted():
+    """No provenance headers on loopback returns True."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin=None,
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=True,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_header_must_match_cookie_when_present():
+    """X-CSRF-Token header differs from rpi_csrf cookie returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    # Cookie present but different from header
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie="b" * 32,  # different from header
+        origin="http://192.168.0.10:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_uses_constant_time_compare(monkeypatch):
+    """Confirm hmac.compare_digest is used for both required comparisons."""
+    calls: list[tuple[str, str]] = []
+    original = hmac.compare_digest
+
+    def tracking(a: str, b: str) -> bool:
+        calls.append((a, b))
+        return original(a, b)
+
+    monkeypatch.setattr(hmac, "compare_digest", tracking)
+
+    snapshot, _, _ = _valid_csrf_session()
+    csrf = snapshot.csrf_token
+
+    # Case 1: no cookie -- only one comparison (header vs session)
+    calls.clear()
+    result1 = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=csrf,
+        rpi_csrf_cookie=None,
+        origin="http://127.0.0.1:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=True,
+    )
+    assert result1 is True
+    assert len(calls) == 1, f"Expected 1 call, got {len(calls)}: {calls}"
+    assert calls[0] == (csrf, snapshot.csrf_token)
+
+    # Case 2: cookie present -- both comparisons (header vs session, header vs cookie)
+    calls.clear()
+    result2 = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=csrf,
+        rpi_csrf_cookie=csrf,  # same value, cookie present
+        origin="http://127.0.0.1:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=True,
+    )
+    assert result2 is True
+    assert len(calls) == 2, f"Expected 2 calls, got {len(calls)}: {calls}"
+    assert calls[0] == (csrf, snapshot.csrf_token)
+    assert calls[1] == (csrf, csrf)
+
+
+def test_csrf_malformed_non_string_inputs():
+    """Malformed/non-string inputs return False without exceptions."""
+    snapshot, _, _ = _valid_csrf_session()
+    valid = {
+        "session": snapshot,
+        "x_csrf_header": snapshot.csrf_token,
+        "rpi_csrf_cookie": None,
+        "origin": "http://192.168.0.10:8090",
+        "referer": None,
+        "sec_fetch_site": None,
+        "is_loopback": False,
+        "allowed_subnets": ["192.168.0.0/16"],
+    }
+
+    # Non-string header types
+    assert auth.validate_csrf(**{**valid, "x_csrf_header": 123}) is False
+    assert auth.validate_csrf(**{**valid, "x_csrf_header": b"abc"}) is False
+    assert auth.validate_csrf(**{**valid, "x_csrf_header": None}) is False
+    assert auth.validate_csrf(**{**valid, "x_csrf_header": ""}) is False
+
+    # Non-string/invalid session values
+    for bad_session in (None, 123, {}):
+        assert auth.validate_csrf(**{**valid, "session": bad_session}) is False
+
+    # Invalid csrf_token in session snapshot
+    for bad_token in (
+        123,
+        "",
+        "a" * 31,
+        "a" * 33,
+        "g" * 32,
+        "A" * 32,
+        "_" + "a" * 31,              # underscore in 32-char string
+        "+" + "a" * 31,               # leading plus sign
+        " " + "a" * 31,               # leading whitespace
+        "a" * 31 + " ",               # trailing whitespace
+    ):
+        bad_snapshot = replace(snapshot, csrf_token=bad_token)
+        assert auth.validate_csrf(**{**valid, "session": bad_snapshot}) is False
+
+    # Origin and Referer with non-string/invalid values
+    for bad_origin in ("", 123, b"http://evil.com"):
+        assert auth.validate_csrf(**{**valid, "origin": bad_origin}) is False
+    for bad_referer in ("", 123, b"http://evil.com/"):
+        assert auth.validate_csrf(**{**valid, "referer": bad_referer}) is False
+
+    # sec_fetch_site with non-string/invalid values
+    for bad_sfs in (123, b"same-origin", []):
+        assert auth.validate_csrf(**{**valid, "sec_fetch_site": bad_sfs}) is False
+
+    # is_loopback with non-bool/invalid values
+    for bad_loopback in (None, 0, 1, "false", []):
+        assert auth.validate_csrf(**{**valid, "is_loopback": bad_loopback}) is False
+
+    # allowed_subnets with invalid types/values (None is valid default, preserved)
+    for bad_subnets in (
+        "192.168.0.0/16",  # plain string, not list
+        123,
+        {},
+        [""],  # list with empty string
+        [123],  # list with int
+        ["not-a-subnet"],  # list with invalid subnet
+    ):
+        assert auth.validate_csrf(**{**valid, "allowed_subnets": bad_subnets}) is False
+
+    # allowed_subnets=None should be valid (default)
+    assert auth.validate_csrf(**{**valid, "allowed_subnets": None}) is True
+
+
+def test_csrf_cookie_absent_present_mismatch():
+    """Cookie absent OK, cookie present and match OK, cookie mismatch fails."""
+    snapshot, _, _ = _valid_csrf_session()
+    csrf = snapshot.csrf_token
+    base = {
+        "session": snapshot,
+        "x_csrf_header": csrf,
+        "origin": "http://192.168.0.10:8090",
+        "referer": None,
+        "sec_fetch_site": None,
+        "is_loopback": False,
+        "allowed_subnets": ["192.168.0.0/16"],
+    }
+
+    # Cookie absent
+    assert auth.validate_csrf(**base, rpi_csrf_cookie=None) is True
+    # Cookie present and matching
+    assert auth.validate_csrf(**base, rpi_csrf_cookie=csrf) is True
+    # Cookie present but mismatch
+    assert auth.validate_csrf(**base, rpi_csrf_cookie="x" * 32) is False
+    # Empty string cookie rejects (not absent)
+    assert auth.validate_csrf(**base, rpi_csrf_cookie="") is False
+    # Non-string cookie rejects
+    assert auth.validate_csrf(**base, rpi_csrf_cookie=123) is False
+
+
+def test_csrf_case_handling_sec_fetch_site():
+    """Sec-Fetch-Site values are handled case-insensitively."""
+    snapshot, _, _ = _valid_csrf_session()
+    base = {
+        "session": snapshot,
+        "x_csrf_header": snapshot.csrf_token,
+        "rpi_csrf_cookie": None,
+        "origin": None,
+        "referer": None,
+        "is_loopback": False,
+        "allowed_subnets": ["192.168.0.0/16"],
+    }
+
+    # Rejected cross-site (case variants)
+    assert auth.validate_csrf(**base, sec_fetch_site="cross-site") is False
+    assert auth.validate_csrf(**base, sec_fetch_site="CROSS-SITE") is False
+    assert auth.validate_csrf(**base, sec_fetch_site="Cross-Site") is False
+
+    # Accepted same-origin / same-site (case variants)
+    assert auth.validate_csrf(**base, sec_fetch_site="same-origin") is True
+    assert auth.validate_csrf(**base, sec_fetch_site="SAME-ORIGIN") is True
+    assert auth.validate_csrf(**base, sec_fetch_site="same-site") is True
+    assert auth.validate_csrf(**base, sec_fetch_site="SAME-SITE") is True
+
+
+def test_csrf_both_valid_headers():
+    """Both Origin and Referer valid returns True."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer="http://192.168.0.10:8090/mpv/play",
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_one_valid_one_invalid_conflict():
+    """Valid Origin but invalid Referer returns False (fail-closed)."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer="https://evil.example/path",
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is False
+
+
+def test_csrf_localhost_allowed():
+    """localhost origin is accepted."""
+    snapshot, _, _ = _valid_csrf_session()
+    base = {
+        "session": snapshot,
+        "x_csrf_header": snapshot.csrf_token,
+        "rpi_csrf_cookie": None,
+        "referer": None,
+        "sec_fetch_site": None,
+        "is_loopback": False,
+        "allowed_subnets": ["192.168.0.0/16"],
+    }
+
+    assert auth.validate_csrf(**base, origin="http://localhost:8090") is True
+    assert auth.validate_csrf(**base, origin="http://LOCALHOST:8080") is True
+
+
+def test_csrf_local_domain_allowed():
+    """*.local domain in Referer is accepted."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin=None,
+        referer="http://rpi-tv.local:8090/",
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["192.168.0.0/16"],
+    )
+    assert result is True
+
+
+def test_csrf_allowed_subnet():
+    """IP in allowed subnet is accepted."""
+    snapshot, _, _ = _valid_csrf_session()
+
+    result = auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://10.0.0.5:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["10.0.0.0/8"],
+    )
+    assert result is True
+
+
+def test_csrf_invalid_port_scheme_userinfo():
+    """Invalid port, scheme, or userinfo in Origin returns False."""
+    snapshot, _, _ = _valid_csrf_session()
+    base = {
+        "session": snapshot,
+        "x_csrf_header": snapshot.csrf_token,
+        "rpi_csrf_cookie": None,
+        "referer": None,
+        "sec_fetch_site": None,
+        "is_loopback": False,
+        "allowed_subnets": ["192.168.0.0/16"],
+    }
+
+    # Invalid scheme
+    assert auth.validate_csrf(**base, origin="ftp://192.168.0.10:8090") is False
+    assert auth.validate_csrf(**base, origin="file:///tmp/foo") is False
+
+    # Scheme-relative
+    assert auth.validate_csrf(**base, origin="//192.168.0.10:8090") is False
+
+    # Userinfo (credentials in URL)
+    assert auth.validate_csrf(
+        **base,
+        origin="http://user:pass@192.168.0.10:8090",
+    ) is False
+
+    # Non-numeric port
+    assert auth.validate_csrf(**base, origin="http://192.168.0.10:abc") is False
+
+    # Port 0
+    assert auth.validate_csrf(**base, origin="http://192.168.0.10:0") is False
+
+    # Port > 65535
+    assert auth.validate_csrf(**base, origin="http://192.168.0.10:70000") is False
+
+    # Malformed origin string
+    assert auth.validate_csrf(**base, origin="not a url") is False
+
+    # data URI
+    assert auth.validate_csrf(
+        **base,
+        origin="data:text/html,<script>alert(1)</script>",
+    ) is False
+
+    # IP outside allowed subnet
+    assert auth.validate_csrf(
+        **base,
+        origin="http://10.99.99.99:8090",
+    ) is False
+
+    # Invalid subnet in allowed_subnets rejects gracefully
+    assert auth.validate_csrf(
+        session=snapshot,
+        x_csrf_header=snapshot.csrf_token,
+        rpi_csrf_cookie=None,
+        origin="http://192.168.0.10:8090",
+        referer=None,
+        sec_fetch_site=None,
+        is_loopback=False,
+        allowed_subnets=["not-a-subnet"],
+    ) is False
