@@ -135,7 +135,7 @@
 
 ## Fáze 4: Route Policy
 
-- [ ] Úkol: Implementovat dict `ENDPOINT_ROLES` mapující
+- [x] Úkol: Implementovat dict `ENDPOINT_ROLES` mapující
   `(path, method)` → `RoutePolicy` s poli `required_role: Role | None`,
   `mutating: bool`. Naplnit dle tabulek rout ze specifikace. Zahrnout
   helper `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool` který
@@ -157,7 +157,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit který přidal `ENDPOINT_ROLES`.
 
-- [ ] Úkol: Implementovat `classify_request(path, method, session, auth_store)
+- [x] Úkol: Implementovat `classify_request(path, method, session, auth_store)
   -> tuple[Role | None, int | None]` který vrací `(required_role,
   error_code)` kde error_code je 401/403/405/410/503 nebo None. Řeší:
   - Nestav provisionovaný stav (503 pro Expert/Admin).
@@ -182,7 +182,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit který přidal `classify_request`.
 
-- [ ] Úkol: Implementovat `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool`
+- [x] Úkol: Implementovat `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool`
   která aplikuje Fetch Metadata / Origin obranu pro Basic routy s `mutating=true`, bez ohledu na HTTP metodu:
   - Pokud je přítomen header `Sec-Fetch-Site` a je `cross-site`, vrací False (403). Cross-origin se detekuje pouze neplatným hostem `Origin` nebo `Referer`.
   - Pokud je přítomen header `Origin` nebo `Referer`, ověří vůči

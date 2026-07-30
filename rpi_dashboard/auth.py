@@ -17,8 +17,12 @@ import threading
 import time
 from collections.abc import Mapping
 from enum import IntEnum
+from ipaddress import ip_address, ip_network
 from pathlib import Path
 from statistics import median
+from urllib.parse import urlparse
+
+from config import ALLOWED_SUBNETS
 
 
 class AuthStore:
@@ -456,3 +460,349 @@ class SessionStore:
                 del self._sessions[key]
                 removed += 1
         return removed
+
+
+@dataclasses.dataclass(frozen=True)
+class RoutePolicy:
+    """Policy for a single (path, method) endpoint."""
+    required_role: Role | None = None
+    mutating: bool = False
+
+
+# -- Known API routes mapped to (path, method) -> RoutePolicy ---------------
+
+_DEPRECATED_PATHS: frozenset[str] = frozenset({
+    "/play",
+    "/kodi/st",
+    "/kodi/status",
+})
+
+_PROTECTED_PREFIXES: tuple[str, ...] = (
+    "/audio/", "/bt/", "/wifi/", "/cec/", "/system/", "/terminal/",
+    "/dlna/", "/return/", "/mpv/", "/devices/", "/network/",
+    "/restart/", "/youtube/", "/media/", "/cache/", "/pool/",
+    "/ha/", "/selftest/", "/ws/", "/keepalive",
+)
+
+ENDPOINT_ROLES: dict[tuple[str, str], RoutePolicy] = {
+    # -- Basic reads (no login, not mutating) --
+    ("/modes", "GET"): RoutePolicy(None, False),
+    ("/mpv/status", "GET"): RoutePolicy(None, False),
+    ("/mpv/memory", "GET"): RoutePolicy(None, False),
+    ("/audio/state", "GET"): RoutePolicy(None, False),
+    ("/audio/matrix", "GET"): RoutePolicy(None, False),
+    ("/audio/bluetooth-profiles", "GET"): RoutePolicy(None, False),
+    ("/audio/mute-state", "GET"): RoutePolicy(None, False),
+    ("/audio/route/dlna-input/status", "GET"): RoutePolicy(None, False),
+    ("/devices/state", "GET"): RoutePolicy(None, False),
+    ("/devices", "GET"): RoutePolicy(None, False),
+    ("/bt/state", "GET"): RoutePolicy(None, False),
+    ("/bt/scan", "GET"): RoutePolicy(None, False),
+    ("/bt/controller", "GET"): RoutePolicy(None, False),
+    ("/bt/transfers", "GET"): RoutePolicy(None, False),
+    ("/bt/files", "GET"): RoutePolicy(None, False),
+    ("/bt/diagnostics", "GET"): RoutePolicy(None, False),
+    ("/bt/media", "GET"): RoutePolicy(None, False),
+    ("/bt/pairing", "GET"): RoutePolicy(None, False),
+    ("/bt/capabilities", "GET"): RoutePolicy(None, False),
+    ("/bt/phone-role", "GET"): RoutePolicy(None, False),
+    ("/wifi/status", "GET"): RoutePolicy(None, False),
+    ("/cec/scan", "GET"): RoutePolicy(None, False),
+    ("/cec/br/st", "GET"): RoutePolicy(None, False),
+    ("/system/stats", "GET"): RoutePolicy(None, False),
+    ("/system/hw-stats", "GET"): RoutePolicy(None, False),
+    ("/system/status", "GET"): RoutePolicy(None, False),
+    ("/system/https-info", "GET"): RoutePolicy(None, False),
+    ("/network/info", "GET"): RoutePolicy(None, False),
+    ("/network/tailscale", "GET"): RoutePolicy(None, False),
+    ("/youtube/cookies/status", "GET"): RoutePolicy(None, False),
+    ("/media/preview", "GET"): RoutePolicy(None, False),
+    ("/dlna/scan", "GET"): RoutePolicy(None, False),
+    ("/dlna/renderer/status", "GET"): RoutePolicy(None, False),
+    ("/return/config", "GET"): RoutePolicy(None, False),
+    ("/return/last", "GET"): RoutePolicy(None, False),
+    ("/cache/stats", "GET"): RoutePolicy(None, False),
+    ("/pool/stats", "GET"): RoutePolicy(None, False),
+    # -- Basic mutating (no login, but Fetch Metadata / Origin defence) --
+    ("/mpv/play", "GET"): RoutePolicy(None, True),
+    ("/mpv/stop", "GET"): RoutePolicy(None, True),
+    ("/mpv/toggle", "GET"): RoutePolicy(None, True),
+    ("/mpv/seek", "GET"): RoutePolicy(None, True),
+    ("/mpv/seekabs", "GET"): RoutePolicy(None, True),
+    ("/mpv/vol", "GET"): RoutePolicy(None, True),
+    ("/mpv/volume", "GET"): RoutePolicy(None, True),
+    ("/audio/mute", "GET"): RoutePolicy(None, True),
+    ("/return", "POST"): RoutePolicy(None, True),
+    ("/report", "POST"): RoutePolicy(None, True),
+    # -- Expert mutating --
+    ("/mpv/memory-save", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/mpv/memory/clear", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/default-sink", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/volume", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/volume/global", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/matrix/link", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/latency", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/multi-output", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/bt", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/hdmi", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/dlna", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/test", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/alexa-bt", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/alexa-retarget", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/dlna-input/start", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/dlna-input/stop", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/dlna-input/mode", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/audio/route/dlna-input/target", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/keepalive", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/dlna/select", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/dlna/connect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/dlna/disconnect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/dlna/renderer/start", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/dlna/renderer/stop", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/discovery", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/adapter-power", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/discoverable", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/settings", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/device-action", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/device-profile", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/device-autoconnect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/device-hid", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/operation", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/pair", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/trust", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/connect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/bt/disconnect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/wifi/scan", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/wifi/connect", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/wifi/connect", "POST"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/send", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/key", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/in", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/br/start", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/br/stop", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/power", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/nav", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/vol", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cec/input", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/devices/bt/scan", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/youtube/age-check", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/cache/clear", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/pool/clear", "GET"): RoutePolicy(Role.EXPERT, True),
+    ("/return/config/set", "GET"): RoutePolicy(Role.EXPERT, True),
+    # -- Expert read --
+    ("/ha/config", "GET"): RoutePolicy(Role.EXPERT, False),
+    # -- Admin mutating --
+    ("/terminal/connect", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/terminal/disconnect", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/bt/file-send", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/bt/file-cancel", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/bt/remove", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/bt/reset", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/system/restart-mpv", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/system/restart-dashboard", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/system/restart-rpi", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/restart/mpv", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/restart/dashboard", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/restart/rpi", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/system/reboot", "GET"): RoutePolicy(Role.ADMIN, True),
+    ("/selftest/testaudio", "GET"): RoutePolicy(Role.ADMIN, True),
+    # -- Admin read --
+    ("/system/logs", "GET"): RoutePolicy(Role.ADMIN, False),
+    ("/ws/token", "GET"): RoutePolicy(Role.ADMIN, False),
+}
+
+# -- Helpers ----------------------------------------------------------------
+
+
+def _is_deprecated(path: str) -> bool:
+    """Return True if the path is a known deprecated endpoint."""
+    return path in _DEPRECATED_PATHS
+
+
+def _get_header(headers: Mapping[str, str], name: str) -> str:
+    """Case-insensitive header lookup.  Returns empty string when missing."""
+    target = name.lower()
+    for key, value in headers.items():
+        if key.lower() == target:
+            return value
+    return ""
+
+
+def classify_request(
+    path: str,
+    method: str,
+    session: SessionSnapshot | None,
+    auth_store: AuthStore,
+    *,
+    effective_role: Role | None = None,
+) -> tuple[Role | None, int | None]:
+    """Classify a request and return (required_role, error_code).
+
+    Returns ``(required_role, None)`` when the request can proceed
+    (subject to further CSRF / transport checks by the gate).
+    Returns ``(None, error_code)`` for 405/410, or
+    ``(required_role, error_code)`` for 401/403/503.
+
+    Unknown routes that are not in a protected prefix return
+    ``(None, None)`` -- the dispatcher should serve 404 normally.
+
+    ``effective_role``
+        When supplied (e.g. from ``SessionStore.effective_role()`` or a
+        Bearer-derived role), use it for the role-hierarchy check instead
+        of ``session.role``.  This allows Expert sessions with active
+        Admin step-up, or a bearer credential without any session, to
+        satisfy Admin routes.  Pass ``session=None`` together with
+        ``effective_role=Role.ADMIN`` for bearer-only Admin access.
+        When ``effective_role`` is omitted, ``session.role`` is used.
+        If both are absent/missing the request returns 401.
+    """
+    normalised_method = method.upper()
+
+    # 1. Deprecated check
+    if _is_deprecated(path):
+        return (None, 410)
+
+    # 2. Lookup exact (path, method)
+    policy = ENDPOINT_ROLES.get((path, normalised_method))
+
+    # 3. If not found by exact (path, method), check if path exists
+    #    with a different method -> 405
+    if policy is None:
+        for stored_path, stored_method in ENDPOINT_ROLES:
+            if stored_path == path:
+                return (None, 405)
+        # 4. Check protected prefixes -> default to Admin
+        for prefix in _PROTECTED_PREFIXES:
+            if path.startswith(prefix):
+                required = Role.ADMIN
+                if not auth_store.is_role_provisioned(required):
+                    return (required, 503)
+                role = effective_role if effective_role is not None else (
+                    session.role if session is not None else None
+                )
+                if role is None:
+                    return (required, 401)
+                if role < required:
+                    return (required, 403)
+                return (required, None)
+        # 5. Unknown route -- return None for normal 404
+        return (None, None)
+
+    required_role = policy.required_role
+
+    # Basic route -- always passes
+    if required_role is None:
+        return (None, None)
+
+    # Role-based route: check provisioning
+    if not auth_store.is_role_provisioned(required_role):
+        return (required_role, 503)
+
+    # Determine the effective role for the access check
+    role = effective_role if effective_role is not None else (
+        session.role if session is not None else None
+    )
+    if role is None:
+        return (required_role, 401)
+
+    if role < required_role:
+        return (required_role, 403)
+
+    return (required_role, None)
+
+
+def validate_basic_csrf(
+    path: str,
+    method: str,
+    headers: Mapping[str, str],
+    is_loopback: bool,
+    allowed_subnets: list[str] | None = None,
+) -> bool:
+    """Fetch Metadata / Origin defence for Basic mutating routes.
+
+    Only applies when the endpoint is Basic with ``mutating=True``.
+    Returns ``True`` if the request passes the defence, ``False`` if it
+    should be rejected with 403.
+    """
+    normalised_method = method.upper()
+    policy = ENDPOINT_ROLES.get((path, normalised_method))
+    if policy is None or policy.required_role is not None or not policy.mutating:
+        return True  # not a Basic mutating route, skip
+
+    if allowed_subnets is None:
+        allowed_subnets = list(ALLOWED_SUBNETS)
+
+    sec_fetch_site = _get_header(headers, "Sec-Fetch-Site")
+    origin = _get_header(headers, "Origin")
+    referer = _get_header(headers, "Referer")
+
+    # Sec-Fetch-Site: cross-site -> reject
+    if sec_fetch_site and sec_fetch_site.lower() == "cross-site":
+        return False
+
+    # Origin or Referer present -> validate strictly
+    if origin or referer:
+        source = origin if origin else referer
+        return _origin_allowed(source, allowed_subnets)
+
+    # Neither Origin nor Referer
+    if is_loopback:
+        return True
+    # Accept same-origin / same-site via Sec-Fetch-Site if present
+    if sec_fetch_site and sec_fetch_site.lower() in ("same-origin", "same-site"):
+        return True
+    return False
+
+
+def _origin_allowed(source: str, allowed_subnets: list[str]) -> bool:
+    """Validate an Origin or Referer URL against allowed subnets.
+
+    Rules (fail-closed):
+    - Requires http or https scheme; rejects scheme-relative, ftp, file, data, etc.
+    - Rejects URLs containing userinfo (credentials).
+    - Parses and validates port: must be absent, empty, or an integer 1-65535.
+    - Rejects invalid hostname / IP formats.
+    - Accepts ``localhost``, ``* .local``, and any IP within ``allowed_subnets``.
+    """
+    try:
+        parsed = urlparse(source)
+    except Exception:
+        return False
+
+    # Reject missing or empty hostname
+    host = parsed.hostname
+    if not host:
+        return False
+
+    # Scheme must be http or https; reject scheme-relative (//host), ftp, file, etc.
+    scheme = parsed.scheme
+    if scheme not in ("http", "https"):
+        return False
+
+    # Reject URLs with userinfo (e.g. http://user:pass@host/)
+    if parsed.username is not None or parsed.password is not None:
+        return False
+
+    # Validate port if present (urlparse.port raises ValueError for
+    # non-numeric port strings)
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    # Reject port 0 and out-of-range (port property already ensures 0-65535)
+    if port is not None and port == 0:
+        return False
+
+    # localhost and *.local are always trusted
+    if host == "localhost" or host.endswith(".local"):
+        return True
+
+    # IP-based check
+    try:
+        ip = ip_address(host)
+    except ValueError:
+        return False
+    try:
+        return any(ip in ip_network(net) for net in allowed_subnets)
+    except ValueError:
+        return False

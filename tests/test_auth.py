@@ -684,3 +684,640 @@ def test_session_benchmark_on_rpi(capsys: pytest.CaptureFixture[str]):
     # Captured for separate evidence output
     captured = capsys.readouterr()
     assert "median" in captured.out
+
+
+# -- Phase 4: Route Policy -----------------------------------------------
+
+
+def test_basic_routes_require_no_auth():
+    """Basic routes map to required_role=None."""
+    assert auth.ENDPOINT_ROLES[("/mpv/play", "GET")].required_role is None
+    assert auth.ENDPOINT_ROLES[("/mpv/status", "GET")].required_role is None
+    assert auth.ENDPOINT_ROLES[("/audio/state", "GET")].required_role is None
+    assert auth.ENDPOINT_ROLES[("/modes", "GET")].required_role is None
+
+
+def test_route_policy_mutating_flags():
+    """Correct mutating flags for representative routes."""
+    # Basic mutating
+    assert auth.ENDPOINT_ROLES[("/mpv/play", "GET")].mutating is True
+    assert auth.ENDPOINT_ROLES[("/return", "POST")].mutating is True
+    assert auth.ENDPOINT_ROLES[("/report", "POST")].mutating is True
+    # Basic read
+    assert auth.ENDPOINT_ROLES[("/mpv/status", "GET")].mutating is False
+    # Admin read
+    assert auth.ENDPOINT_ROLES[("/system/logs", "GET")].mutating is False
+    # Admin mutating
+    assert auth.ENDPOINT_ROLES[("/system/reboot", "GET")].mutating is True
+
+
+def test_expert_routes_require_expert():
+    """Expert routes map to required_role=EXPERT."""
+    assert auth.ENDPOINT_ROLES[("/audio/default-sink", "GET")].required_role is Role.EXPERT
+    assert auth.ENDPOINT_ROLES[("/bt/pair", "GET")].required_role is Role.EXPERT
+    assert auth.ENDPOINT_ROLES[("/wifi/connect", "GET")].required_role is Role.EXPERT
+    assert auth.ENDPOINT_ROLES[("/wifi/connect", "POST")].required_role is Role.EXPERT
+
+
+def test_admin_routes_require_admin():
+    """Admin routes map to required_role=ADMIN."""
+    assert auth.ENDPOINT_ROLES[("/terminal/connect", "GET")].required_role is Role.ADMIN
+    assert auth.ENDPOINT_ROLES[("/system/restart-rpi", "GET")].required_role is Role.ADMIN
+    assert auth.ENDPOINT_ROLES[("/system/reboot", "GET")].required_role is Role.ADMIN
+    assert auth.ENDPOINT_ROLES[("/ws/token", "GET")].required_role is Role.ADMIN
+
+
+def test_deprecated_routes_return_410():
+    """Deprecated paths are in _DEPRECATED_PATHS."""
+    assert "/play" in auth._DEPRECATED_PATHS
+    assert "/kodi/st" in auth._DEPRECATED_PATHS
+    assert "/kodi/status" in auth._DEPRECATED_PATHS
+
+
+def test_unknown_protected_route_defaults_to_admin():
+    """A new /audio/* path defaults to Admin."""
+    assert ("/audio/new-feature", "POST") not in auth.ENDPOINT_ROLES
+    # Protected prefix check at runtime via classify_request
+
+
+def test_unknown_unprotected_route_returns_none():
+    """A truly unknown path like /foo/bar is not classified."""
+    assert ("/foo/bar", "GET") not in auth.ENDPOINT_ROLES
+    assert not any("/foo/bar".startswith(p) for p in auth._PROTECTED_PREFIXES)
+
+
+def test_mpv_memory_save_requires_expert():
+    """/mpv/memory-save GET requires EXPERT."""
+    assert auth.ENDPOINT_ROLES[("/mpv/memory-save", "GET")].required_role is Role.EXPERT
+
+
+def test_mpv_memory_clear_requires_expert():
+    """/mpv/memory/clear GET requires EXPERT."""
+    assert auth.ENDPOINT_ROLES[("/mpv/memory/clear", "GET")].required_role is Role.EXPERT
+
+
+def test_system_logs_requires_admin():
+    """/system/logs GET requires ADMIN."""
+    assert auth.ENDPOINT_ROLES[("/system/logs", "GET")].required_role is Role.ADMIN
+
+
+def test_protected_prefixes_covered():
+    """All protected prefixes listed in spec are present."""
+    expected = {
+        "/audio/", "/bt/", "/wifi/", "/cec/", "/system/", "/terminal/",
+        "/dlna/", "/return/", "/mpv/", "/devices/", "/network/",
+        "/restart/", "/youtube/", "/media/", "/cache/", "/pool/",
+        "/ha/", "/selftest/", "/ws/", "/keepalive",
+    }
+    assert set(auth._PROTECTED_PREFIXES) == expected
+
+
+# -- classify_request -----------------------------------------------------
+
+
+def _provisioned_store(tmp_path, monkeypatch, roles=None):
+    """Helper: create an AuthStore with specified credential roles."""
+    store = auth.AuthStore(tmp_path / "auth.json")
+    monkeypatch.setattr(auth, "calibrate_pbkdf2", lambda target_ms=200, samples=3: 100_000)
+    monkeypatch.setattr(auth.secrets, "token_bytes", lambda size: b"\x01" * size)
+    if roles is None:
+        roles = {"expert", "admin"}
+    if "expert" in roles:
+        store.set_expert("expert-pass")
+    if "admin" in roles:
+        store.set_admin("admin-pass")
+    return store
+
+
+def _session(role: Role = Role.EXPERT) -> auth.SessionSnapshot:
+    """Helper: create an immutable session snapshot for a given role."""
+    store = auth.SessionStore()
+    _token, snapshot = store.create(role)
+    return snapshot
+
+
+def test_classify_unprovisioned_returns_503(tmp_path, monkeypatch):
+    """No auth.json, Expert route returns 503."""
+    store = auth.AuthStore(tmp_path / "missing" / "auth.json")
+    assert not store.is_provisioned()
+
+    role, code = auth.classify_request("/audio/default-sink", "GET", None, store)
+    assert role is Role.EXPERT
+    assert code == 503
+
+
+def test_classify_missing_session_401(tmp_path, monkeypatch):
+    """Provisioned, no cookie, Expert route returns 401."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/audio/default-sink", "GET", None, store)
+    assert role is Role.EXPERT
+    assert code == 401
+
+
+def test_classify_wrong_role_403(tmp_path, monkeypatch):
+    """Expert session, Admin route returns 403."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request("/system/reboot", "GET", expert_snapshot, store)
+    assert role is Role.ADMIN
+    assert code == 403
+
+
+def test_classify_basic_no_session(tmp_path, monkeypatch):
+    """Basic route returns (None, None) without session."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/mpv/status", "GET", None, store)
+    assert role is None
+    assert code is None
+
+
+def test_classify_deprecated_410(tmp_path, monkeypatch):
+    """Deprecated /play returns 410."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/play", "GET", None, store)
+    assert role is None
+    assert code == 410
+
+
+def test_classify_method_not_allowed_405(tmp_path, monkeypatch):
+    """/mpv/status POST returns 405 (only GET registered)."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/mpv/status", "POST", None, store)
+    assert role is None
+    assert code == 405
+
+
+def test_classify_admin_hash_satisfies_expert_route(tmp_path, monkeypatch):
+    """Only admin hash set, Expert route returns (EXPERT, None) with
+    Expert session."""
+    store = _provisioned_store(tmp_path, monkeypatch, roles={"admin"})
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request("/audio/default-sink", "GET", expert_snapshot, store)
+    assert role is Role.EXPERT
+    assert code is None
+
+
+def test_classify_expert_hash_does_not_satisfy_admin_route(tmp_path, monkeypatch):
+    """Only expert hash set, Admin route returns (ADMIN, 503)."""
+    store = _provisioned_store(tmp_path, monkeypatch, roles={"expert"})
+    admin_snapshot = _session(Role.ADMIN)
+
+    role, code = auth.classify_request("/system/reboot", "GET", admin_snapshot, store)
+    assert role is Role.ADMIN
+    assert code == 503
+
+
+def test_classify_expert_session_satisfies_expert_route(tmp_path, monkeypatch):
+    """Expert session + Expert route returns (EXPERT, None)."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request("/bt/pair", "GET", expert_snapshot, store)
+    assert role is Role.EXPERT
+    assert code is None
+
+
+def test_classify_admin_session_satisfies_admin_route(tmp_path, monkeypatch):
+    """Admin session + Admin route returns (ADMIN, None)."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    admin_snapshot = _session(Role.ADMIN)
+
+    role, code = auth.classify_request("/system/reboot", "GET", admin_snapshot, store)
+    assert role is Role.ADMIN
+    assert code is None
+
+
+def test_classify_admin_session_satisfies_expert_route(tmp_path, monkeypatch):
+    """Admin session + Expert route returns (EXPERT, None)."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    admin_snapshot = _session(Role.ADMIN)
+
+    role, code = auth.classify_request("/audio/default-sink", "GET", admin_snapshot, store)
+    assert role is Role.EXPERT
+    assert code is None
+
+
+def test_classify_unknown_route_returns_none(tmp_path, monkeypatch):
+    """Unknown path like /foo/bar returns (None, None)."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/foo/bar", "GET", None, store)
+    assert role is None
+    assert code is None
+
+
+def test_classify_protected_prefix_defaults_to_admin(tmp_path, monkeypatch):
+    """An unregistered path under /audio/ defaults to Admin."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/audio/new-feature", "POST", None, store)
+    assert role is Role.ADMIN
+    assert code == 401  # no session
+
+
+def test_classify_protected_prefix_unprovisioned(tmp_path, monkeypatch):
+    """Unprovisioned store + protected prefix returns 503."""
+    store = auth.AuthStore(tmp_path / "missing" / "auth.json")
+
+    role, code = auth.classify_request("/audio/new-feature", "GET", None, store)
+    assert role is Role.ADMIN
+    assert code == 503
+
+
+# -- validate_basic_csrf --------------------------------------------------
+
+
+def test_basic_csrf_rejects_cross_site_fetch(tmp_path, monkeypatch):
+    """Sec-Fetch-Site: cross-site is rejected on Basic mutating routes."""
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+
+def test_basic_csrf_rejects_bad_origin(tmp_path, monkeypatch):
+    """Origin from an untrusted host is rejected."""
+    headers = {"Origin": "https://evil.example"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+
+def test_basic_csrf_accepts_valid_origin(tmp_path, monkeypatch):
+    """Origin from ALLOWED_SUBNETS is accepted."""
+    headers = {"Origin": "http://192.168.0.10:8090"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is True
+
+
+def test_basic_csrf_accepts_no_headers_on_loopback():
+    """No Fetch Metadata, Origin, or Referer on loopback is accepted."""
+    headers: dict[str, str] = {}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, True) is True
+
+
+def test_basic_csrf_accepts_localhost_referer():
+    """Referer from localhost is accepted."""
+    headers = {"Referer": "http://localhost:8090/mpv/play"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_rejects_missing_provenance_non_loopback():
+    """No Sec-Fetch-Site, Origin, or Referer on non-loopback is rejected."""
+    headers: dict[str, str] = {}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+
+def test_basic_csrf_accepts_same_origin_non_loopback():
+    """No Origin/Referer but Sec-Fetch-Site: same-origin is accepted."""
+    headers = {"Sec-Fetch-Site": "same-origin"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_accepts_same_site_non_loopback():
+    """No Origin/Referer but Sec-Fetch-Site: same-site is accepted."""
+    headers = {"Sec-Fetch-Site": "same-site"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_non_mutating_bypasses_check():
+    """Basic non-mutating route passes through regardless of headers."""
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/mpv/status", "GET", headers, False) is True
+
+
+def test_basic_csrf_non_basic_route_bypasses_check():
+    """Expert route bypasses Basic CSRF check."""
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/audio/default-sink", "GET", headers, False) is True
+
+
+def test_basic_csrf_unknown_route_bypasses_check():
+    """Unknown route bypasses Basic CSRF check."""
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/some/unknown", "GET", headers, False) is True
+
+
+def test_basic_csrf_localhost_origin():
+    """Origin from localhost is accepted."""
+    headers = {"Origin": "http://localhost:8080"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_local_domain_referer():
+    """Referer from *.local domain is accepted."""
+    headers = {"Referer": "http://rpi-tv.local:8090/"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_rejects_ip_hostname_origin():
+    """Origin from a hostname (not IP, not localhost) is rejected since
+    the hostname does not resolve to an allowed subnet."""
+    headers = {"Origin": "http://somehost:8080"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is False
+
+
+def test_basic_csrf_port_edge_cases():
+    """Origin with different ports but same host is still valid."""
+    headers = {"Origin": "http://192.168.0.10:9999"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is True
+
+
+def test_basic_csrf_rejects_ip_outside_subnet():
+    """Origin from IP outside allowed subnets is rejected."""
+    headers = {"Origin": "http://10.0.0.5:8090"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is False
+
+
+def test_basic_csrf_empty_origin_referer():
+    """Empty Origin and Referer strings are treated as absent."""
+    headers = {"Origin": "", "Referer": ""}
+    # Non-loopback + no provenance -> reject
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+    # Loopback -> accept
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, True) is True
+
+
+def test_basic_csrf_case_insensitive_sec_fetch_site():
+    """Sec-Fetch-Site header value is case-insensitive."""
+    headers = {"Sec-Fetch-Site": "CROSS-SITE"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+    headers = {"Sec-Fetch-Site": "SAME-ORIGIN"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_post_route():
+    """Basic POST mutating route uses same Fetch Metadata / Origin defence."""
+    # POST /return with cross-site fetch
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/return", "POST", headers, False) is False
+
+    # POST /return from loopback
+    headers = {}
+    assert auth.validate_basic_csrf("/return", "POST", headers, True) is True
+
+    # POST /return with valid origin
+    headers = {"Origin": "http://192.168.0.10:8090"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/return", "POST", headers, False, allowed) is True
+
+
+# -- effective_role in classify_request -------------------------------------
+
+
+def test_classify_effective_role_admin_stepup(tmp_path, monkeypatch):
+    """Expert session with effective_role=ADMIN satisfies Admin route."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request(
+        "/system/reboot", "GET", expert_snapshot, store,
+        effective_role=Role.ADMIN,
+    )
+    assert role is Role.ADMIN
+    assert code is None
+
+
+def test_classify_effective_role_expired_stepup(tmp_path, monkeypatch):
+    """Expert session with effective_role=EXPERT (step-up expired) still
+    gets 403 on Admin route."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request(
+        "/system/reboot", "GET", expert_snapshot, store,
+        effective_role=Role.EXPERT,
+    )
+    assert role is Role.ADMIN
+    assert code == 403
+
+
+def test_classify_effective_role_bearer_admin_no_session(tmp_path, monkeypatch):
+    """Bearer-derived Admin role without session satisfies Admin route."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request(
+        "/system/reboot", "GET", None, store,
+        effective_role=Role.ADMIN,
+    )
+    assert role is Role.ADMIN
+    assert code is None
+
+
+def test_classify_effective_role_bearer_expert_no_session(tmp_path, monkeypatch):
+    """Bearer-derived Expert role without session satisfies Expert route."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request(
+        "/audio/default-sink", "GET", None, store,
+        effective_role=Role.EXPERT,
+    )
+    assert role is Role.EXPERT
+    assert code is None
+
+
+def test_classify_effective_role_none_and_no_session_401(tmp_path, monkeypatch):
+    """No session and no effective_role returns 401 for protected route."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/audio/default-sink", "GET", None, store)
+    assert role is Role.EXPERT
+    assert code == 401
+
+
+def test_classify_effective_role_protected_prefix(tmp_path, monkeypatch):
+    """effective_role also works for protected-prefix fallback routes."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    # Without effective_role, no session -> 401
+    role, code = auth.classify_request("/audio/new-feature", "GET", None, store)
+    assert code == 401
+
+    # With effective_role=ADMIN bearer -> passes
+    role, code = auth.classify_request(
+        "/audio/new-feature", "GET", None, store,
+        effective_role=Role.ADMIN,
+    )
+    assert role is Role.ADMIN
+    assert code is None
+
+
+# -- method normalisation (upper) ------------------------------------------
+
+
+def test_classify_method_case_insensitive(tmp_path, monkeypatch):
+    """Lowercase method is normalised via .upper()."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+    expert_snapshot = _session(Role.EXPERT)
+
+    role, code = auth.classify_request("/bt/pair", "get", expert_snapshot, store)
+    assert role is Role.EXPERT
+    assert code is None
+
+
+def test_classify_method_case_405(tmp_path, monkeypatch):
+    """Wrong case-normalised method still yields 405."""
+    store = _provisioned_store(tmp_path, monkeypatch)
+
+    role, code = auth.classify_request("/mpv/status", "post", None, store)
+    assert role is None
+    assert code == 405
+
+
+# -- Mapping / case-insensitive headers for validate_basic_csrf -------------
+
+
+def test_basic_csrf_lowercase_header_keys():
+    """Lowercase header keys are matched case-insensitively."""
+    headers = {"sec-fetch-site": "cross-site"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+
+def test_basic_csrf_mixed_case_header_keys():
+    """Mixed-case header keys are matched case-insensitively."""
+    headers = {"Sec-Fetch-Site": "CROSS-SITE"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+    headers = {"ORIGIN": "https://evil.example"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+
+def test_basic_csrf_origin_key_different_case():
+    """Origin header with different casing is still validated."""
+    headers = {"origin": "http://192.168.0.10:8090"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is True
+
+
+def test_basic_csrf_referer_key_different_case():
+    """Referer header with different casing is still validated."""
+    headers = {"REFERER": "http://localhost:8090/"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is True
+
+
+def test_basic_csrf_mapping_protocol():
+    """Accepts any Mapping[str, str], not only dict."""
+    from collections.abc import Mapping
+    headers: Mapping[str, str] = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False) is False
+
+    headers = {"Origin": "http://192.168.0.10:9000"}
+    allowed = ["192.168.0.0/16"]
+    assert auth.validate_basic_csrf("/mpv/play", "GET", headers, False, allowed) is True
+
+
+# -- hardened _origin_allowed ----------------------------------------------
+
+
+def test_origin_allowed_rejects_ftp_scheme():
+    """ftp:// origin is rejected (not http/https)."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "ftp://192.168.0.10"}, False,
+    ) is False
+
+
+def test_origin_allowed_rejects_scheme_relative():
+    """Scheme-relative //host origin is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "//192.168.0.10"}, False,
+    ) is False
+
+
+def test_origin_allowed_rejects_file_scheme():
+    """file:// origin is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "file:///tmp/foo"}, False,
+    ) is False
+
+
+def test_origin_allowed_rejects_userinfo():
+    """Origin with embedded credentials is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET",
+        {"Origin": "http://user:pass@192.168.0.10:8090"}, False,
+        ["192.168.0.0/16"],
+    ) is False
+
+
+def test_origin_allowed_rejects_non_numeric_port():
+    """Origin with non-numeric port is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://192.168.0.10:abc"}, False,
+        ["192.168.0.0/16"],
+    ) is False
+
+
+def test_origin_allowed_rejects_zero_port():
+    """Origin with port 0 is rejected (out of valid range)."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://192.168.0.10:0"}, False,
+        ["192.168.0.0/16"],
+    ) is False
+
+
+def test_origin_allowed_rejects_over_65535_port():
+    """Origin with port > 65535 is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://192.168.0.10:70000"}, False,
+        ["192.168.0.0/16"],
+    ) is False
+
+
+def test_origin_allowed_rejects_malformed_origin():
+    """Completely malformed origin string is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "not a url at all !!!"}, False,
+    ) is False
+
+
+def test_origin_allowed_rejects_data_uri():
+    """data: URI as origin is rejected."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET",
+        {"Origin": "data:text/html,<script>alert(1)</script>"}, False,
+    ) is False
+
+
+def test_origin_allowed_rejects_invalid_allowed_subnet():
+    """Invalid entry in allowed_subnets is safely rejected (returns False)."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://192.168.0.10:8090"}, False,
+        ["not-a-subnet"],
+    ) is False
+
+
+def test_origin_allowed_accepts_no_port():
+    """Origin without explicit port is accepted when IP is in subnet."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://192.168.0.10"}, False,
+        ["192.168.0.0/16"],
+    ) is True
+
+
+def test_origin_allowed_accepts_localhost_trailing_dot():
+    """Origin with localhost (any casing) is accepted."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Origin": "http://LOCALHOST:8080"}, False,
+    ) is True
+
+
+def test_origin_allowed_local_domain_subdomain():
+    """Referer from a subdomain of .local is accepted."""
+    assert auth.validate_basic_csrf(
+        "/mpv/play", "GET", {"Referer": "http://sub.rpi-tv.local/path"}, False,
+    ) is True
+
+
+def test_basic_csrf_lowercase_method():
+    """Lowercase method in validate_basic_csrf is normalised."""
+    headers = {"Sec-Fetch-Site": "cross-site"}
+    assert auth.validate_basic_csrf("/mpv/play", "get", headers, False) is False
+
+    # Non-mutating route with lowercase method bypasses
+    assert auth.validate_basic_csrf("/mpv/status", "get", headers, False) is True

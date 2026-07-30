@@ -140,7 +140,7 @@
 
 ## Phase 4: Route Policy
 
-- [ ] Task: Implement `ENDPOINT_ROLES` dict mapping `(path, method)` →
+- [x] Task: Implement `ENDPOINT_ROLES` dict mapping `(path, method)` →
   `RoutePolicy` with fields `required_role: Role | None`,
   `mutating: bool`. Populate per the spec route tables. Include a
   `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool` helper that
@@ -164,7 +164,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the commit that added `ENDPOINT_ROLES`.
 
-- [ ] Task: Implement `classify_request(path, method, session, auth_store)
+- [x] Task: Implement `classify_request(path, method, session, auth_store)
   -> tuple[Role | None, int | None]` that returns `(required_role,
   error_code)` where error_code is 401/403/405/410/503 or None. Handles:
   - Unprovisioned state (503 for Expert/Admin).
@@ -189,7 +189,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the commit that added `classify_request`.
 
-- [ ] Task: Implement `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool`
+- [x] Task: Implement `validate_basic_csrf(path, method, headers, is_loopback: bool) -> bool`
   that applies Fetch Metadata / Origin defence for Basic routes with mutating=true, regardless of HTTP verb:
   - If `Sec-Fetch-Site` header is present and is `cross-site`, return False (403).
   - If `Origin` or `Referer` header is present, validate against
