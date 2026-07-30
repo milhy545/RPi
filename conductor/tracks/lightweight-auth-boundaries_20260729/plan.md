@@ -100,7 +100,7 @@
 
 ## Phase 3: Session Store
 
-- [ ] Task: Implement `SessionStore` class with `threading.Lock` for all
+- [x] Task: Implement `SessionStore` class with `threading.Lock` for all
   dict operations (non-nested acquisition, private unlocked helpers):
   - `create(role: Role) -> tuple[str, SessionSnapshot]`: generates
     `token = secrets.token_bytes(32)`, computes `key = sha256(token)`,

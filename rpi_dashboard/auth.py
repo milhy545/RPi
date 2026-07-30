@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import dataclasses
 import hashlib
 import hmac
 import json
@@ -14,6 +15,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Mapping
 from enum import IntEnum
 from pathlib import Path
 from statistics import median
@@ -142,9 +144,9 @@ class AuthStore:
             except FileNotFoundError:
                 pass
 
-    def save(self, data: dict[str, object]) -> None:
+    def save(self, data: Mapping[str, object]) -> None:
         with self._lock:
-            payload = copy.deepcopy(data)
+            payload = copy.deepcopy(dict(data))
             self._save_unlocked(payload)
             self._data = payload
 
@@ -276,3 +278,181 @@ def verify_password(password: str, stored: dict) -> bool:
         iterations,
     )
     return hmac.compare_digest(derived_password_hash, expected_password_hash)
+
+
+@dataclasses.dataclass(frozen=True)
+class SessionSnapshot:
+    """Immutable snapshot of a session -- never mutated after creation."""
+    role: Role
+    created: float
+    last_seen: float
+    csrf_token: str
+    step_up_expires: float = 0.0
+
+
+class _Session:
+    """Mutable internal session -- never exposed outside the lock."""
+
+    def __init__(self, role: Role, csrf_token: str, now: float) -> None:
+        self.role = role
+        self.created = now
+        self.last_seen = now
+        self.csrf_token = csrf_token
+        self.step_up_expires = 0.0
+
+    def to_snapshot(self) -> SessionSnapshot:
+        return SessionSnapshot(
+            role=self.role,
+            created=self.created,
+            last_seen=self.last_seen,
+            csrf_token=self.csrf_token,
+            step_up_expires=self.step_up_expires,
+        )
+
+
+class SessionStore:
+    """In-memory session store with threading.Lock and non-nested acquisition.
+
+    Only the SHA-256 digest of each token is stored server-side; the raw
+    token is never persisted.  Public methods acquire the lock once and
+    call private ``_unlocked`` helpers only while the caller holds it.
+    """
+
+    EXPERT_TTL: int = 28800   # 8 hours sliding window
+    ADMIN_TTL: int = 1800     # 30 minutes sliding window
+    STEPUP_TTL: int = 300     # 5 minutes fixed window
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._sessions: dict[str, _Session] = {}
+        self._time_fn = time.time
+
+    # -- injected clock hook for deterministic tests ---------------------------
+
+    @property
+    def _now(self) -> float:
+        return self._time_fn()
+
+    # -- private unlocked helpers (caller must hold _lock) ---------------------
+
+    def _session_key(self, cookie_hex: str) -> str | None:
+        """Return the storage key, or None if the hex is invalid."""
+        try:
+            token_bytes = bytes.fromhex(cookie_hex)
+        except ValueError:
+            return None
+        if len(token_bytes) != 32:
+            return None
+        return hashlib.sha256(token_bytes).hexdigest()
+
+    def _expired_unlocked(self, session: _Session, now: float) -> bool:
+        ttl = self.ADMIN_TTL if session.role is Role.ADMIN else self.EXPERT_TTL
+        return (now - session.last_seen) > ttl
+
+    def _lookup_unlocked(
+        self, cookie_hex: str, now: float
+    ) -> tuple[str, _Session] | None:
+        """Lookup and expiry check under lock.  Returns (key, session) or None.
+
+        Does NOT refresh last_seen; callers must do that when appropriate.
+        """
+        key = self._session_key(cookie_hex)
+        if key is None:
+            return None
+        session = self._sessions.get(key)
+        if session is None:
+            return None
+        if self._expired_unlocked(session, now):
+            del self._sessions[key]
+            return None
+        return (key, session)
+
+    # -- public API ------------------------------------------------------------
+
+    def create(self, role: Role) -> tuple[str, SessionSnapshot]:
+        """Create a new session and return (cookie_hex, snapshot)."""
+        token = secrets.token_bytes(32)
+        cookie_hex = token.hex()
+        key = hashlib.sha256(token).hexdigest()
+        csrf_token = secrets.token_bytes(16).hex()
+        now = self._now
+        session = _Session(role, csrf_token, now)
+        with self._lock:
+            self._sessions[key] = session
+        return (cookie_hex, session.to_snapshot())
+
+    def validate(
+        self, cookie_hex: str
+    ) -> tuple[Role | None, SessionSnapshot | None]:
+        """Validate a session cookie.
+
+        Returns (role, snapshot) on success, (None, None) if the session
+        is missing, expired, or the hex is malformed.  Refreshes the
+        sliding-window ``last_seen`` timestamp under the lock.
+        """
+        now = self._now
+        with self._lock:
+            result = self._lookup_unlocked(cookie_hex, now)
+            if result is None:
+                return (None, None)
+            _key, session = result
+            session.last_seen = now  # sliding window refresh
+            return (session.role, session.to_snapshot())
+
+    def step_up(self, cookie_hex: str) -> bool:
+        """Elevate an Expert session to Admin for STEPUP_TTL seconds.
+
+        Returns True on success.  The caller must have already verified
+        the admin password.
+        """
+        now = self._now
+        with self._lock:
+            result = self._lookup_unlocked(cookie_hex, now)
+            if result is None:
+                return False
+            _key, session = result
+            if session.role is not Role.EXPERT:
+                return False
+            session.step_up_expires = now + self.STEPUP_TTL
+            session.last_seen = now
+            return True
+
+    def effective_role(self, cookie_hex: str) -> Role | None:
+        """Return the effective role, considering any active step-up.
+
+        Returns ``ADMIN`` if the session is live and ``step_up_expires``
+        has not been reached, otherwise returns the session's original role.
+        Returns ``None`` for missing or expired sessions.
+        """
+        now = self._now
+        with self._lock:
+            result = self._lookup_unlocked(cookie_hex, now)
+            if result is None:
+                return None
+            _key, session = result
+            if session.step_up_expires > 0 and now < session.step_up_expires:
+                return Role.ADMIN
+            return session.role
+
+    def destroy(self, cookie_hex: str) -> None:
+        """Remove a session from the store."""
+        key = self._session_key(cookie_hex)
+        if key is None:
+            return
+        with self._lock:
+            self._sessions.pop(key, None)
+
+    def cleanup(self) -> int:
+        """Remove all expired sessions.  Returns the number removed."""
+        now = self._now
+        removed = 0
+        with self._lock:
+            expired = [
+                key
+                for key, session in self._sessions.items()
+                if self._expired_unlocked(session, now)
+            ]
+            for key in expired:
+                del self._sessions[key]
+                removed += 1
+        return removed

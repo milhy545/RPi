@@ -2,9 +2,12 @@
 
 import hashlib
 import json
+import random
 import stat
+import statistics as _stats
 import sys
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -332,3 +335,352 @@ def test_is_role_provisioned_admin_requires_admin(tmp_path: Path, monkeypatch: p
     assert store.is_role_provisioned(Role.BASIC)
     assert store.is_role_provisioned(Role.EXPERT)
     assert not store.is_role_provisioned(Role.ADMIN)
+
+
+# ---- SessionStore -----------------------------------------------------------
+
+
+def test_session_create_and_validate():
+    """Create Expert session, validate returns Expert role and immutable snapshot."""
+    store = auth.SessionStore()
+    token_hex, snapshot = store.create(Role.EXPERT)
+
+    assert len(token_hex) == 64  # 32 bytes -> 64 hex chars
+    assert isinstance(snapshot, auth.SessionSnapshot)
+    assert snapshot.role == Role.EXPERT
+    assert snapshot.created > 0
+    assert snapshot.last_seen > 0
+    assert len(snapshot.csrf_token) == 32  # 16 bytes -> 32 hex chars
+    assert snapshot.step_up_expires == 0.0
+
+    role, result = store.validate(token_hex)
+    assert role is Role.EXPERT
+    assert result is not None
+    assert result.role == Role.EXPERT
+    # last_seen was refreshed by validate
+    assert result.last_seen >= snapshot.last_seen
+    assert result.csrf_token == snapshot.csrf_token
+
+
+def test_session_validate_returns_none_for_bad_hex():
+    """bytes.fromhex failure returns (None, None) without error."""
+    store = auth.SessionStore()
+    assert store.validate("not-hex") == (None, None)
+
+
+def test_session_validate_returns_none_for_unknown_token():
+    """Non-existent token returns (None, None)."""
+    store = auth.SessionStore()
+    assert store.validate("a" * 64) == (None, None)
+
+
+def test_session_validate_empty_hex():
+    """Empty hex string returns (None, None) -- 0 bytes after decode, not 32."""
+    store = auth.SessionStore()
+    assert store.validate("") == (None, None)
+
+
+def test_session_validate_short_valid_hex():
+    """Valid hex that decodes to fewer than 32 bytes returns (None, None)."""
+    store = auth.SessionStore()
+    short = "aa" * 16  # 16 bytes, valid hex, wrong length
+    assert store.validate(short) == (None, None)
+
+
+def test_session_validate_oversized_valid_hex():
+    """Valid hex that decodes to more than 32 bytes returns (None, None)."""
+    store = auth.SessionStore()
+    oversized = "bb" * 64  # 64 bytes, valid hex, wrong length
+    assert store.validate(oversized) == (None, None)
+
+
+def test_session_expiry_injected_clock():
+    """Advance injected clock past TTL, validate returns None."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    fake_time[0] += auth.SessionStore.EXPERT_TTL + 1.0
+
+    assert store.validate(token_hex) == (None, None)
+
+
+def test_session_validate_admin_ttl():
+    """Admin session respects ADMIN_TTL (30 min)."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.ADMIN)
+
+    fake_time[0] += auth.SessionStore.ADMIN_TTL + 1.0
+
+    assert store.validate(token_hex) == (None, None)
+
+
+def test_session_sliding_window():
+    """Validate refreshes last_seen, keeping session alive past original TTL."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    # Advance most of the way through TTL
+    fake_time[0] += auth.SessionStore.EXPERT_TTL - 10.0
+
+    role, snapshot = store.validate(token_hex)
+    assert role is Role.EXPERT
+    assert snapshot is not None
+    # last_seen was refreshed
+    assert snapshot.last_seen == fake_time[0]
+
+    # Now advance another chunk -- still valid because sliding window reset
+    fake_time[0] += auth.SessionStore.EXPERT_TTL - 10.0
+
+    role, snapshot = store.validate(token_hex)
+    assert role is Role.EXPERT
+    assert snapshot is not None
+
+    # Advance past TTL from last refresh
+    fake_time[0] += auth.SessionStore.EXPERT_TTL + 1.0
+
+    assert store.validate(token_hex) == (None, None)
+
+
+def test_session_step_up():
+    """step_up on live Expert session makes effective_role return Admin."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    assert store.step_up(token_hex) is True
+
+    # validate still returns the original role
+    role, snapshot = store.validate(token_hex)
+    assert role is Role.EXPERT
+    assert snapshot is not None
+    assert snapshot.step_up_expires == fake_time[0] + auth.SessionStore.STEPUP_TTL
+
+    # effective_role reflects the step-up
+    assert store.effective_role(token_hex) is Role.ADMIN
+
+
+def test_session_step_up_expiry():
+    """Advance past STEPUP_TTL, effective_role reverts to Expert."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+    store.step_up(token_hex)
+
+    fake_time[0] += auth.SessionStore.STEPUP_TTL + 1.0
+
+    # Session itself is still alive (Expert TTL >> STEPUP_TTL)
+    role, snapshot = store.validate(token_hex)
+    assert role is Role.EXPERT
+    assert snapshot is not None
+
+    # But step-up has expired
+    effective = store.effective_role(token_hex)
+    assert effective is Role.EXPERT
+
+
+def test_session_step_up_non_expert_fails():
+    """step_up on Admin session returns False (only Expert can step up)."""
+    store = auth.SessionStore()
+    token_hex, _snapshot = store.create(Role.ADMIN)
+
+    assert store.step_up(token_hex) is False
+
+
+def test_session_step_up_on_expired_session():
+    """step_up on expired Expert session returns False."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    fake_time[0] += auth.SessionStore.EXPERT_TTL + 1.0
+
+    assert store.step_up(token_hex) is False
+
+
+def test_session_destroy():
+    """Validate after destroy returns None."""
+    store = auth.SessionStore()
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+    store.destroy(token_hex)
+
+    assert store.validate(token_hex) == (None, None)
+
+
+def test_session_destroy_bad_hex():
+    """destroy with bad hex does not raise."""
+    store = auth.SessionStore()
+    store.destroy("not-hex")  # must not raise
+
+
+def test_session_cleanup():
+    """cleanup removes expired sessions and returns count."""
+    store = auth.SessionStore()
+    fake_time = [1_000_000.0]
+    store._time_fn = lambda: fake_time[0]
+
+    # Create Expert sessions early
+    exp_tokens = [store.create(Role.EXPERT)[0] for _ in range(3)]
+
+    # Advance past most of Expert TTL, then create Admin sessions
+    fake_time[0] += auth.SessionStore.EXPERT_TTL - 100.0
+    adm_tokens = [store.create(Role.ADMIN)[0] for _ in range(2)]
+
+    # None expired yet (Expert barely alive, Admin fresh)
+    assert store.cleanup() == 0
+
+    # Advance far enough that Expert expires but Admin stays within TTL
+    fake_time[0] += 200.0  # Expert: (28800 - 100) + 200 = 28900 > 28800
+    # Admin: 200 < 1800, still alive
+
+    # 3 Expert sessions expired, 2 Admin still alive
+    assert store.cleanup() == 3
+
+    # Now validate the survivors
+    for t in adm_tokens:
+        role, _snap = store.validate(t)
+        assert role is Role.ADMIN
+
+    # Advance past Admin TTL
+    fake_time[0] += auth.SessionStore.ADMIN_TTL + 1.0
+
+    assert store.cleanup() == 2
+
+    for t in exp_tokens:
+        assert store.validate(t) == (None, None)
+
+
+def test_session_create_admin():
+    """Create Admin session, validate returns Admin."""
+    store = auth.SessionStore()
+
+    token_hex, snapshot = store.create(Role.ADMIN)
+    assert snapshot.role == Role.ADMIN
+
+    role, result = store.validate(token_hex)
+    assert role is Role.ADMIN
+
+
+def test_session_effective_role_nonexistent():
+    """effective_role on unknown/bad token returns None."""
+    store = auth.SessionStore()
+
+    assert store.effective_role("a" * 64) is None
+    assert store.effective_role("not-hex") is None
+
+
+def test_session_snapshot_immutable():
+    """Returned SessionSnapshot cannot be mutated (frozen dataclass)."""
+    store = auth.SessionStore()
+    _token, snapshot = store.create(Role.EXPERT)
+
+    with pytest.raises(AttributeError):
+        snapshot.role = Role.ADMIN  # type: ignore[misc]
+
+
+def test_session_digest_only_storage():
+    """Raw token is never stored server-side; only SHA-256 digest is kept."""
+    store = auth.SessionStore()
+
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    # The raw token bytes should not appear in _sessions
+    raw_bytes = bytes.fromhex(token_hex)
+    digest = hashlib.sha256(raw_bytes).hexdigest()
+
+    with store._lock:
+        assert digest in store._sessions
+        # The raw token must NOT be a key
+        assert raw_bytes.hex() not in store._sessions
+
+
+def test_session_concurrent_create_validate_destroy():
+    """20 threads performing random create/validate/destroy without corruption."""
+    store = auth.SessionStore()
+    barrier = threading.Barrier(20)
+    errors: list[BaseException] = []
+    error_lock = threading.Lock()
+
+    def worker(seed: int) -> None:
+        try:
+            rng = random.Random(seed)
+            my_tokens: list[str] = []
+            barrier.wait()
+            for _ in range(30):
+                op = rng.randint(0, 2)
+                if op == 0:
+                    role = Role.ADMIN if rng.randint(0, 1) else Role.EXPERT
+                    t, _s = store.create(role)
+                    my_tokens.append(t)
+                elif op == 1 and my_tokens:
+                    store.validate(rng.choice(my_tokens))
+                elif op == 2 and my_tokens:
+                    idx = rng.randint(0, len(my_tokens) - 1)
+                    store.destroy(my_tokens.pop(idx))
+        except BaseException as exc:
+            with error_lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=15)
+
+    assert not errors, f"Errors: {errors}"
+    assert not any(t.is_alive() for t in threads)
+
+
+def test_session_benchmark_on_rpi(capsys: pytest.CaptureFixture[str]):
+    """Run 1000 validate calls; report median/p95 for manual review.
+
+    On target RPi hardware this should report median <= 1 ms, p95 <= 5 ms.
+    On development hardware absolute values vary; this test prints results
+    without asserting strict thresholds to avoid flakiness.
+    """
+    store = auth.SessionStore()
+    token_hex, _snapshot = store.create(Role.EXPERT)
+
+    # Warm-up
+    store.validate(token_hex)
+
+    timings: list[float] = []
+    for _ in range(1000):
+        start = time.perf_counter()
+        store.validate(token_hex)
+        elapsed = time.perf_counter() - start
+        timings.append(elapsed)
+
+    timings.sort()
+    median_s = _stats.median(timings)
+    p95_s = timings[int(len(timings) * 0.95)]
+
+    print("\n  Session validation benchmark (1000 calls):")
+    print(f"  median = {median_s * 1000:.3f} ms  p95 = {p95_s * 1000:.3f} ms")
+    print("  RPi target: median <= 1 ms, p95 <= 5 ms")
+
+    # Sanity guard -- even on slow development hardware, a single sha256
+    # digest + locked dict lookup must never take > 500 ms per call.
+    assert p95_s < 0.5, (
+        f"p95={p95_s * 1000:.1f} ms exceeds 500 ms sanity ceiling -- "
+        f"check for accidental PBKDF / I/O in hot path"
+    )
+
+    # Captured for separate evidence output
+    captured = capsys.readouterr()
+    assert "median" in captured.out

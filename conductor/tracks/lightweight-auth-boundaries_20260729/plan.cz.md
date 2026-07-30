@@ -100,7 +100,7 @@
 
 ## Fáze 3: Session Store
 
-- [ ] Úkol: Implementovat třídu `SessionStore` s `threading.Lock` pro
+- [x] Úkol: Implementovat třídu `SessionStore` s `threading.Lock` pro
   všechny operace na dict (non-nested získávání, privátní unlocked helpery):
   - `create(role: Role) -> tuple[str, SessionSnapshot]`: generuje
     `token = secrets.token_bytes(32)`, počítá `key = sha256(token)`,
