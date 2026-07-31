@@ -607,12 +607,20 @@ class TestExpertAdminGates:
         raw_token = "test-api-key-123"
         isolated_stores["auth_store"].create_api_key(raw_token, Role.EXPERT, "test-label")
         
-        # Use Bearer token to access Expert mutating route - no CSRF needed
-        status, body, _ = _get(
-            f"{auth_server}/audio/default-sink?name=test",
-            headers={"Authorization": f"Bearer {raw_token}"}
-        )
-        assert status == 200
+        # Temporarily replace the real handler with a deterministic one
+        import rpi_dashboard.api.routes as routes
+        original = routes.ROUTES["/audio/default-sink"]
+        routes.ROUTES["/audio/default-sink"] = lambda query: {"ok": True}
+        try:
+            # Use Bearer token to access Expert mutating route - no CSRF needed
+            status, body, _ = _get(
+                f"{auth_server}/audio/default-sink?name=test",
+                headers={"Authorization": f"Bearer {raw_token}"}
+            )
+            assert status == 200
+            assert body == {"ok": True}
+        finally:
+            routes.ROUTES["/audio/default-sink"] = original
 
     def test_external_plain_http_bearer_rejected_before_validation(self):
         """External plain HTTP with Bearer token rejected before credential validation.
