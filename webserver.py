@@ -2,7 +2,7 @@
 """RPi-TV v4.2 — fixed title, no black screen, fast CEC."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
-import json, os, re, socket, sys, subprocess, time, stat, ssl, shutil, secrets
+import json, os, re, socket, sys, subprocess, time, stat, ssl, shutil, secrets, http.cookies
 import asyncio, threading
 from typing import Dict
 try:
@@ -24,6 +24,30 @@ from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.services import return_service
 from rpi_dashboard.services import terminal as terminal_service
 from rpi_dashboard.services import audio_routing as audio_routing_service
+from rpi_dashboard.auth import (
+    AuthStore,
+    SessionStore,
+    Role,
+    LoginAttemptLimiter,
+    classify_request,
+    validate_basic_csrf,
+    validate_csrf,
+    ENDPOINT_ROLES,
+    RoutePolicy,
+    _PROTECTED_PREFIXES,
+)
+import rpi_dashboard.auth as auth
+from rpi_dashboard.api.middleware import (
+    is_https,
+    is_loopback,
+    credential_transport_allowed,
+    extract_session_cookie,
+    extract_bearer_role,
+    session_cookie_value,
+    csrf_cookie_value,
+    clear_session_cookie_value,
+    clear_csrf_cookie_value,
+)
 # URL metadata cache for faster playback
 URL_CACHE_FILE = os.path.join(os.path.expanduser("~"), "rpi-dashboard", "url-cache.json")
 URL_CACHE_TTL = 3600 * 24  # 24 hours
@@ -33,6 +57,13 @@ HTTPS_KEY_FILE = os.path.join(HTTPS_CERT_DIR, "webui.key")
 HTTPS_SAN_FILE = os.path.join(HTTPS_CERT_DIR, "webui.san")
 # Terminal WebSocket authentication token (generated at startup)
 WS_AUTH_TOKEN = secrets.token_hex(32)
+
+# Auth stores (initialized at module load)
+AUTH_STORE_PATH = os.path.join(os.path.expanduser("~/.config/rpi-dashboard"), "auth.json")
+auth_store = AuthStore(AUTH_STORE_PATH)
+session_store = SessionStore()
+login_limiter = LoginAttemptLimiter()
+
 KODI_H, KODI_P = KODI_HOST, KODI_PORT
 MSOCK = MPV_SOCKET
 
@@ -758,7 +789,7 @@ def get_audio_matrix():
 def audio_matrix_link(out_n, in_n, state):
     import subprocess
     is_dlna = "-uuid:" in in_n
-    
+
     if is_dlna:
         if state == "1":
             r = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
@@ -776,7 +807,7 @@ def audio_matrix_link(out_n, in_n, state):
                     subprocess.run(["pactl", "unload-module", mod_id])
                     unloaded = True
             return {"ok": True, "out": "unloaded" if unloaded else "not found"}
-            
+
     cmd = ["pw-link", out_n, in_n] if state == "1" else ["pw-link", "-d", out_n, in_n]
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=1.5)
@@ -825,7 +856,7 @@ def audio_set_volume(kind, name, volume):
     vol=max(0, min(150, vol))
     cmd=["pactl","set-"+kind+"-volume",name,str(vol)+"%"]
     r=_run(cmd, t=5)
-    
+
     if kind == "sink":
         try:
             sinks = _run(["pactl", "list", "short", "sinks"]).stdout.splitlines()
@@ -859,7 +890,7 @@ def audio_set_default(name):
         return {"ok": False, "error": "name required"}
     # Use default timeout (5s) by not passing t
     r = _run(["pactl", "set-default-sink", name])
-    
+
     # Forcefully move all active audio streams to the new sink
     try:
         inputs = _run(["pactl", "list", "short", "sink-inputs"]).stdout.splitlines()
@@ -869,7 +900,7 @@ def audio_set_default(name):
                 _run(["pactl", "move-sink-input", parts[0], name])
     except Exception:
         pass
-        
+
     return {"ok": r.returncode == 0, "name": name, "out": (r.stdout + r.stderr).strip()[:200]}
 
 def _apply_dlna_delay():
@@ -2106,12 +2137,17 @@ class H(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
 
-    def sj(self,c,o):
-        d=json.dumps(o,ensure_ascii=False).encode()
-        self.send_response(c);self.send_header("Content-Type","application/json")
-        self.send_header("Content-Length",str(len(d)))
+    def sj(self, c, o, extra_headers=None):
+        d = json.dumps(o, ensure_ascii=False).encode()
+        self.send_response(c)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(d)))
         self._send_cors_headers()
-        self.end_headers();self.wfile.write(d)
+        if extra_headers:
+            for name, value in extra_headers:
+                self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(d)
 
     def st(self,c,b,ct="text/html;charset=utf-8"):
         d=b.encode()
@@ -2119,6 +2155,238 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length",str(len(d)))
         self._send_cors_headers()
         self.end_headers();self.wfile.write(d)
+
+    # ─── Auth Gate ──────────────────────────────────────────────────
+    def _run_auth_gate(self, path: str, method: str) -> tuple[bool, dict | None]:
+        """Run the authentication gate.
+
+        Returns (True, None) if the request may proceed.
+        Returns (False, error_response) if the request should be rejected,
+        where error_response is a dict with 'code' and 'body' keys.
+        """
+        client_ip = self.client_address[0]
+
+        # Normalize headers to lowercase dict for case-insensitive lookup
+        headers: dict[str, str] = {key.lower(): value for key, value in self.headers.items()}
+
+        # 1. Syntactic presence of credentials (no store validation yet)
+        cookie_present = extract_session_cookie(self) is not None
+        auth_header = headers.get("authorization", "")
+        bearer_present = False
+        if auth_header:
+            parts = auth_header.strip().split()
+            if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1]:
+                bearer_present = True
+
+        # 2. Credential transport check: external plain HTTP must not carry credentials
+        tls = is_https(self)
+        loopback = is_loopback(self)
+        if not credential_transport_allowed(tls, loopback) and (cookie_present or bearer_present):
+            return False, {"code": 403, "body": {"error": "Credentials not allowed on plain HTTP"}}
+
+        # 3. Classify the request
+        session = None
+        session_snap = None
+        if cookie_present:
+            session_hex = extract_session_cookie(self)
+            if session_hex:
+                role, session_snap = session_store.validate(session_hex)
+                if role is not None:
+                    session = session_snap
+
+        effective_role = None
+        if session is not None:
+            effective_role = session_store.effective_role(extract_session_cookie(self) or "")
+
+        # 4. Bearer token validation (only after transport check passed)
+        bearer_role = None
+        if bearer_present:
+            bearer_role = extract_bearer_role(self, auth_store)
+            if bearer_role is not None:
+                effective_role = bearer_role
+
+        required_role, error_code = classify_request(path, method, session, auth_store, effective_role=effective_role)
+        if error_code is not None:
+            return False, {"code": error_code, "body": {"error": self._error_message(error_code, required_role)}}
+
+        # 5. CSRF checks for mutating routes
+        policy = ENDPOINT_ROLES.get((path, method.upper()))
+        if policy is None and any(path.startswith(p) for p in _PROTECTED_PREFIXES):
+            # Protected prefix fallback to Admin
+            policy = RoutePolicy(Role.ADMIN, True)
+
+        if policy is not None and policy.mutating:
+            if policy.required_role is None:
+                # Basic mutating route: always requires Basic CSRF
+                if not validate_basic_csrf(path, method, headers, loopback):
+                    return False, {"code": 403, "body": {"error": "CSRF validation failed"}}
+            else:
+                # Expert/Admin mutating route
+                # Valid Bearer skips CSRF entirely after transport validation
+                if bearer_role is not None:
+                    pass  # Bearer auth is sufficient
+                else:
+                    # Session-based auth requires full CSRF
+                    if session is None or session_snap is None:
+                        return False, {"code": 401, "body": {"error": "Session required for CSRF"}}
+                    x_csrf = headers.get("x-csrf-token")
+                    rpi_csrf = headers.get("cookie", "")
+                    cookie_obj = http.cookies.SimpleCookie()
+                    cookie_obj.load(rpi_csrf)
+                    csrf_morsel = cookie_obj.get("rpi_csrf")
+                    csrf_cookie = csrf_morsel.value if csrf_morsel else None
+                    origin = headers.get("origin")
+                    referer = headers.get("referer")
+                    sec_fetch_site = headers.get("sec-fetch-site")
+                    if not validate_csrf(
+                        session_snap,
+                        x_csrf,
+                        csrf_cookie,
+                        origin,
+                        referer,
+                        sec_fetch_site,
+                        loopback,
+                    ):
+                        return False, {"code": 403, "body": {"error": "CSRF validation failed"}}
+
+        return True, None
+
+    def _error_message(self, code: int, role) -> str:
+        messages = {
+            401: "Authentication required",
+            403: "Forbidden",
+            405: "Method not allowed",
+            410: "Gone",
+            503: f"Role {role.name if role else 'unknown'} not provisioned",
+        }
+        return messages.get(code, "Error")
+
+    def _handle_auth_login(self, body: str):
+        """Handle POST /auth/login."""
+        # Rate limit: 5/min/IP (using login_limiter)
+        client_ip = self.client_address[0]
+        if not login_limiter.check_and_record(client_ip):
+            self.sj(429, {"error": "Too many login attempts"})
+            return
+
+        try:
+            data = json.loads(body)
+        except Exception:
+            self.sj(400, {"error": "Invalid JSON"})
+            return
+
+        password = data.get("password", "")
+        role_str = data.get("role", "").lower()
+        if role_str not in ("expert", "admin"):
+            self.sj(400, {"error": "Invalid role; must be 'expert' or 'admin'"})
+            return
+
+        # Verify only the requested role
+        if role_str == "expert":
+            expert_hash = auth_store.get_expert_hash()
+            if expert_hash is None:
+                self.sj(503, {"error": "Expert role not provisioned"})
+                return
+            if not auth.verify_password(password, expert_hash):
+                self.sj(401, {"error": "Invalid password"})
+                return
+            role = Role.EXPERT
+        else:
+            admin_hash = auth_store.get_admin_hash()
+            if admin_hash is None:
+                self.sj(503, {"error": "Admin role not provisioned"})
+                return
+            if not auth.verify_password(password, admin_hash):
+                self.sj(401, {"error": "Invalid password"})
+                return
+            role = Role.ADMIN
+
+        # Create session and set cookies
+        token_hex, snapshot = session_store.create(role)
+        tls = is_https(self)
+        max_age = SessionStore.EXPERT_TTL if role == Role.EXPERT else SessionStore.ADMIN_TTL
+        session_cookie = session_cookie_value(token_hex, max_age, tls)
+        csrf_cookie = csrf_cookie_value(snapshot.csrf_token, tls)
+        self.sj(200, {"ok": True, "role": role.name.lower()},
+                extra_headers=[("Set-Cookie", session_cookie), ("Set-Cookie", csrf_cookie)])
+
+    def _handle_auth_logout(self):
+        """Handle POST /auth/logout."""
+        session_hex = extract_session_cookie(self)
+        if session_hex:
+            session_store.destroy(session_hex)
+        tls = is_https(self)
+        clear_session = clear_session_cookie_value(tls)
+        clear_csrf = clear_csrf_cookie_value(tls)
+        self.sj(200, {"ok": True},
+                extra_headers=[("Set-Cookie", clear_session), ("Set-Cookie", clear_csrf)])
+
+    def _handle_auth_step_up(self, body: str):
+        """Handle POST /auth/step-up."""
+        session_hex = extract_session_cookie(self)
+        if not session_hex:
+            self.sj(401, {"error": "Session required"})
+            return
+
+        # Verify admin password
+        try:
+            data = json.loads(body)
+        except Exception:
+            self.sj(400, {"error": "Invalid JSON"})
+            return
+
+        password = data.get("password", "")
+        admin_hash = auth_store.get_admin_hash()
+        if admin_hash is None:
+            self.sj(503, {"error": "Admin role not provisioned"})
+            return
+        if not auth.verify_password(password, admin_hash):
+            self.sj(401, {"error": "Invalid admin password"})
+            return
+
+        # Step up the session
+        if not session_store.step_up(session_hex):
+            self.sj(401, {"error": "Session not eligible for step-up"})
+            return
+
+        # Update cookies with new session snapshot
+        role, snapshot = session_store.validate(session_hex)
+        if snapshot:
+            tls = is_https(self)
+            max_age = SessionStore.EXPERT_TTL if role == Role.EXPERT else SessionStore.ADMIN_TTL
+            session_cookie = session_cookie_value(session_hex, max_age, tls)
+            csrf_cookie = csrf_cookie_value(snapshot.csrf_token, tls)
+            self.sj(200, {"ok": True, "role": "admin"},
+                    extra_headers=[("Set-Cookie", session_cookie), ("Set-Cookie", csrf_cookie)])
+            return
+
+        self.sj(200, {"ok": True, "role": "admin"})
+
+    def _handle_auth_whoami(self):
+        """Handle GET /auth/whoami."""
+        session_hex = extract_session_cookie(self)
+        bearer_role = extract_bearer_role(self, auth_store)
+
+        authenticated = False
+        role_name = "basic"
+
+        if session_hex:
+            role, snapshot = session_store.validate(session_hex)
+            if role is not None:
+                authenticated = True
+                effective = session_store.effective_role(session_hex)
+                role_name = effective.name.lower()
+        elif bearer_role is not None:
+            authenticated = True
+            role_name = bearer_role.name.lower()
+
+        setup_required = not auth_store.is_provisioned()
+        self.sj(200, {
+            "authenticated": authenticated,
+            "role": role_name,
+            "setup_required": setup_required,
+        })
+
     def do_GET(self):
         p=urlparse(self.path);q=parse_qs(p.query);path=p.path
 
@@ -2138,6 +2406,16 @@ class H(BaseHTTPRequestHandler):
             if not _check_rate_limit(self.client_address[0]):
                 self.send_error(429, "Rate limited")
                 return
+
+        # Auth gate (after IP allowlist, before route handling)
+        allowed, err = self._run_auth_gate(path, "GET")
+        if not allowed:
+            self.sj(err["code"], err["body"])
+            return
+
+        # Auth whoami endpoint
+        if path == "/auth/whoami":
+            return self._handle_auth_whoami()
 
         # Placeholder modes endpoint
         if path == "/modes":
@@ -2677,14 +2955,33 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         # IP allowlist check for POST requests
         if not _is_allowed_ip(self.client_address[0]):
-            self.sj(403, {"error": "Forbidden – IP not allowed"})
+            self.sj(403, {"error": "Forbidden - IP not allowed"})
             return
-        # Rate limit check for POST requests
-        if not _check_rate_limit(self.client_address[0]):
-            self.send_error(429, "Rate limited")
+
+        # Skip global rate limiter for auth endpoints (they have their own limiters)
+        auth_endpoints = {"/auth/login", "/auth/logout", "/auth/step-up"}
+        if self.path not in auth_endpoints:
+            if not _check_rate_limit(self.client_address[0]):
+                self.send_error(429, "Rate limited")
+                return
+
+        # Auth gate (after IP allowlist, before route handling)
+        allowed, err = self._run_auth_gate(self.path, "POST")
+        if not allowed:
+            self.sj(err["code"], err["body"])
             return
+
         ln=int(self.headers.get("Content-Length","0"))
         body=self.rfile.read(ln).decode()
+
+        # Auth endpoints
+        if self.path == "/auth/login":
+            return self._handle_auth_login(body)
+        if self.path == "/auth/logout":
+            return self._handle_auth_logout()
+        if self.path == "/auth/step-up":
+            return self._handle_auth_step_up(body)
+
         if self.path == "/wifi/connect":
             try:
                 data = json.loads(body)

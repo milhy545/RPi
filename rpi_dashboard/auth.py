@@ -609,6 +609,11 @@ ENDPOINT_ROLES: dict[tuple[str, str], RoutePolicy] = {
     # -- Admin read --
     ("/system/logs", "GET"): RoutePolicy(Role.ADMIN, False),
     ("/ws/token", "GET"): RoutePolicy(Role.ADMIN, False),
+    # -- Auth endpoints --
+    ("/auth/login", "POST"): RoutePolicy(None, True),
+    ("/auth/whoami", "GET"): RoutePolicy(None, False),
+    ("/auth/logout", "POST"): RoutePolicy(Role.EXPERT, True),
+    ("/auth/step-up", "POST"): RoutePolicy(Role.EXPERT, True),
 }
 
 # -- Helpers ----------------------------------------------------------------

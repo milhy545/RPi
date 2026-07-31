@@ -6,7 +6,7 @@ import http.cookies
 import ssl
 from ipaddress import ip_address, ip_network
 from time import monotonic
-from typing import TYPE_CHECKING, Mapping, MutableMapping, Optional, Protocol, Sequence
+from typing import TYPE_CHECKING, Any, MutableMapping, Optional, Protocol, Sequence
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 
 class _Request(Protocol):
-    """Minimal request protocol: headers is a mapping with get()."""
-    headers: Mapping[str, str]
+    """Minimal request protocol with headers collection."""
+    @property
+    def headers(self) -> Any: ...
 
 
 def is_allowed_ip(client_ip: str, allowed_subnets: Sequence[str]) -> bool:
@@ -128,6 +129,16 @@ def extract_bearer_role(request: _Request, auth_store: "AuthStore") -> "Role | N
     return auth_store.get_api_key_role(token)
 
 
+def session_cookie_value(token_hex: str, max_age: int, is_tls: bool) -> str:
+    """Return the session cookie value string (without emitting it)."""
+    cookie = (
+        f"rpi_session={token_hex}; HttpOnly; SameSite=Lax; Path=/; Max-Age={max_age}"
+    )
+    if is_tls:
+        cookie += "; Secure"
+    return cookie
+
+
 def set_session_cookie(
     handler,
     token_hex: str,
@@ -135,12 +146,23 @@ def set_session_cookie(
     is_tls: bool,
 ) -> None:
     """Set session cookie: HttpOnly, SameSite=Lax, Path=/, Secure only on TLS."""
-    cookie = (
-        f"rpi_session={token_hex}; HttpOnly; SameSite=Lax; Path=/; Max-Age={max_age}"
-    )
+    handler.send_header("Set-Cookie", session_cookie_value(token_hex, max_age, is_tls))
+
+
+def clear_session_cookie_value(is_tls: bool) -> str:
+    """Return the session cookie clearing value string."""
+    cookie = "rpi_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0"
     if is_tls:
         cookie += "; Secure"
-    handler.send_header("Set-Cookie", cookie)
+    return cookie
+
+
+def csrf_cookie_value(csrf_hex: str, is_tls: bool) -> str:
+    """Return the CSRF cookie value string (without emitting it)."""
+    cookie = f"rpi_csrf={csrf_hex}; SameSite=Strict; Path=/"
+    if is_tls:
+        cookie += "; Secure"
+    return cookie
 
 
 def set_csrf_cookie(
@@ -149,7 +171,12 @@ def set_csrf_cookie(
     is_tls: bool,
 ) -> None:
     """Set CSRF cookie: non-HttpOnly, SameSite=Strict, Path=/, Secure only on TLS."""
-    cookie = f"rpi_csrf={csrf_hex}; SameSite=Strict; Path=/"
+    handler.send_header("Set-Cookie", csrf_cookie_value(csrf_hex, is_tls))
+
+
+def clear_csrf_cookie_value(is_tls: bool) -> str:
+    """Return the CSRF cookie clearing value string."""
+    cookie = "rpi_csrf=; SameSite=Strict; Path=/; Max-Age=0"
     if is_tls:
         cookie += "; Secure"
-    handler.send_header("Set-Cookie", cookie)
+    return cookie

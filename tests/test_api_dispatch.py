@@ -7,6 +7,7 @@ import time
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -14,8 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import webserver
 from rpi_dashboard.api import routes
+from rpi_dashboard.auth import AuthStore, Role
 from rpi_dashboard.services.bluetooth.fake import FakeBluetoothBackend
 from rpi_dashboard.services.bluetooth.service import set_backend_for_tests
+
+TEST_API_TOKEN = "test-api-token-dispatch-tests-123"
 
 
 WEBUI_GET_ENDPOINTS = {
@@ -103,16 +107,33 @@ WEBUI_GET_ENDPOINTS = {
 
 
 @pytest.fixture()
-def server_url():
+def server_url(tmp_path):
+    # Create isolated AuthStore with test API key and Expert provisioned
+    auth_path = tmp_path / "auth.json"
+    store = AuthStore(auth_path)
+
+    # Mock PBKDF2 calibration for fast tests
+    with patch("rpi_dashboard.auth.calibrate_pbkdf2", return_value=100_000):
+        store.set_expert("dispatch-test-password")
+        store.create_api_key(TEST_API_TOKEN, Role.EXPERT, "dispatch-tests")
+
     server = ThreadingHTTPServer(("127.0.0.1", 0), webserver.H)
     host, port = server.server_address
     thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://{host}:{port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
+    with patch("webserver.auth_store", store):
+        thread.start()
+        try:
+            yield f"http://{host}:{port}"
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+
+
+def _authed_request(url, token):
+    """Build urllib.request.Request with Authorization: Bearer <token>."""
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("Authorization", f"Bearer {token}")
+    return req
 
 
 def test_webserver_delegates_registered_get_route(server_url):
@@ -224,10 +245,8 @@ def test_legacy_route_telemetry_records_hits():
 def test_legacy_bt_connect_uses_adapter_aware_resolver(server_url):
     set_backend_for_tests(FakeBluetoothBackend.with_overlapping_remote())
     try:
-        with urllib.request.urlopen(
-            server_url + "/bt/connect?mac=DD:EE:FF:00:00:09",
-            timeout=5,
-        ) as response:
+        req = _authed_request(server_url + "/bt/connect?mac=DD:EE:FF:00:00:09", TEST_API_TOKEN)
+        with urllib.request.urlopen(req, timeout=5) as response:
             payload = json.loads(response.read().decode())
     finally:
         set_backend_for_tests(None)
@@ -243,7 +262,8 @@ def test_webserver_delegates_migrated_audio_route(server_url):
     original = routes.ROUTES["/audio/bt"]
     routes.ROUTES["/audio/bt"] = handler
     try:
-        with urllib.request.urlopen(server_url + "/audio/bt", timeout=5) as response:
+        req = _authed_request(server_url + "/audio/bt", TEST_API_TOKEN)
+        with urllib.request.urlopen(req, timeout=5) as response:
             assert response.status == 200
             payload = json.loads(response.read().decode())
     finally:
@@ -312,7 +332,8 @@ def test_webserver_delegates_migrated_cec_route(server_url):
     time.sleep(1.1)
     routes.ROUTES["/cec/send"] = lambda query: {"ok": True, "route": query["_route"][0], "cmd": query["c"][0]}
     try:
-        with urllib.request.urlopen(server_url + "/cec/send?c=standby%200", timeout=5) as response:
+        req = _authed_request(server_url + "/cec/send?c=standby%200", TEST_API_TOKEN)
+        with urllib.request.urlopen(req, timeout=5) as response:
             assert response.status == 200
             payload = json.loads(response.read().decode())
     finally:
@@ -342,7 +363,8 @@ def test_webserver_delegates_migrated_dlna_routes(server_url):
     routes.ROUTES["/dlna/select"] = lambda query: {"ok": True, "route": query["_route"][0], "selected": query["name"][0]}
     routes.ROUTES["/dlna/scan"] = lambda query: {"ok": True, "route": query["_route"][0], "count": 1}
     try:
-        with urllib.request.urlopen(server_url + "/dlna/select?name=Renderer&location=http%3A%2F%2Fexample", timeout=5) as response:
+        req = _authed_request(server_url + "/dlna/select?name=Renderer&location=http%3A%2F%2Fexample", TEST_API_TOKEN)
+        with urllib.request.urlopen(req, timeout=5) as response:
             assert response.status == 200
             select_payload = json.loads(response.read().decode())
         time.sleep(1.1)
