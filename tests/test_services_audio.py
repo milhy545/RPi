@@ -68,8 +68,8 @@ def test_audio_set_volume_clamp():
 def test_audio_set_latency():
     """Test setting audio latency."""
     from rpi_dashboard.services.audio import audio_set_latency
-    with patch("rpi_dashboard.services.audio._save_audio_latency") as mock_save:
-        with patch("rpi_dashboard.services.audio._apply_dlna_delay"):
+    with patch("rpi_dashboard.services.audio.latency._save_audio_latency") as mock_save:
+        with patch("rpi_dashboard.services.audio.latency._apply_dlna_delay"):
             result = audio_set_latency("dlna_output_offset_ms", 100)
             assert result["ok"] is True
             mock_save.assert_called_once()
@@ -187,8 +187,8 @@ def test_audio_multi_output_requires_two_bluetooth_sinks():
     """A combine sink must never silently collapse to one physical output."""
     from rpi_dashboard.services.audio import audio_multi_output
 
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=["bluez_output.one.1"]):
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=["bluez_output.one.1"]):
         result = audio_multi_output("start")
 
     assert result["ok"] is False
@@ -201,11 +201,11 @@ def test_audio_multi_output_creates_combined_sink_and_selects_it():
 
     sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
     run_result = MagicMock(returncode=0, stdout="77\n", stderr="")
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
-         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=([], [])), \
-         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}) as status, \
-         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio.multi_output._attach_bluetooth_inputs", return_value=([], [])), \
+         patch("rpi_dashboard.services.audio.multi_output._multi_output_status", return_value={"ok": True, "active": True}) as status, \
+         patch("rpi_dashboard.services.audio.multi_output._run", return_value=run_result) as run:
         result = audio_multi_output("start")
 
     assert result["ok"] is True
@@ -228,11 +228,11 @@ def test_audio_multi_output_sync_is_idempotent_and_attaches_inputs():
     sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
     module = {"id": "77", "slaves": sinks}
     run_result = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=module), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
-         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=(["bluez_input.phone.0"], [])), \
-         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}), \
-         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", return_value=module), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio.multi_output._attach_bluetooth_inputs", return_value=(["bluez_input.phone.0"], [])), \
+         patch("rpi_dashboard.services.audio.multi_output._multi_output_status", return_value={"ok": True, "active": True}), \
+         patch("rpi_dashboard.services.audio.multi_output._run", return_value=run_result) as run:
         result = audio_multi_output("sync")
 
     assert result["ok"] is True
@@ -249,11 +249,11 @@ def test_audio_multi_output_stop_restores_a_physical_sink():
     sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
     module = {"id": "77", "slaves": sinks}
     run_result = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", side_effect=[module, None]), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
-         patch("rpi_dashboard.services.audio._find_loopbacks", return_value=[]), \
-         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": False}), \
-         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", side_effect=[module, None]), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio.multi_output._find_loopbacks", return_value=[]), \
+         patch("rpi_dashboard.services.audio.multi_output._multi_output_status", return_value={"ok": True, "active": False}), \
+         patch("rpi_dashboard.services.audio.multi_output._run", return_value=run_result) as run:
         result = audio_multi_output("stop")
 
     assert result["ok"] is True
@@ -272,15 +272,15 @@ def test_audio_multi_output_reconcile_removes_stale_virtual_sink_but_keeps_inten
     }
     module = {"id": "77", "slaves": intent["slaves"]}
     run_result = MagicMock(returncode=0, stdout="", stderr="")
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=module), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=[]), \
-         patch("rpi_dashboard.services.audio._load_multi_output_intent", return_value=intent), \
-         patch("rpi_dashboard.services.audio._find_loopbacks", return_value=[]), \
-         patch("rpi_dashboard.services.audio._physical_fallback_sink", return_value="alsa_output.hdmi"), \
-         patch("rpi_dashboard.services.audio._get_default_sink", return_value=MULTI_OUTPUT_SINK), \
-         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": False}), \
-         patch("rpi_dashboard.services.audio._save_multi_output_intent") as save, \
-         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", return_value=module), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=[]), \
+         patch("rpi_dashboard.services.audio.multi_output._load_multi_output_intent", return_value=intent), \
+         patch("rpi_dashboard.services.audio.multi_output._find_loopbacks", return_value=[]), \
+         patch("rpi_dashboard.services.audio.multi_output._physical_fallback_sink", return_value="alsa_output.hdmi"), \
+         patch("rpi_dashboard.services.audio.state._get_default_sink", return_value=MULTI_OUTPUT_SINK), \
+         patch("rpi_dashboard.services.audio.multi_output._multi_output_status", return_value={"ok": True, "active": False}), \
+         patch("rpi_dashboard.services.audio.multi_output._save_multi_output_intent") as save, \
+         patch("rpi_dashboard.services.audio.multi_output._run", return_value=run_result) as run:
         result = audio_multi_output("reconcile")
 
     assert result["ok"] is True
@@ -300,13 +300,13 @@ def test_audio_multi_output_reconcile_restores_route_when_both_outputs_return():
     sinks = ["bluez_output.soundbar.1", "bluez_output.tibo.1"]
     intent = {"enabled": True, "slaves": sinks}
     run_result = MagicMock(returncode=0, stdout="77\n", stderr="")
-    with patch("rpi_dashboard.services.audio._find_multi_output_module", return_value=None), \
-         patch("rpi_dashboard.services.audio._bluetooth_output_sinks", return_value=sinks), \
-         patch("rpi_dashboard.services.audio._load_multi_output_intent", return_value=intent), \
-         patch("rpi_dashboard.services.audio._attach_bluetooth_inputs", return_value=([], [])), \
-         patch("rpi_dashboard.services.audio._multi_output_status", return_value={"ok": True, "active": True}), \
-         patch("rpi_dashboard.services.audio._save_multi_output_intent") as save, \
-         patch("rpi_dashboard.services.audio._run", return_value=run_result) as run:
+    with patch("rpi_dashboard.services.audio.multi_output._find_multi_output_module", return_value=None), \
+         patch("rpi_dashboard.services.audio.multi_output._bluetooth_output_sinks", return_value=sinks), \
+         patch("rpi_dashboard.services.audio.multi_output._load_multi_output_intent", return_value=intent), \
+         patch("rpi_dashboard.services.audio.multi_output._attach_bluetooth_inputs", return_value=([], [])), \
+         patch("rpi_dashboard.services.audio.multi_output._multi_output_status", return_value={"ok": True, "active": True}), \
+         patch("rpi_dashboard.services.audio.multi_output._save_multi_output_intent") as save, \
+         patch("rpi_dashboard.services.audio.multi_output._run", return_value=run_result) as run:
         result = audio_multi_output("reconcile")
 
     assert result["ok"] is True
@@ -327,9 +327,9 @@ def test_audio_multi_output_status_never_mutates_pipewire():
     from rpi_dashboard.services.audio import audio_multi_output
 
     with patch(
-        "rpi_dashboard.services.audio._multi_output_status",
+        "rpi_dashboard.services.audio.multi_output._multi_output_status",
         return_value={"ok": True, "active": True, "healthy": False},
-    ), patch("rpi_dashboard.services.audio._run") as run:
+    ), patch("rpi_dashboard.services.audio.multi_output._run") as run:
         result = audio_multi_output("status")
 
     assert result == {"ok": True, "active": True, "healthy": False}
@@ -359,7 +359,7 @@ def test_bluetooth_audio_profiles_report_negotiated_pipewire_roles():
             "active_profile": "audio-gateway",
         }
     ]
-    with patch("rpi_dashboard.services.audio._run") as run:
+    with patch("rpi_dashboard.services.audio.profiles._run") as run:
         run.return_value = MagicMock(returncode=0, stdout=json.dumps(cards), stderr="")
         result = bluetooth_audio_profiles()
 
@@ -384,8 +384,8 @@ def test_set_bluetooth_audio_profile_validates_card_and_profile():
             }
         ],
     }
-    with patch("rpi_dashboard.services.audio.bluetooth_audio_profiles", return_value=state), \
-         patch("rpi_dashboard.services.audio._run", return_value=MagicMock(returncode=0, stdout="", stderr="")) as run:
+    with patch("rpi_dashboard.services.audio.profiles.bluetooth_audio_profiles", return_value=state), \
+         patch("rpi_dashboard.services.audio.profiles._run", return_value=MagicMock(returncode=0, stdout="", stderr="")) as run:
         result = audio_set_bluetooth_profile("bluez_card.phone", "audio-gateway")
         missing = audio_set_bluetooth_profile("bluez_card.phone", "not-advertised")
 
@@ -414,8 +414,8 @@ def test_set_global_master_volume():
             {"name": "bluez_output.00_00_00_00_00_00.a2dp_sink"},
         ]
     }
-    with patch("rpi_dashboard.services.audio.audio_state", return_value=mock_state), \
-         patch("rpi_dashboard.services.audio._run", return_value=MagicMock(returncode=0)):
+    with patch("rpi_dashboard.services.audio.state.audio_state", return_value=mock_state), \
+         patch("rpi_dashboard.services.audio.mixer._run", return_value=MagicMock(returncode=0)):
         res = set_global_master_volume(75)
         assert res["ok"] is True
         assert res["volume"] == 75
@@ -428,7 +428,7 @@ def test_bt_sink_volume_sets_pactl_and_propagates_input():
 
     bt_sink = "bluez_output.00_11_22_33_44_55.a2dp_sink"
 
-    with patch("rpi_dashboard.services.audio._run") as mock_run:
+    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = audio_set_volume("sink", bt_sink, 80)
         assert result["ok"] is True
