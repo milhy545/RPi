@@ -293,6 +293,18 @@ async function taRefresh(){
     // Update dlna latency input if it exists
     let latInput = $('#ta-lat-dlna-offset');
     if(latInput && r.latency) latInput.value = r.latency.dlna_output_offset_ms || 0;
+    let mvSlider = $('#master-volume-slider');
+    if(mvSlider && r.devices) {
+        let vols = [];
+        if(r.devices.hdmi && r.devices.hdmi.present && r.devices.hdmi.volume != null) vols.push(r.devices.hdmi.volume);
+        if(r.devices.bt_soundbar && r.devices.bt_soundbar.present && r.devices.bt_soundbar.volume != null) vols.push(r.devices.bt_soundbar.volume);
+        if(vols.length > 0) { let avg = Math.round(vols.reduce((a,b)=>a+b,0)/vols.length); mvSlider.value = Math.min(avg, 100); $('#master-volume-value').textContent = mvSlider.value + '%'; }
+    }
+}
+function masterVolChanged(v){
+    let lbl=$('#master-volume-value');
+    if(lbl)lbl.textContent=v+'%';
+    api('/audio/volume/global?volume='+v);
 }
 let topoSelectedSource=null;
 function renderAudioTopology(r){
@@ -350,7 +362,7 @@ function renderAudioTopology(r){
                 snkHtml+='<div style="margin-top: 0.5rem;"><button onclick="taDlnaScan()" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; background: #238636; border: none; border-radius: 4px; color: white;">🔍 Scan DLNA</button></div>';
             }
             if(s.volume!==null && s.present !== false){
-                snkHtml+='<div class="audio-node-vol" onmousedown="event.stopPropagation()"><span style="font-size:0.7rem;color:var(--app-muted)">Vol:</span><input type="range" min="0" max="150" value="'+s.volume+'" onchange="taVol(\''+s.type+'\',\''+jsarg(s.name)+'\',this.value)"></div>';
+                snkHtml+='<div class="audio-node-vol" onmousedown="event.stopPropagation()"><span style="font-size:0.7rem;color:var(--app-muted)">Vol:</span><input type="range" min="0" max="150" value="'+s.volume+'" onchange="taSetVol(\''+s.type+'\',\''+jsarg(s.name)+'\',this.value)"></div>';
             }
             snkHtml+='</div>';
         })

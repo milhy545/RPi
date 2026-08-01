@@ -211,7 +211,7 @@
 
 ## Phase 5: CSRF Protection (Expert/Admin)
 
-- [ ] Task: Implement Expert/Admin CSRF synchroniser-token helpers:
+- [x] Task: Implement Expert/Admin CSRF synchroniser-token helpers:
   - `generate_csrf_token() -> bytes`: `secrets.token_bytes(16)`.
   - `validate_csrf(session: SessionSnapshot, x_csrf_header: str | None,
     rpi_csrf_cookie: str | None, origin: str | None, referer: str |
@@ -248,7 +248,7 @@
 
 ## Phase 5b: Login Rate Limiter
 
-- [ ] Task: Implement `LoginAttemptLimiter` class with `threading.Lock`:
+- [x] Task: Implement `LoginAttemptLimiter` class with `threading.Lock`:
   - `check_and_record(ip: str) -> bool`: returns True if attempt allowed
     (≤ 5 in rolling 60s), records timestamp. Returns False if exceeded.
   - Under the same Lock, remove expired buckets; before recording a previously unseen IP, if 1024 buckets remain, evict the oldest, then insert. Storage must never exceed 1024 IP buckets.
@@ -265,7 +265,7 @@
 
 ## Phase 6: Provisioning CLI
 
-- [ ] Task: Create `tools/auth_setup.py` with subcommands `expert`,
+- [x] Task: Create `tools/auth_setup.py` with subcommands `expert`,
   `admin`, `api-key`. Uses `ssh-askpass` / `$SSH_ASKPASS` when
   `$DISPLAY` or `$SSH_ASKPASS` is set, falls back to `getpass.getpass()`.
   Passwords are never passed as argv.
@@ -290,7 +290,7 @@
 
 ## Phase 7: Middleware Integration
 
-- [ ] Task: Extend `rpi_dashboard/api/middleware.py` with:
+- [x] Task: Extend `rpi_dashboard/api/middleware.py` with:
   - `extract_session_cookie(request) -> str | None`: reads `rpi_session`
     cookie from request headers.
   - `extract_bearer_role(request, auth_store) -> Role | None`: reads
@@ -331,7 +331,7 @@
 
 ## Phase 8: Webserver Auth Endpoints and Gates
 
-- [ ] Task: Add auth endpoints to `webserver.py`:
+- [x] Task: Add auth endpoints to `webserver.py`:
   - `POST /auth/login`: accepts `{"password": "...", "role": "expert|admin"}`,
     verifies against the hash for the requested role only (never silently
     prefers the other), creates session, sets cookies, returns `{ok, role}`.
@@ -364,7 +364,7 @@
   - **Evidence:** pytest output shows pass.
   - **Rollback:** revert the commit that added auth endpoints.
 
-- [ ] Task: Add auth gate in `do_GET` and `do_POST` after IP allowlist.
+- [x] Task: Add auth gate in `do_GET` and `do_POST` after IP allowlist.
   Gate logic per request:
   1. Extract session cookie or Bearer token.
   2. If either credential is present and `credential_transport_allowed()` is false, return 403 before credential validation; external HTTP must never carry Cookie or Bearer credentials, while loopback HTTP remains allowed.
@@ -402,7 +402,7 @@
 
 ## Phase 9: Route Inventory Regression
 
-- [ ] Task: Write a regression test that reads all registered routes
+- [x] Task: Write a regression test that reads all registered routes
   from `rpi_dashboard/api/routes.py` and the legacy dispatch table in
   `webserver.py`, and asserts that every route appears in
   `ENDPOINT_ROLES` or is explicitly exempted (static assets, deprecated).
@@ -420,7 +420,7 @@
 
 ## Phase 10: Integration Verification
 
-- [ ] Task: Run full test suite, verify:
+- [x] Task: Run full test suite, verify:
   - All existing tests pass with compatibility tests updated where
     necessary (Basic routes unchanged).
   - New auth tests pass.
@@ -442,9 +442,9 @@
 
 ## Completion
 
-- [ ] Task: Update `metadata.json` status to `"complete"`, add
+- [x] Task: Update `metadata.json` status to `"complete"`, add
   `completed_at` timestamp and `implementation_notes` summarising what
   was delivered.
-- [ ] Task: Run `tools/verify-done.sh` and confirm exit code 0 with
+- [x] Task: Run `tools/verify-done.sh` and confirm exit code 0 with
   valid receipt.
-- [ ] Task: Update `conductor/tracks.md` to mark `[x]`.
+- [x] Task: Update `conductor/tracks.md` to mark `[x]`.

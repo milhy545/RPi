@@ -3,7 +3,7 @@ from typing import Any
 from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label, Input
+from textual.widgets import Header, Footer, Static, Log, Button, TabbedContent, TabPane, OptionList, Switch, Label, Input, ProgressBar
 from textual.reactive import reactive
 import time
 import os
@@ -540,6 +540,18 @@ class RPiDashboard(App):
             with TabPane(self.tr("audio"), id="tab_audio"):
                 with Vertical(classes="settings-panel", id="panel_audio"):
                     yield Static("", id="title_audio", classes="settings-title")
+                    yield Static(
+                        "  [Zdroje]          [PipeWire]         [Vystupy]\n"
+                        "  ┌──────────┐      ┌─────────┐      ┌──────────┐\n"
+                        "  │ ...      │─────▸│ 48kHz   │─────▸│ ...      │\n"
+                        "  └──────────┘      │ float32 │      └──────────┘\n"
+                        "                    └─────────┘",
+                        id="audio_flow_diagram",
+                        classes="bt-terminal-panel",
+                    )
+                    with Horizontal():
+                        yield Label("Hlavni hlasitost:", id="label_master_vol")
+                        yield ProgressBar(total=100, show_eta=False, id="bar_master_vol")
                     yield OptionList(id="list_audio_sinks")
                     with Horizontal():
                         yield Button("Vol -10%", id="btn_vol_down")
@@ -889,6 +901,36 @@ class RPiDashboard(App):
                     label = f"{item.status} {item.primary} - {item.detail}".strip()
                     sinks_list.add_option(label)
                     self._audio_sink_by_prompt[label] = sink_id
+            
+            # Update ASCII flow diagram
+            try:
+                flow = self.query_one("#audio_flow_diagram", Static)
+                sources = ["System"]
+                sinks = []
+                for i in range(sinks_list.option_count):
+                    opt = sinks_list.get_option_at_index(i)
+                    sinks.append(str(opt.prompt)[:12])
+                if not sinks:
+                    sinks = ["---"]
+                lines = ["  [Zdroje]          [PipeWire]         [Vystupy]"]
+                max_rows = max(len(sources), len(sinks))
+                for i in range(max_rows):
+                    src = sources[i] if i < len(sources) else ""
+                    snk = sinks[i] if i < len(sinks) else ""
+                    src_pad = src.ljust(10)[:10]
+                    snk_pad = snk.ljust(10)[:10]
+                    if i == 0:
+                        lines.append("  ┌──────────┐      ┌─────────┐      ┌──────────┐")
+                        lines.append(f"  │ {src_pad} │─────▸│ 48kHz   │─────▸│ {snk_pad} │")
+                        lines.append("  └──────────┘      │ float32 │      └──────────┘")
+                    else:
+                        lines.append("  ┌──────────┐      │         │      ┌──────────┐")
+                        lines.append(f"  │ {src_pad} │─────▸│         │─────▸│ {snk_pad} │")
+                        lines.append("  └──────────┘      │         │      └──────────┘")
+                lines.append("                    └─────────┘")
+                flow.update("\n".join(lines))
+            except Exception:
+                pass
             # Load and populate DLNA latency and Alexa loopback switch
             import webserver
             try:
