@@ -39,7 +39,9 @@
                 <button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.25rem .5rem;border-radius:999px;border:1px solid var(--app-border);background:var(--app-panel-2);color:var(--app-text);cursor:pointer">💬 Feedback</button>
                 <div class="app-mode-switch">
                     <button id="mode-btn-basic" onclick="appSetMode('basic')" class="active">Basic</button>
-                    <button id="mode-btn-expert" onclick="appSetMode('expert')">Expert</button>
+                    <button id="mode-btn-expert" onclick="requestExpertMode()">Expert</button>
+                    <span id="auth-role-badge" style="display:none; margin-left: 8px; padding: 2px 6px; font-size: 0.75rem; border-radius: 4px; background: var(--bg-surface-raised); border: 1px solid var(--border-color);">Basic</span>
+                    <button id="auth-logout-btn" onclick="authLogout()" style="display:none; margin-left: 8px; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; cursor: pointer; border: 1px solid var(--color-error); color: var(--color-error); background: transparent;">Logout</button>
                 </div>
                 <div id="lang-switch">
                     <button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button>
@@ -222,34 +224,7 @@
 
     <!-- Bluetooth Panel -->
     <div id="p-bluetooth" class="pnl">
-        <div id="bt-app" class="bt-app mode-basic bt-theme-dark">
-            <nav class="bt-topnav" aria-label="Bluetooth control center">
-                <div class="bt-brand">
-                    <div class="bt-brand-icon">π</div>
-                    <div>
-                        <h2>RPi Control Center</h2>
-                        <span data-bt-i18n-cs="Správce Připojení" data-bt-i18n-en="Connection Manager">Správce Připojení</span>
-                    </div>
-                </div>
-                <div class="bt-top-status">
-                    <div class="bt-hci-pill"><span></span><b id="bt-hci-state">HCI loading</b></div>
-                    <div class="bt-legend-top">
-                        <span><i class="bt-line-cyan"></i><b data-bt-i18n-cs="Tok Audia" data-bt-i18n-en="Audio Flow">Tok Audia</b></span>
-                        <span><i class="bt-line-green"></i><b>Data/IoT</b></span>
-                        <span><i class="bt-line-dim"></i><b data-bt-i18n-cs="Odpojeno / Slabé" data-bt-i18n-en="Offline / Weak">Odpojeno / Slabé</b></span>
-                    </div>
-                </div>
-                <div class="bt-top-actions">
-                    <button type="button" class="bt-primary" onclick="btOpenWizard()" style="padding:4px 10px;font-size:0.85rem;border-radius:6px;cursor:pointer;margin-right:6px;">🪄 Wizard</button>
-                    <div class="bt-segmented" role="group" aria-label="Bluetooth display mode">
-                        <button id="bt-btn-basic" type="button" onclick="btSetMode('basic')" class="active">Basic</button>
-                        <button id="bt-btn-advanced" type="button" onclick="btSetMode('advanced')">Expert</button>
-                    </div>
-                    <button type="button" class="bt-icon-btn" onclick="btToggleLang()" aria-label="Bluetooth language"><span id="bt-lang-indicator">CS</span></button>
-                    <button type="button" class="bt-icon-btn" onclick="btToggleTheme()" aria-label="Bluetooth theme"><span id="bt-theme-icon">☾</span></button>
-                </div>
-            </nav>
-
+        <div id="bt-app" class="bt-app">
             <div class="bt-workspace">
                 <aside class="bt-sidebar-left">
                     <div class="bt-menu-title" data-bt-i18n-cs="Hlavní Menu" data-bt-i18n-en="Main Menu">Hlavní Menu</div>
@@ -329,14 +304,6 @@
                         <div id="bt-events">—</div>
                     </section>
                 </aside>
-            </div>
-
-            <div class="bt-footer">
-                <span>Bluetooth Service: <b id="bt-service-state">Unknown</b></span>
-                <span id="bt-total-connected">Total Connected: —</span>
-                <span id="bt-total-paired">Total Paired: —</span>
-                <span>RPI OS: Bookworm (64-bit)</span>
-                <span id="bt-system-load">CPU: — Mem: —</span>
             </div>
         </div>
     </div>
@@ -467,6 +434,46 @@
     </div>
 
     <!-- Terminal Panel -->
+    <div id="p-terminal" class="pnl">
+        <div class="terminal-locked" id="term-lock-screen">
+            <div class="terminal-lock-icon">🔒</div>
+            <h3>Terminal — Admin Access Required</h3>
+            <p>Integration contract:</p>
+            <ul style="text-align: left; display: inline-block; margin-top: 10px; color: var(--text-muted);">
+                <li>Transport: WebSocket on port 8098</li>
+                <li>Auth: Admin session + step-up required</li>
+                <li>PTY: server-side tmux attach</li>
+            </ul>
+            <br><br>
+            <button onclick="termRequestAccess()" class="btn-primary" style="padding: 10px 20px; font-size: 1rem;">
+                Request Access
+            </button>
+        </div>
+        <div id="terminal" style="display:none; width: 100%; height: 600px; padding: 10px; box-sizing: border-box;"></div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content" style="max-width: 350px;">
+            <button class="modal-close" onclick="closeLoginModal()">×</button>
+            <h3>🔒 Authentication Required</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Please authenticate to access expert features.</p>
+            <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
+                <div style="margin-bottom: 0.8rem;">
+                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
+                    <select id="login-role" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem">
+                        <option value="expert">Expert</option>
+                        <option value="admin">Admin (Terminal)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
+                    <input type="password" id="login-password" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem" required>
+                </div>
+                <button type="submit" class="btn-primary" style="width:100%; padding: 0.5rem; font-weight: bold;">Log In</button>
+            </form>
+        </div>
+    </div>
 
     <!-- Feedback Modal -->
     <div id="feedback-modal" class="modal">

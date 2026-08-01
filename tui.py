@@ -615,6 +615,11 @@ class RPiDashboard(App):
 
             with TabPane(self.tr("logs"), id="tab_logs"):
                 yield Log(id="syslog")
+            
+            with TabPane("Terminal", id="tab_terminal"):
+                with Vertical(classes="settings-panel"):
+                    yield Static("Terminal (Locked)", classes="settings-title")
+                    yield Static("Terminal access is only available via WebUI or SSH for security reasons.\nPlease open the dashboard in a web browser to use the terminal.", id="txt_terminal_locked")
                             
         yield Footer()
 

@@ -58,6 +58,16 @@ registry with no receipt and no verification.
   auth requirements. Full PTY transport and Admin authorisation are owned
   by the terminal/auth tracks and must land before terminal access is
   enabled.
+- Frontend auth integration: wire the backend auth endpoints
+  (`/auth/whoami`, `/auth/login`, `/auth/logout`) into the WebUI
+  JavaScript. The Expert mode switch must call `/auth/whoami` and
+  display a login modal when the user is not authenticated. The
+  `api()` fetch wrapper must handle 401 responses (session expired)
+  and attach CSRF tokens on mutating requests. A role badge in the
+  header shows the current auth state. The backend auth implementation
+  (password hashing, session store, middleware) is delivered by the
+  `lightweight-auth-boundaries` track and is a dependency, not in scope
+  for reimplementation.
 
 ### Out of scope
 
@@ -67,7 +77,10 @@ registry with no receipt and no verification.
 - Audio topology canvas or multi-mixer UI (covered by audio-fullstack track).
 - Security hardening of control endpoints (covered by security track).
 - WebSocket PTY transport implementation (covered by terminal track).
-- Authentication/authorisation implementation (covered by auth/security track).
+- Authentication/authorisation backend implementation — password hashing,
+  session store, middleware, provisioning CLI (delivered by
+  `lightweight-auth-boundaries` track). The frontend integration of
+  these endpoints is in scope for this track.
 
 ## Acceptance Criteria
 
@@ -99,6 +112,10 @@ registry with no receipt and no verification.
 10. All existing tests pass: `uv run python -m pytest -q`.
 11. Lint passes: `uv run ruff check .`.
 12. `tools/verify-done.sh` passes with a valid CI receipt.
+13. Expert mode switch calls `/auth/whoami` and requires a successful
+    `/auth/login` before activating. Login modal renders on click,
+    handles success/failure, and 401 responses revert to Basic mode.
+    Logout clears the session. CSRF token attached on mutating requests.
 
 ## Non-Functional Requirements
 

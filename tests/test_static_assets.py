@@ -79,7 +79,7 @@ def test_bluetooth_webui_uses_gemini_control_center_shell() -> None:
     main_css = (REPO_ROOT / "rpi_dashboard/static/css/main.css").read_text()
     app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
 
-    assert 'id="bt-app" class="bt-app mode-basic bt-theme-dark"' in index_html
+    assert 'id="p-bluetooth" class="pnl"' in index_html
     assert 'id="bt-topo-wrapper"' in index_html
     assert 'id="bt-topology-lines"' in index_html
     assert 'id="bt-filter-connected"' in index_html

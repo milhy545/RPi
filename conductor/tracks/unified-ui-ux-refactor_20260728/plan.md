@@ -78,6 +78,57 @@ structure.
 - [ ] Verify: Terminal tab renders a visible, non-blank panel with the
   integration contract text.
 
+## Phase 5b: Frontend Auth Integration
+
+- [ ] Task: On `DOMContentLoaded`, call `GET /auth/whoami` to determine
+  the current session state. If `authenticated: true` and `role` is
+  `expert` or `admin`, activate Expert mode automatically. If
+  `authenticated: false`, enforce Basic mode regardless of
+  `localStorage` setting. If `setup_required: true`, hide the Expert
+  button entirely (no auth provisioned on backend).
+- [ ] Task: Replace the `appSetMode('expert')` click handler with an
+  auth-aware flow: when the user clicks Expert, call `GET /auth/whoami`
+  first. If already authenticated with sufficient role, switch
+  immediately. If not authenticated, display a login modal instead of
+  switching mode.
+- [ ] Task: Implement a login modal in `index.html` with:
+  - Password input field (type `password`).
+  - Role selector (Expert / Admin) — default Expert.
+  - Submit button that sends `POST /auth/login` with
+    `{password, role}` and `Origin`/`Referer` headers.
+  - On success (200 + `Set-Cookie`): close modal, call `appSetMode`
+    with the returned role, show success toast.
+  - On failure (401/403/429/503): show error message in the modal,
+    do not switch mode.
+  - Close/cancel button that returns to Basic mode.
+- [ ] Task: Style the login modal in `main.css` using `theme.css` CSS
+  variable tokens. Modal must be responsive (centered overlay on
+  desktop, full-width on mobile), support dark/light theme, and have
+  smooth open/close transitions.
+- [ ] Task: Add a `401` response interceptor to the global `api()`
+  fetch wrapper in `app.js`. When any API call returns 401, revert
+  the UI to Basic mode and show a toast: "Session expired — please
+  log in again". Optionally re-open the login modal.
+- [ ] Task: Add a logout action: a "Logout" button (visible only in
+  Expert/Admin mode) that sends `POST /auth/logout` with the
+  `X-CSRF-Token` header (read from the `rpi_csrf` cookie). On
+  success, revert to Basic mode and clear `localStorage` mode
+  preference.
+- [ ] Task: Display the current auth state in the header or status bar:
+  a role badge showing "Basic", "Expert", or "Admin" with appropriate
+  colour coding (Basic = neutral, Expert = accent, Admin = warning).
+- [ ] Task: Read the `rpi_csrf` cookie value in JS and attach it as
+  `X-CSRF-Token` header on all mutating `fetch()` calls (POST,
+  PUT, DELETE) to Expert/Admin endpoints. The `api()` wrapper must
+  be extended to accept a method parameter and include CSRF headers
+  automatically for non-GET requests.
+- [ ] Verify: Load page without session — UI shows Basic mode, Expert
+  button is clickable but opens login modal. After successful login,
+  Expert mode activates. Refreshing the page preserves Expert mode
+  via the session cookie (not just localStorage). Clicking Logout
+  reverts to Basic. A 401 from any endpoint triggers session-expired
+  handling.
+
 ## Phase 6: Responsive Layout Verification
 
 - [ ] Task: Verify WebUI layout at 390x844 (mobile iPhone 14 Pro size):

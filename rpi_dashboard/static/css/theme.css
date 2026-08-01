@@ -8,6 +8,11 @@
     --border-color: rgba(48, 54, 61, 0.6);
     --border-glow: rgba(88, 166, 255, 0.4);
 
+    /* Surface Tokens — opaque backgrounds for cards, panels, modals */
+    --bg-surface: #161b22;
+    --bg-surface-raised: #21262d;
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+
     /* Accent & State Colors */
     --accent-blue: #58a6ff;
     --accent-green: #3fb950;
@@ -17,6 +22,32 @@
     --text-main: #c9d1d9;
     --text-muted: #8b949e;
     --text-bright: #f0f6fc;
+
+    /* Component State Tokens */
+    --bg-hover: #30363d;
+    --bg-active: #1a5276;
+    --bg-disabled: #21262d;
+    --border-focus: #58a6ff;
+
+    /* Semantic Colour Tokens */
+    --color-success: #3fb950;
+    --color-success-emphasis: #238636;
+    --color-success-bg: #0d2818;
+    --color-warning: #d29922;
+    --color-warning-emphasis: #e3b341;
+    --color-warning-bg: #2d2308;
+    --color-error: #f85149;
+    --color-error-emphasis: #da3633;
+    --color-error-bg: #3d1214;
+    --color-info: #58a6ff;
+    --color-info-emphasis: #1f6feb;
+    --color-info-bg: #0c2d6b;
+
+    /* Typography Tokens */
+    --font-size-xs: 0.72rem;
+    --font-size-sm: 0.8rem;
+    --font-size-base: 0.9rem;
+    --font-size-lg: 1.2rem;
 
     /* Spacing & Compact Sizing Tokens */
     --radius-sm: 6px;
@@ -40,7 +71,30 @@
     --bg-card-hover: rgba(243, 244, 246, 0.95);
     --bg-glass: rgba(255, 255, 255, 0.75);
     --border-color: rgba(208, 215, 222, 0.8);
+
+    --bg-surface: #ffffff;
+    --bg-surface-raised: #e1e4e8;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+
     --text-main: #24292f;
     --text-muted: #57606a;
     --text-bright: #0969da;
+
+    --bg-hover: #e1e4e8;
+    --bg-active: #0550ae;
+    --bg-disabled: #e1e4e8;
+    --border-focus: #0366d6;
+
+    --color-success: #22863a;
+    --color-success-emphasis: #22863a;
+    --color-success-bg: #dcffe4;
+    --color-warning: #735c0f;
+    --color-warning-emphasis: #735c0f;
+    --color-warning-bg: #fff5b1;
+    --color-error: #d73a49;
+    --color-error-emphasis: #d73a49;
+    --color-error-bg: #ffeef0;
+    --color-info: #0366d6;
+    --color-info-emphasis: #0366d6;
+    --color-info-bg: #dbedff;
 }

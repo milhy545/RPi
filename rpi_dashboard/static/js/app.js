@@ -1,7 +1,8 @@
 function $(s){return document.querySelector(s)}function $$(s){return document.querySelectorAll(s)}
 function msg(t,c){let box=$('#toast');while(box.children.length>=3)box.firstElementChild.remove();let d=document.createElement('div');d.className='t '+c;d.textContent=t;box.appendChild(d);setTimeout(()=>d.remove(),4000)}
-async function api(u){try{let response=await fetch(u),text=await response.text(),data;try{data=JSON.parse(text)}catch{return{ok:false,error:'HTTP '+response.status+' returned a non-JSON response'}}if(!response.ok&&!data.error)data.error='HTTP '+response.status;return data}catch(e){return{ok:false,error:e.message}}}
-function appSetMode(m){let app=$('#webui-app');if(!app)return;app.classList.remove('mode-basic','mode-expert');app.classList.add('mode-'+m);let b1=$('#mode-btn-basic'),b2=$('#mode-btn-expert');if(b1)b1.classList.toggle('active',m==='basic');if(b2)b2.classList.toggle('active',m==='expert');try{localStorage.setItem('webui-mode',m)}catch(e){}if(typeof btSetMode==='function')btSetMode(m==='expert'?'advanced':'basic');}
+function getCookie(name){let v=document.cookie.match('(^|;) ?'+name+'=([^;]*)(;|$)');return v?v[2]:null}
+async function api(u, opts={}){try{opts.headers=opts.headers||{};if(opts.method&&opts.method!=='GET'&&opts.method!=='HEAD'){let token=getCookie('rpi_csrf');if(token)opts.headers['X-CSRF-Token']=token;}let response=await fetch(u,opts);if(response.status===401){appSetMode('basic');updateRoleBadge('basic');msg('Session expired — please log in again','err');return{ok:false,error:'Session expired'}}let text=await response.text(),data;try{data=JSON.parse(text)}catch{return{ok:false,error:'HTTP '+response.status+' returned a non-JSON response'}}if(!response.ok&&!data.error)data.error='HTTP '+response.status;return data}catch(e){return{ok:false,error:e.message}}}
+function appSetMode(m){let app=$('#webui-app');if(!app)return;app.classList.remove('mode-basic','mode-expert');app.classList.add('mode-'+m);let b1=$('#mode-btn-basic'),b2=$('#mode-btn-expert');if(b1)b1.classList.toggle('active',m==='basic');if(b2)b2.classList.toggle('active',m==='expert');try{localStorage.setItem('webui-mode',m)}catch(e){}}
 function sw(n){$$('.tab, .app-nav-item').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='bluetooth'){btInitInteractions();bluetoothRefresh();setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},120)}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
 let previewTimer=null,previewSeq=0;
 function httpsUrlForCurrent(){let host=location.hostname||'rpi-tv';let p=location.port;if(p==='8080')return 'https://'+host+':8443'+location.pathname;if(p==='80'||p==='')return 'https://'+host+location.pathname;return 'https://'+host+(p?':'+p:'')+location.pathname}
@@ -226,7 +227,7 @@ async function restartRpi(){
     msg(r.out||L('rebooting'),'ok');
 }
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg(L('bridgeOff'),'info')}else{let r=await api('/cec/br/start');msg(r.ok?L('bridgeOn'):L('failed'),r.ok?'ok':'err')}updBr()}
-async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';$('#brs').textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';$('#brs').textContent=L('disconnected')}}
+async function updBr(){let r=await api('/cec/br/st'),b=$('#brb'),s=$('#brs');if(!b||!s)return;if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';s.textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';s.textContent=L('disconnected')}}
 async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
 async function devs(){
   let r=await api('/devices');let h='';
@@ -493,10 +494,7 @@ function btMoreSettings(){let target=$('#bt-status');if(target){target.scrollInt
 async function btRunDiagnostics(){msg('Collecting bounded Bluetooth diagnostics...','info');let r=await api('/bt/diagnostics');if(!r.ok){msg(r.error||'Diagnostics failed','err');return}BT_UI.failureDiagnostics=r;btRenderCurrent();msg('Bluetooth diagnostics collected','ok')}
 function btConnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.paired&&!d.connected);if(!ds.length){msg('No paired disconnected devices to connect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('connect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
 function btDisconnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.connected);if(!ds.length){msg('No connected devices to disconnect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('disconnect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
-function btSetMode(mode){let root=btRoot();if(!root)return;root.classList.toggle('mode-basic',mode==='basic');root.classList.toggle('mode-advanced',mode!=='basic');$('#bt-btn-basic').classList.toggle('active',mode==='basic');$('#bt-btn-advanced').classList.toggle('active',mode!=='basic');setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},80)}
-function btToggleTheme(){let root=btRoot();if(!root)return;let light=root.classList.toggle('bt-theme-light');root.classList.toggle('bt-theme-dark',!light);let icon=$('#bt-theme-icon');if(icon)icon.textContent=light?'☀':'☾';btDrawTopologyLines()}
-function btToggleLang(){BT_UI.lang=BT_UI.lang==='cs'?'en':'cs';let ind=$('#bt-lang-indicator');if(ind)ind.textContent=BT_UI.lang.toUpperCase();btApplyLang()}
-function btApplyLang(){document.querySelectorAll('#bt-app [data-bt-i18n-cs]').forEach(el=>{el.textContent=el.getAttribute('data-bt-i18n-'+BT_UI.lang)||el.textContent})}
+
 function btCenterCanvas(force){let w=$('#bt-topo-wrapper'),c=$('#bt-topo-canvas');if(!w||!c)return;if(!force&&BT_UI.panX!==0)return;let r=w.getBoundingClientRect();if(force){BT_UI.scale=Math.min(1,Math.max(.25,Math.min(r.width/1450,r.height/620)))}BT_UI.panX=(r.width-(1400*BT_UI.scale))/2;BT_UI.panY=(r.height-(600*BT_UI.scale))/2;btUpdateTopoTransform()}
 function btUpdateTopoTransform(){let c=$('#bt-topo-canvas');if(c)c.style.transform='translate('+BT_UI.panX+'px,'+BT_UI.panY+'px) scale('+BT_UI.scale+')'}
 function btZoomTopo(amount){BT_UI.scale=Math.min(Math.max(.25,BT_UI.scale+amount),2);btUpdateTopoTransform();btDrawTopologyLines()}
@@ -523,13 +521,75 @@ function termSendResize(){if(term&&termWs&&termWs.readyState===1){termWs.send(JS
 function termFitNow(){if(termFit){termFit.fit();termSendResize()}}
 function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff'},fontSize:13,fontFamily:'monospace',cursorBlink:true,scrollback:0,convertEol:false,disableStdin:false});termFit=new FitAddon.FitAddon();term.loadAddon(termFit);term.open(document.getElementById('terminal'));setTimeout(termFitNow,150);setTimeout(termFitNow,450);term.onData(d=>{if(termWs&&termWs.readyState===1)termWs.send(JSON.stringify({input:d}))});term.onResize(()=>termSendResize());window.addEventListener('resize',()=>setTimeout(termFitNow,120));msg(L('termReady'),'info')}
 function termDrawSnapshot(output,cursor){let text=output||'';let lines=text.split(/\r?\n/);let row=1,col=1;if(cursor&&Number.isFinite(cursor.y)&&Number.isFinite(cursor.x)){row=Math.max(1,Math.min(term.rows,cursor.y+1));col=Math.max(1,Math.min(term.cols,cursor.x+1))}else{let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+text+'\x1b['+row+';'+col+'H')}
-function termConnect(){termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg(L('connected'),'ok');$('#term-status').textContent=L('connected');term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent=L('disconnected');msg(L('disconnected'),'info')};termWs.onerror=()=>msg(L('connectionError'),'err')}
+// Auth & Security
+function updateRoleBadge(role){
+    let badge=$('#auth-role-badge'), logoutBtn=$('#auth-logout-btn');
+    if(!badge || !logoutBtn)return;
+    badge.textContent=role.charAt(0).toUpperCase() + role.slice(1);
+    badge.style.display='inline-block';
+    logoutBtn.style.display=(role!=='basic')?'inline-block':'none';
+    if(role==='admin') badge.style.color='var(--color-error)';
+    else if(role==='expert') badge.style.color='var(--color-warning)';
+    else { badge.style.color='var(--text-main)'; badge.style.display='none'; }
+}
+async function requestExpertMode(){
+    let r=await api('/auth/whoami');
+    if(r.authenticated && r.role!=='basic') {
+        appSetMode(r.role); updateRoleBadge(r.role);
+    } else {
+        openLoginModal('expert');
+    }
+}
+function openLoginModal(role='expert'){
+    $('#login-role').value=role;
+    $('#login-password').value='';
+    $('#login-modal').classList.add('show');
+}
+function closeLoginModal(){ $('#login-modal').classList.remove('show'); }
+async function submitLogin(){
+    let role=$('#login-role').value, pwd=$('#login-password').value;
+    let r=await api('/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role:role, password:pwd})});
+    if(r.ok){
+        closeLoginModal(); msg('Logged in as '+role,'ok');
+        appSetMode(role); updateRoleBadge(role);
+        if(role==='admin' && $('#p-terminal').classList.contains('active')) termConnect();
+    } else { msg(r.error||'Login failed','err'); }
+}
+async function authLogout(){
+    let r=await api('/auth/logout', {method:'POST'});
+    msg(r.ok?'Logged out':(r.error||'Logout failed'), r.ok?'info':'err');
+    appSetMode('basic'); updateRoleBadge('basic');
+}
+async function termRequestAccess(){
+    let r=await api('/auth/whoami');
+    if(r.authenticated && r.role==='admin'){ termConnect(); }
+    else { openLoginModal('admin'); }
+}
+
+function termConnect(){
+    $('#term-lock-screen').style.display='none';
+    $('#terminal').style.display='block';
+    termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg(L('connected'),'ok');$('#term-status').textContent=L('connected');term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent=L('disconnected');msg(L('disconnected'),'info')};termWs.onerror=()=>msg(L('connectionError'),'err')
+}
 function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent=L('disconnected')}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const r = await api('/auth/whoami');
+    if (r.setup_required) {
+        let btn = $('#mode-btn-expert'); if(btn) btn.style.display = 'none';
+    } else if (r.authenticated && (r.role === 'expert' || r.role === 'admin')) {
+        appSetMode(r.role); updateRoleBadge(r.role);
+    } else {
+        appSetMode('basic'); updateRoleBadge('basic');
+    }
+});
+
 // Feedback Modal
 function openFeedback(){$('#feedback-desc').value='';$('#feedback-modal').classList.add('show')}
 function closeFeedback(){$('#feedback-modal').classList.remove('show')}
 async function submitFeedback(){let t=$('#feedback-type').value,d=$('#feedback-desc').value.trim();if(!d){msg(L('feedbackRequired'),'err');return}closeFeedback();msg(L('feedbackSending'),'info');let r=await fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:t,description:d})}).then(res=>res.json()).catch(e=>({error:e.message}));if(r.ok){msg(L('feedbackSuccess')+' '+r.file,'ok')}else{msg(r.error||L('feedbackFailed'),'err')}}
-setInterval(()=>{st();updBr()},3000);playerEnter();addTips();applyLang();
+
+loadHwStats();setInterval(()=>{st();loadHwStats()},3000);playerEnter();addTips();applyLang();
 let sp=new URLSearchParams(window.location.search);let shared=sp.get('share_url')||sp.get('text');
 if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/http[s]?:\/\/[^\s]+/)[0];play();}
 
