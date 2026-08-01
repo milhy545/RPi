@@ -129,6 +129,7 @@ def test_live_tui_uses_task_oriented_tabs():
                 "tab_network",
                 "tab_system",
                 "tab_logs",
+                "tab_terminal",
             ]
             assert tabs.active == "tab_player"
 

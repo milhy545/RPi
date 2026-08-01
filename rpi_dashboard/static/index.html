@@ -6,7 +6,6 @@
     <title>RPi-TV</title>
     <link rel="stylesheet" href="/static/css/theme.css">
     <link rel="stylesheet" href="/static/css/main.css">
-    <link rel="stylesheet" href="/static/css/themes.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
     <script>
         if ('serviceWorker' in navigator) {
@@ -223,32 +222,7 @@
     <!-- Bluetooth Panel -->
     <div id="p-bluetooth" class="pnl">
         <div id="bt-app" class="bt-app mode-basic bt-theme-dark">
-            <nav class="bt-topnav" aria-label="Bluetooth control center">
-                <div class="bt-brand">
-                    <div class="bt-brand-icon">π</div>
-                    <div>
-                        <h2>RPi Control Center</h2>
-                        <span data-bt-i18n-cs="Správce Připojení" data-bt-i18n-en="Connection Manager">Správce Připojení</span>
-                    </div>
-                </div>
-                <div class="bt-top-status">
-                    <div class="bt-hci-pill"><span></span><b id="bt-hci-state">HCI loading</b></div>
-                    <div class="bt-legend-top">
-                        <span><i class="bt-line-cyan"></i><b data-bt-i18n-cs="Tok Audia" data-bt-i18n-en="Audio Flow">Tok Audia</b></span>
-                        <span><i class="bt-line-green"></i><b>Data/IoT</b></span>
-                        <span><i class="bt-line-dim"></i><b data-bt-i18n-cs="Odpojeno / Slabé" data-bt-i18n-en="Offline / Weak">Odpojeno / Slabé</b></span>
-                    </div>
-                </div>
-                <div class="bt-top-actions">
-                    <button type="button" class="bt-primary" onclick="btOpenWizard()" style="padding:4px 10px;font-size:0.85rem;border-radius:6px;cursor:pointer;margin-right:6px;">🪄 Wizard</button>
-                    <div class="bt-segmented" role="group" aria-label="Bluetooth display mode">
-                        <button id="bt-btn-basic" type="button" onclick="btSetMode('basic')" class="active">Basic</button>
-                        <button id="bt-btn-advanced" type="button" onclick="btSetMode('advanced')">Expert</button>
-                    </div>
-                    <button type="button" class="bt-icon-btn" onclick="btToggleLang()" aria-label="Bluetooth language"><span id="bt-lang-indicator">CS</span></button>
-                    <button type="button" class="bt-icon-btn" onclick="btToggleTheme()" aria-label="Bluetooth theme"><span id="bt-theme-icon">☾</span></button>
-                </div>
-            </nav>
+
 
             <div class="bt-workspace">
                 <aside class="bt-sidebar-left">
@@ -331,13 +305,7 @@
                 </aside>
             </div>
 
-            <div class="bt-footer">
-                <span>Bluetooth Service: <b id="bt-service-state">Unknown</b></span>
-                <span id="bt-total-connected">Total Connected: —</span>
-                <span id="bt-total-paired">Total Paired: —</span>
-                <span>RPI OS: Bookworm (64-bit)</span>
-                <span id="bt-system-load">CPU: — Mem: —</span>
-            </div>
+
         </div>
     </div>
 
@@ -467,7 +435,26 @@
     </div>
 
     <!-- Terminal Panel -->
-
+    <div id="p-terminal" class="pnl">
+        <div class="sec" style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+            <div style="text-align:center; margin-bottom:1rem;">
+                <h3>💻 Web Terminal Integration</h3>
+                <p style="color:#8b949e; max-width:500px; margin:0 auto;">
+                    This panel will host an xterm.js instance for direct shell access.
+                    A WebSocket connection will be established upon unlocking.
+                </p>
+                <div style="margin-top:1rem; padding:1rem; border:1px solid var(--app-border); border-radius:8px; background:var(--app-panel-2); display:inline-block; text-align:left;">
+                    <p style="margin:0 0 0.5rem 0; font-weight:bold; color:var(--app-accent);">Integration Contract:</p>
+                    <ul style="margin:0; padding-left:1.5rem; color:var(--app-text); font-size:0.85rem;">
+                        <li><strong>Transport:</strong> WebSocket (requires Terminal Track implementation)</li>
+                        <li><strong>Access Control:</strong> Requires Auth Track JWT token for step-up auth</li>
+                        <li><strong>State:</strong> Currently 🔒 Locked</li>
+                    </ul>
+                </div>
+            </div>
+            <button class="app-btn-danger" disabled style="opacity:0.5; cursor:not-allowed;">🔒 Unlock Terminal</button>
+        </div>
+    </div>
     <!-- Feedback Modal -->
     <div id="feedback-modal" class="modal">
         <div class="modal-content">
@@ -522,8 +509,10 @@
                 <span class="app-status-pill" id="sb-audio">🔊 Audio HDMI</span>
             </div>
             <div class="app-status-pills">
-                <span id="sb-cpu">CPU: --</span>
-                <span id="sb-ram">RAM: --</span>
+                <span id="status-cpu">CPU: --</span>
+                <span id="status-ram">RAM: --</span>
+                <span id="status-temp">Temp: --</span>
+            </div>
             </div>
         </footer>
     </div>

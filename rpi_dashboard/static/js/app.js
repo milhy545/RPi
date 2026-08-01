@@ -168,7 +168,7 @@ function toggleHwLive(){
 }
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
-    if(r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+r.error;return}
+    if(r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+r.error;updateGlobalStatusBar(null);return}
     updateGlobalStatusBar(r);
     let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
     let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
@@ -179,19 +179,24 @@ async function loadHwStats(){
 }
 
 function updateGlobalStatusBar(r){
-    if(!r)return;
     let cpuEl=$('#status-cpu')||$('.status-cpu');
     let ramEl=$('#status-ram')||$('.status-ram');
     let tempEl=$('#status-temp')||$('.status-temp');
+    if(!r){
+        if(cpuEl)cpuEl.textContent='CPU: --';
+        if(ramEl)ramEl.textContent='RAM: --';
+        if(tempEl)tempEl.textContent='Temp: --';
+        return;
+    }
     if(cpuEl&&r.cpu&&r.cpu.length){
         let avg=Math.round(r.cpu.reduce((a,b)=>a+b,0)/r.cpu.length);
-        cpuEl.textContent=avg+'%';
+        cpuEl.textContent='CPU: '+avg+'%';
     }
     if(ramEl&&r.ram){
-        ramEl.textContent=r.ram.used_mb+'MB';
+        ramEl.textContent='RAM: '+r.ram.percent+'%';
     }
     if(tempEl){
-        tempEl.textContent=(r.temp_c===null||r.temp_c===undefined)?'?':Math.round(r.temp_c)+'°C';
+        tempEl.textContent='Temp: '+(r.temp_c===null||r.temp_c===undefined?'?':Math.round(r.temp_c)+'°C');
     }
 }
 
@@ -226,7 +231,7 @@ async function restartRpi(){
     msg(r.out||L('rebooting'),'ok');
 }
 async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg(L('bridgeOff'),'info')}else{let r=await api('/cec/br/start');msg(r.ok?L('bridgeOn'):L('failed'),r.ok?'ok':'err')}updBr()}
-async function updBr(){let r=await api('/cec/br/st'),b=$('#brb');if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';$('#brs').textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';$('#brs').textContent=L('disconnected')}}
+async function updBr(){let r=await api('/cec/br/st'),b=$('#brb'),s=$('#brs');if(!b)return;if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';if(s)s.textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';if(s)s.textContent=L('disconnected')}}
 async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
 async function devs(){
   let r=await api('/devices');let h='';
@@ -465,7 +470,7 @@ function btFailureDetails(){let report=BT_UI.failureDiagnostics;if(!report)retur
 function btHidBoundary(d){let status=((BT_UI.state&&BT_UI.state.diagnostics)||{}).hid_control||{},available=!!status.available,blockers=(status.blockers||[]).join('; ');return '<div class="bt-detail-box"><b>Optional outbound HID control</b><label class="bt-control-row"><span>Trusted device opt-in</span><input type="checkbox" '+(d.hid_control?'checked ':'')+(available?'':'disabled ')+'onchange="btSelectedHid(this.checked)"></label><div class="bt-card-meta">'+esc(available?'Transport ready; disabled by default.':(blockers||'Outbound HID transport unavailable.'))+'</div><div class="bt-card-meta">Media keys use AVRCP when available.</div></div>'}
 function renderBtDeviceDetails(devs,adapters){let d=btSelectedDevice();if(!d)return '<div class="bt-muted">No device selected.</div>';let a=(adapters||[]).find(x=>x.id===d.adapter_id),offline=d.present===false||(!d.connected&&d.paired),disabledPair=d.paired?' disabled title="Device is already paired"':'',disabledDisconnect=!d.connected?' disabled title="Device is not connected"':'',disabledConnect=(!d.paired||d.connected)?' disabled title="Pair the device before connecting"':'',disabledTrust=d.trusted?' disabled title="Device is already trusted"':'';return '<div class="bt-detail-title">'+esc(d.name||d.alias||'Unknown Device')+'</div><div class="bt-status-pill '+(offline?'offline':'')+'">● '+btStatusText(d)+'</div><div class="bt-detail-box"><div class="bt-detail-row"><span>Signal</span><b class="bt-blue">'+esc(btRssi(d))+'</b></div><div class="bt-detail-row"><span>MAC Address</span><code>'+esc(btDeviceMac(d)||'-')+'</code></div><div class="bt-detail-row"><span>Adapter</span><span class="bt-adapter-tag">'+esc(a?btAdapterName(a,adapters.indexOf(a)):'-')+'</span></div><div class="bt-detail-row"><span>Bonded</span><b>'+esc(d.bonded==null?'Unknown':(d.bonded?'Yes':'No'))+'</b></div><div class="bt-detail-row"><span>Battery</span><b>'+esc(d.battery_percentage==null?'N/A':d.battery_percentage+'%')+'</b></div><label class="bt-control-row"><span>Auto connect</span><input type="checkbox" '+(d.auto_connect?'checked ':'')+'onchange="btSelectedAutoConnect(this.checked)"></label></div><div class="bt-detail-box"><b>Negotiated capabilities</b>'+btCapabilityDetails(d)+'</div>'+btPipeWireProfile(d)+btRemoteProfileActions(d)+btMediaDetails(d)+btObexDetails(d)+btHidBoundary(d)+btPairingControl()+btFailureDetails()+'<div class="bt-detail-actions"><button type="button"'+disabledPair+' onclick="btSelectedAction(\'pair\')">Pair</button><button type="button" class="danger"'+disabledDisconnect+' onclick="btSelectedAction(\'disconnect\')">Odpojit Zařízení</button><button type="button"'+disabledConnect+' onclick="btSelectedAction(\'connect\')">Connect</button><button type="button"'+disabledTrust+' onclick="btSelectedAction(\'trust\')">Trust</button><button type="button" onclick="btSelectedAction(\''+(d.blocked?'unblock':'block')+'\')">'+(d.blocked?'Unblock':'Block')+'</button><button type="button" class="danger" onclick="btSelectedAction(\'remove\')">Remove</button></div>'}
 function renderBtControls(s){let backend=s.backend||{},settings=s.settings||{},degraded=backend.degraded?' <span class="bt-warn">degraded</span>':'',powered=s.adapters.filter(a=>a.present&&a.powered),discoverable=powered.length>0&&powered.every(a=>a.discoverable),timeout=Number(settings.discoverable_timeout==null?120:settings.discoverable_timeout),mode=String(settings.scan_mode||'balanced').toLowerCase();return '<label class="bt-control-row"><span>Automatické připojení</span><span class="bt-switch"><input id="bt-auto-connect" type="checkbox" '+(settings.auto_connect?'checked ':'')+'onchange="btToggleAutoConnect(this.checked)"><span class="bt-slider"></span></span></label><label class="bt-control-row"><span>Viditelnost sítě (All)</span><span class="bt-switch"><input id="bt-discoverable-all" type="checkbox" '+(discoverable?'checked ':'')+'onchange="btToggleDiscoverable(this.checked)"><span class="bt-slider"></span></span></label><div class="bt-control-row"><span>Časovač</span><select id="bt-timeout" onchange="btSettingChanged(\'Timeout\',this.value)"><option value="120" '+(timeout===120?'selected':'')+'>2 min</option><option value="300" '+(timeout===300?'selected':'')+'>5 min</option><option value="0" '+(timeout===0?'selected':'')+'>Trvale</option></select></div><div class="bt-control-row"><span>Režim skenování</span><select id="bt-scan-mode" onchange="btSettingChanged(\'Scan mode\',this.value)"><option value="balanced" '+(mode==='balanced'?'selected':'')+'>Balanced</option><option value="aggressive" '+(mode==='aggressive'?'selected':'')+'>Aggressive</option></select></div><div class="bt-control-row"><span>Backend</span><b>'+esc(backend.name||'legacy')+degraded+'</b></div><div class="bt-control-row"><span>Adapters</span><b>'+s.adapters.length+' · Devices '+s.devices.length+'</b></div>'}
-function renderBluetoothState(bt){let s=btNormalizeState(bt);BT_UI.state=s;if(!BT_UI.selected&&s.devices.length)BT_UI.selected=btStableKey(s.devices.find(d=>d.connected)||s.devices[0]);$('#bt-topology').innerHTML=renderBtTopology(s.raw,s.devices,s.adapters);$('#bt-adapters').innerHTML=renderBtAdapters(s.raw,s.devices);$('#bt-controller').innerHTML='<b>Controller</b>'+renderBtController(s.diagnostics.controllers||(bt&&bt.controller));$('#bt-soundbar').innerHTML='<b>Soundbar</b>'+renderReadiness(s.diagnostics.soundbar);$('#bt-events').innerHTML='<b>Recent Events</b>'+renderBtEvents(s.raw);$('#bt-summary').innerHTML=renderBtSummary(s.devices,s.adapters);$('#bt-quick').innerHTML=renderBtQuick();$('#bt-device-details').innerHTML=renderBtDeviceDetails(s.devices,s.adapters);$('#bt-status').innerHTML=renderBtControls(s);let online=s.adapters.filter(a=>a.present&&a.powered).length;let hci=$('#bt-hci-state');if(hci)hci.textContent='HCI Online '+online+' / '+s.adapters.length;let service=$('#bt-service-state');if(service)service.textContent=s.backend.degraded?'Degraded':'Running';let paired=$('#bt-total-paired');if(paired)paired.textContent='Total Paired: '+s.devices.filter(d=>d.paired).length;let connected=$('#bt-total-connected');if(connected)connected.textContent='Total Connected: '+s.devices.filter(d=>d.connected).length;btApplyLang();setTimeout(()=>{btCenterCanvas(false);btDrawTopologyLines()},30)}
+function renderBluetoothState(bt){let s=btNormalizeState(bt);BT_UI.state=s;if(!BT_UI.selected&&s.devices.length)BT_UI.selected=btStableKey(s.devices.find(d=>d.connected)||s.devices[0]);$('#bt-topology').innerHTML=renderBtTopology(s.raw,s.devices,s.adapters);$('#bt-adapters').innerHTML=renderBtAdapters(s.raw,s.devices);$('#bt-controller').innerHTML='<b>Controller</b>'+renderBtController(s.diagnostics.controllers||(bt&&bt.controller));$('#bt-soundbar').innerHTML='<b>Soundbar</b>'+renderReadiness(s.diagnostics.soundbar);$('#bt-events').innerHTML='<b>Recent Events</b>'+renderBtEvents(s.raw);$('#bt-summary').innerHTML=renderBtSummary(s.devices,s.adapters);$('#bt-quick').innerHTML=renderBtQuick();$('#bt-device-details').innerHTML=renderBtDeviceDetails(s.devices,s.adapters);$('#bt-status').innerHTML=renderBtControls(s);btApplyLang();setTimeout(()=>{btCenterCanvas(false);btDrawTopologyLines()},30)}
 function btRenderCurrent(){if(BT_UI.state)renderBluetoothState(BT_UI.state.raw)}
 async function bluetoothRefresh(){let results=await Promise.all([api('/bt/state'),api('/audio/bluetooth-profiles'),api('/bt/transfers'),api('/bt/files')]),r=results[0],audio=results[1],obex=results[2],files=results[3];if(r.error&&!r.backend){msg(r.error,'err');return}BT_UI.audioProfiles=audio.cards||[];BT_UI.obex=obex||{};BT_UI.transfers=obex.transfers||[];BT_UI.files=files.files||[];renderBluetoothState(r);applyLang()}
 async function bluetoothScan(){msg(L('scan')+' Bluetooth...','info');let state=await api('/bt/state');let adapters=(state.adapters||[]).filter(a=>a.present&&a.powered);if(!adapters.length){msg('No powered Bluetooth adapter','err');renderBluetoothState(state);return}for(let a of adapters){await api('/bt/discovery?action=start&adapter_id='+encodeURIComponent(a.id))}setTimeout(bluetoothRefresh,1200);msg(L('scan')+' Bluetooth started','ok')}
@@ -493,9 +498,7 @@ function btMoreSettings(){let target=$('#bt-status');if(target){target.scrollInt
 async function btRunDiagnostics(){msg('Collecting bounded Bluetooth diagnostics...','info');let r=await api('/bt/diagnostics');if(!r.ok){msg(r.error||'Diagnostics failed','err');return}BT_UI.failureDiagnostics=r;btRenderCurrent();msg('Bluetooth diagnostics collected','ok')}
 function btConnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.paired&&!d.connected);if(!ds.length){msg('No paired disconnected devices to connect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('connect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
 function btDisconnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.connected);if(!ds.length){msg('No connected devices to disconnect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('disconnect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
-function btSetMode(mode){let root=btRoot();if(!root)return;root.classList.toggle('mode-basic',mode==='basic');root.classList.toggle('mode-advanced',mode!=='basic');$('#bt-btn-basic').classList.toggle('active',mode==='basic');$('#bt-btn-advanced').classList.toggle('active',mode!=='basic');setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},80)}
-function btToggleTheme(){let root=btRoot();if(!root)return;let light=root.classList.toggle('bt-theme-light');root.classList.toggle('bt-theme-dark',!light);let icon=$('#bt-theme-icon');if(icon)icon.textContent=light?'☀':'☾';btDrawTopologyLines()}
-function btToggleLang(){BT_UI.lang=BT_UI.lang==='cs'?'en':'cs';let ind=$('#bt-lang-indicator');if(ind)ind.textContent=BT_UI.lang.toUpperCase();btApplyLang()}
+
 function btApplyLang(){document.querySelectorAll('#bt-app [data-bt-i18n-cs]').forEach(el=>{el.textContent=el.getAttribute('data-bt-i18n-'+BT_UI.lang)||el.textContent})}
 function btCenterCanvas(force){let w=$('#bt-topo-wrapper'),c=$('#bt-topo-canvas');if(!w||!c)return;if(!force&&BT_UI.panX!==0)return;let r=w.getBoundingClientRect();if(force){BT_UI.scale=Math.min(1,Math.max(.25,Math.min(r.width/1450,r.height/620)))}BT_UI.panX=(r.width-(1400*BT_UI.scale))/2;BT_UI.panY=(r.height-(600*BT_UI.scale))/2;btUpdateTopoTransform()}
 function btUpdateTopoTransform(){let c=$('#bt-topo-canvas');if(c)c.style.transform='translate('+BT_UI.panX+'px,'+BT_UI.panY+'px) scale('+BT_UI.scale+')'}
@@ -581,6 +584,7 @@ const ThemeManager = {
 // Initialize theme on load
 document.addEventListener('DOMContentLoaded', () => {
     ThemeManager.init();
+    if (typeof toggleHwLive === 'function') toggleHwLive(); // Start HW polling on load
 });
 
 // Add theme toggle to topbar

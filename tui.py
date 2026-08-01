@@ -23,6 +23,7 @@ from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.tui.bluetooth_console import build_bluetooth_console, normalize_device_keys
 from rpi_dashboard.tui.formatting import human_audio_sink
 from rpi_dashboard.api.routes import get_route
+from rpi_dashboard.services import system as system_service
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -162,60 +163,6 @@ class SystemStats(Static):
         self._prev_cpu_total = 0
         self.update_stats()
         self.set_interval(TUI_STATS_INTERVAL, self.update_stats)
-        
-    def get_cpu_usage(self) -> float:
-        try:
-            with open("/proc/stat", "r") as f:
-                line = f.readline()
-            if line.startswith("cpu "):
-                parts = list(map(int, line.split()[1:8]))
-                idle = parts[3] + parts[4]
-                total = sum(parts)
-                
-                if self._prev_cpu_total > 0:
-                    diff_idle = idle - self._prev_cpu_idle
-                    diff_total = total - self._prev_cpu_total
-                    if diff_total > 0:
-                        cpu_pct = 100.0 * (1.0 - diff_idle / diff_total)
-                    else:
-                        cpu_pct = 0.0
-                else:
-                    # First measurement.
-                    cpu_pct = 0.0
-                self._prev_cpu_idle = idle
-                self._prev_cpu_total = total
-                return cpu_pct
-        except Exception as e:
-            return 0.0
-        return 0.0
-
-    def get_ram_usage(self) -> tuple[float, float]:
-        try:
-            mem_total = 0
-            mem_available = 0
-            with open("/proc/meminfo", "r") as f:
-                for line in f:
-                    if line.startswith("MemTotal:"):
-                        mem_total = int(line.split()[1])
-                    elif line.startswith("MemAvailable:"):
-                        mem_available = int(line.split()[1])
-            if mem_total > 0:
-                used = mem_total - mem_available
-                return used / 1024 / 1024, mem_total / 1024 / 1024
-        except Exception:
-            pass
-        return 0.45, 1.0
-
-    def get_cpu_temp(self) -> float:
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                return int(f.read().strip()) / 1000.0
-        except Exception as e:
-            try:
-                with open("/sys/class/thermal/thermal_zone1/temp", "r") as f:
-                    return int(f.read().strip()) / 1000.0
-            except Exception as e:
-                return 45.0
 
     def get_local_ip(self) -> str:
         try:
@@ -228,16 +175,16 @@ class SystemStats(Static):
         return ip
 
     def update_stats(self) -> None:
-        cpu = self.get_cpu_usage()
-        ram_used, ram_total = self.get_ram_usage()
-        temp = self.get_cpu_temp()
+        cpu = system_service.get_cpu_usage()
+        ram = system_service.get_ram_usage()
+        temp = system_service.get_cpu_temp()
         ip = self.get_local_ip()
-        
-        if ram_total <= 1.5:
-            ram_str = f"{int(ram_used * 1024)}MB/{int(ram_total * 1024)}MB"
+
+        if ram.get('total_mb', 0) <= 1536:
+            ram_str = f"{int(ram.get('used_mb', 0))}MB/{int(ram.get('total_mb', 0))}MB"
         else:
-            ram_str = f"{ram_used:.1f}GB/{ram_total:.1f}GB"
-            
+            ram_str = f"{ram.get('used_mb', 0)/1024:.1f}GB/{ram.get('total_mb', 0)/1024:.1f}GB"
+
         self.update(
             f"CPU: {cpu:.1f}% | "
             f"RAM: {ram_str} | "
@@ -250,55 +197,8 @@ class TopStatus(Static):
     """Compact ASCII-safe status line for the physical TV console."""
 
     def on_mount(self) -> None:
-        self._prev_cpu_idle = 0
-        self._prev_cpu_total = 0
         self.update_status()
         self.set_interval(TUI_STATS_INTERVAL, self.update_status)
-
-    def get_cpu_usage(self) -> float:
-        try:
-            with open("/proc/stat", "r") as f:
-                line = f.readline()
-            if line.startswith("cpu "):
-                parts = list(map(int, line.split()[1:8]))
-                idle = parts[3] + parts[4]
-                total = sum(parts)
-                if self._prev_cpu_total > 0:
-                    diff_idle = idle - self._prev_cpu_idle
-                    diff_total = total - self._prev_cpu_total
-                    cpu_pct = 100.0 * (1.0 - diff_idle / diff_total) if diff_total > 0 else 0.0
-                else:
-                    cpu_pct = 0.0
-                self._prev_cpu_idle = idle
-                self._prev_cpu_total = total
-                return cpu_pct
-        except Exception:
-            return 0.0
-        return 0.0
-
-    def get_ram_usage(self) -> tuple[float, float]:
-        try:
-            mem_total = 0
-            mem_available = 0
-            with open("/proc/meminfo", "r") as f:
-                for line in f:
-                    if line.startswith("MemTotal:"):
-                        mem_total = int(line.split()[1])
-                    elif line.startswith("MemAvailable:"):
-                        mem_available = int(line.split()[1])
-            if mem_total > 0:
-                used = mem_total - mem_available
-                return used / 1024 / 1024, mem_total / 1024 / 1024
-        except Exception:
-            pass
-        return 0.45, 1.0
-
-    def get_cpu_temp(self) -> float:
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                return int(f.read().strip()) / 1000.0
-        except Exception:
-            return 45.0
 
     def get_local_ip(self) -> str:
         try:
@@ -311,9 +211,9 @@ class TopStatus(Static):
         return ip
 
     def update_status(self) -> None:
-        cpu = self.get_cpu_usage()
-        ram_used, ram_total = self.get_ram_usage()
-        temp = self.get_cpu_temp()
+        cpu = system_service.get_cpu_usage()
+        ram = system_service.get_ram_usage()
+        temp = system_service.get_cpu_temp()
         ip = self.get_local_ip()
         mode = "IDLE"
         app = getattr(self, "app", None)
@@ -322,9 +222,15 @@ class TopStatus(Static):
                 mode = app.mode_switcher.state.name
             except Exception:
                 mode = "IDLE"
+
+        if ram.get('total_mb', 0) <= 1536:
+            ram_str = f"{int(ram.get('used_mb', 0))}MB/{int(ram.get('total_mb', 0))}MB"
+        else:
+            ram_str = f"{ram.get('used_mb', 0)/1024:.1f}GB/{ram.get('total_mb', 0)/1024:.1f}GB"
+
         self.update(
             f"MODE: {mode} | CPU: {cpu:.1f}% | "
-            f"RAM: {int(ram_used * 1024)}MB/{int(ram_total * 1024)}MB | "
+            f"RAM: {ram_str} | "
             f"TEMP: {temp:.1f}C | IP: {ip} | API: {API_PORT}"
         )
 
@@ -516,7 +422,7 @@ class RPiDashboard(App):
             yield Static("", id="language_label")
             yield Button("CZ", id="btn_lang_cz", classes="lang-button")
             yield Button("EN", id="btn_lang_en", classes="lang-button")
-        
+
         with TabbedContent(initial=initial_tab):
             with TabPane(self.tr("player"), id="tab_player"):
                 with Vertical(id="main-content"):
@@ -615,7 +521,12 @@ class RPiDashboard(App):
 
             with TabPane(self.tr("logs"), id="tab_logs"):
                 yield Log(id="syslog")
-                            
+
+            with TabPane("💻 " + self.tr("terminal"), id="tab_terminal"):
+                with Vertical(id="main-content"):
+                    yield Static("Terminal Integration", classes="settings-title")
+                    yield Static("Terminal track not yet implemented. Use WebUI for access.", classes="status-message")
+
         yield Footer()
 
     def write_log(self, message: str) -> None:
@@ -776,15 +687,15 @@ class RPiDashboard(App):
         return_service.set_mode_switcher(self.mode_switcher)
         return_service.start_xbox_listener()
         self.apply_language()
-        
+
         self.write_log(self.tr("loaded"))
         self.write_log(self.tr("listening").format(port=API_PORT))
         self.write_log(self.tr("waiting"))
-        
+
         self.api_task = None
         if API_PORT > 0:
             self.api_task = asyncio.create_task(self.start_api_server())
-        
+
         # Periodic settings panel updates (every TUI_SETTINGS_INTERVAL seconds)
         self.set_interval(TUI_SETTINGS_INTERVAL, self.update_settings_data)
         # Run immediately on mount
@@ -850,7 +761,7 @@ class RPiDashboard(App):
             ip_info = await self.run_sys_cmd("ip -br addr | grep -v 'lo' | awk '{print $1 \": \" $3}'")
             ip_str = ip_info.replace("\n", " | ") if ip_info else f"eth0/wlan0: {local_ip}"
             self.query_one("#txt_network_info", Static).update(f"IPs: {ip_str}")
-            
+
             # 2. Tailscale Status
             ts_ip = await self.run_sys_cmd("tailscale ip -4")
             if ts_ip:
@@ -866,16 +777,16 @@ class RPiDashboard(App):
             sinks_list = self.query_one("#list_audio_sinks", OptionList)
             sinks_list.clear_options()
             self._audio_sink_by_prompt = {}
-            
+
             # Get default sink name
             default_sink = await self.run_sys_cmd("pactl get-default-sink")
-            
+
             # Get list of sinks
             sinks_out = await self.run_sys_cmd("pactl list short sinks")
             if not sinks_out:
                 sinks_list.add_option("[ERROR] No audio outputs reported by pactl")
                 return
-                
+
             for line in sinks_out.split("\n"):
                 parts = line.split()
                 if len(parts) >= 2:
@@ -1235,15 +1146,15 @@ class RPiDashboard(App):
             ssid = ssid_out if ssid_out else "RPi-service"
             hidden = "skryta" if self.language == "cz" else "hidden"
             self.query_one("#txt_hotspot_ssid", Static).update(f"Hotspot SSID: [bold]{ssid}[/] ({hidden})")
-            
+
             leases = await self.run_sys_cmd("cat /var/lib/misc/dnsmasq.leases 2>/dev/null | wc -l")
             client_count = leases if leases else "0"
             clients = "Pripojeni klienti" if self.language == "cz" else "Connected clients"
             self.query_one("#txt_hotspot_clients", Static).update(f"{clients}: [bold]{client_count}[/]")
-            
+
             hotspot_active = await self.run_sys_cmd("systemctl is-active hostapd")
             self.query_one("#switch_hotspot", Switch).value = (hotspot_active == "active")
-            
+
             raspotify_active = await self.run_sys_cmd("systemctl is-active raspotify")
             self.query_one("#switch_raspotify", Switch).value = (raspotify_active == "active")
         except Exception as e:
@@ -1649,7 +1560,7 @@ class RPiDashboard(App):
             return await self.api_middleware(request, handler)
 
         api_app = web.Application(middlewares=[_middleware])
-        
+
         # Register all routes
         api_app.router.add_post("/play", self.handle_play)
         api_app.router.add_get("/status", self.handle_status)
@@ -1966,7 +1877,7 @@ class RPiDashboard(App):
                     f.write("INNER Exception in api_middleware:\n")
                     traceback.print_exc(file=f)
                 response = web.json_response({"status": "error", "message": str(e)}, status=500)
-                
+
             self.add_cors_headers(response)
             return response
         except Exception as e:
@@ -2005,7 +1916,7 @@ class RPiDashboard(App):
             mode_status = self.query_one("#mode_status", ModeStatus)
             stats_widget = self.query_one(SystemStats)
             ram_used, ram_total = stats_widget.get_ram_usage()
-            
+
             status_data = {
                 "status": "ok",
                 "mode": mode_status.current_mode,
@@ -2057,12 +1968,12 @@ class RPiDashboard(App):
             level = data.get("level")
             if level is None or not (0 <= level <= 100):
                 return web.json_response({"status": "error", "message": "Invalid volume level (0-100)"}, status=400)
-            
+
             # Set default system volume (pactl)
             await self.run_sys_cmd(f"pactl set-sink-volume @DEFAULT_SINK@ {level}%")
             # Also try MPV IPC volume
             await self.send_mpv_ipc(["set_property", "volume", level])
-            
+
             return web.json_response({"status": "ok", "message": f"Volume set to {level}%"})
         except Exception as e:
             return web.json_response({"status": "error", "message": str(e)}, status=400)
@@ -2118,14 +2029,14 @@ class RPiDashboard(App):
             state = await asyncio.to_thread(devices_service.devices_state)
             bluetooth = state.get("bluetooth", {})
             devices = bluetooth.get("paired", [])
-            
+
             paired = [
                 f"{d['name']} ({d['mac']})" for d in devices if d.get("paired")
             ]
             connected = [
                 f"{d['name']} ({d['mac']})" for d in devices if d.get("connected")
             ]
-            
+
             return web.json_response({"status": "ok", "paired": paired, "connected": connected})
         except Exception as e:
             return web.json_response({"status": "error", "message": str(e)}, status=500)
@@ -2138,10 +2049,10 @@ class RPiDashboard(App):
             action = data.get("action", "connect") # connect, disconnect, pair, remove, trust
             if not mac:
                 return web.json_response({"status": "error", "message": "Missing 'mac' address"}, status=400)
-            
+
             if action not in ["connect", "disconnect", "pair", "remove", "trust"]:
                 return web.json_response({"status": "error", "message": "Invalid action"}, status=400)
-                
+
             runner = getattr(devices_service, f"bluetooth_{action}")
             res = await asyncio.to_thread(runner, mac)
             return web.json_response({"status": "ok", "message": f"Action {action} dispatched", "output": res.get("output", "")})
@@ -2175,11 +2086,11 @@ class RPiDashboard(App):
             password = data.get("password")
             if not ssid:
                 return web.json_response({"status": "error", "message": "Missing 'ssid'"}, status=400)
-            
+
             cmd = f"nmcli device wifi connect {shlex.quote(ssid)}"
             if password:
                 cmd += f" password {shlex.quote(password)}"
-                
+
             res = await self.run_sys_cmd(cmd)
             return web.json_response({"status": "ok", "message": "Connection command dispatched", "output": res})
         except Exception as e:
@@ -2227,13 +2138,13 @@ class RPiDashboard(App):
 
     async def play_media(self, url: str) -> None:
         """Suspend TUI, play the URL using mpv (with IPC socket), and resume TUI using ModeSwitcher.
-        
+
         RPi 3B+ uses /etc/mpv/mpv.conf for H.264-only format selection and HW decode settings.
         """
         mode_status = self.query_one("#mode_status", ModeStatus)
         mode_status.current_mode = "MPV (Player)"
         self.write_log(f"[NETWORK] Playing cast URL: {url}")
-        
+
         from mode_switcher import MPV_TIMEOUT
         import subprocess as _sp
         # Force HDMI connector active for DRM output (RPi 3B+ quirk)
@@ -2263,7 +2174,7 @@ class RPiDashboard(App):
                     timeout=2, capture_output=True)
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
-        
+
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
 
@@ -2428,16 +2339,16 @@ class RPiDashboard(App):
             self.write_log(self.tr("terminal_help"))
         else:
             self.write_log(self.tr("app_help"))
-        
+
         await self.mode_switcher.launch(command, timeout=timeout, use_suspend=use_suspend)
-        
+
         mode_status.current_mode = "IDLE (Dashboard)"
         self.write_log(f"[SYSTEM] Mode {mode_name} terminated. Dashboard restored.")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Reset inactivity on button presses and handle mode changes via ModeSwitcher."""
         import shutil
-        
+
         if event.button.id == "btn_lang_cz":
             self.language = "cz"
             self.apply_language()
@@ -2457,7 +2368,7 @@ class RPiDashboard(App):
                 cmd = ["nano"]
                 is_fallback = True
             asyncio.create_task(self.launch_mode("STEAM LINK", cmd, timeout=0, use_suspend=is_fallback))
-            
+
         elif event.button.id == "btn_gfn":
             cmd = ["cage", "-d", "--", "moonlight-qt", "stream", "192.168.0.67", "GeForce Now"]
             is_fallback = False
@@ -2466,21 +2377,21 @@ class RPiDashboard(App):
                 cmd = ["nano"]
                 is_fallback = True
             asyncio.create_task(self.launch_mode("GEFORCE NOW (Moonlight)", cmd, timeout=0, use_suspend=is_fallback))
-            
+
         elif event.button.id == "btn_mpv":
             try:
                 url_input = self.query_one("#input_mpv_url", Input)
                 url = url_input.value.strip()
             except Exception as e:
                 url = ""
-            
+
             if not url:
                 self.write_log("[ERROR] MPV: No URL provided. Enter a YouTube URL or direct media link.")
                 return
-            
+
             # Use play_media which properly launches MPV with IPC socket
             asyncio.create_task(self.play_media(url))
-            
+
         elif event.button.id == "btn_spotify":
             cmd = ["cage", "-d", "--", "cog", "--platform=drm", "https://open.spotify.com"]
             is_fallback = False
@@ -2489,7 +2400,7 @@ class RPiDashboard(App):
                 cmd = ["top"]
                 is_fallback = True
             asyncio.create_task(self.launch_mode("SPOTIFY (WPE WebKit)", cmd, timeout=0, use_suspend=is_fallback))
-            
+
         elif event.button.id == "btn_amazon":
             cmd = ["cage", "-d", "--", "chromium", "--kiosk", "--autoplay-policy=no-user-gesture-required", "--disable-gpu", "--single-process", "--memory-pressure-off", "https://music.amazon.com"]
             is_fallback = False
@@ -2498,14 +2409,14 @@ class RPiDashboard(App):
                 cmd = ["top"]
                 is_fallback = True
             asyncio.create_task(self.launch_mode("AMAZON MUSIC (Chromium)", cmd, timeout=0, use_suspend=is_fallback))
-            
+
         elif event.button.id == "btn_stop":
             if hasattr(self, "mode_switcher") and self.mode_switcher.active_process:
                 asyncio.create_task(self.mode_switcher._teardown_active_process())
-                
+
         elif event.button.id == "btn_restart_padlna":
             asyncio.create_task(self.restart_padlna())
-            
+
         elif event.button.id == "btn_scan_bluetooth":
             asyncio.create_task(self.scan_bluetooth())
         elif event.button.id == "btn_pair_bluetooth":
