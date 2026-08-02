@@ -1,6 +1,7 @@
 """Regression tests for bounded HTTP client disconnect handling."""
 
 from io import BytesIO
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,8 +17,8 @@ class DisconnectingWriter:
         raise self.error
 
 
-def _handler(writer: object) -> H:
-    handler = object.__new__(H)
+def _handler(writer: object) -> Any:
+    handler = cast(Any, object.__new__(H))
     handler.wfile = writer
     handler.close_connection = False
     handler.headers = {}
