@@ -45,8 +45,31 @@ jobs:
       - name: Node syntax check
         run: node --check /tmp/rpi-webui-ci.js
 
-      - name: Run pytest
-        run: .venv/bin/python -m pytest -q --tb=short
+      - name: Ruff lint
+        run: .venv/bin/ruff check .
+
+      - name: Mypy type check
+        run: .venv/bin/mypy rpi_dashboard
+
+      - name: Run pytest with coverage gate
+        run: |
+          .venv/bin/python -m pytest -q --tb=short \
+            --cov=rpi_dashboard \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=55
+
+      - name: Bandit high-severity scan
+        run: .venv/bin/bandit -q -lll -r rpi_dashboard
+
+      - name: Dependency vulnerability audit
+        run: .venv/bin/pip-audit --skip-editable
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
       - name: Create receipt and report
         id: receipt

@@ -200,7 +200,7 @@
 
 ## Fáze 5: Ochrana CSRF (Expert/Admin)
 
-- [ ] Úkol: Implementovat CSRF synchroniser-token pomocné funkce pro
+- [x] Úkol: Implementovat CSRF synchroniser-token pomocné funkce pro
   Expert/Admin:
   - `generate_csrf_token() -> bytes`: `secrets.token_bytes(16)`.
   - `validate_csrf(session: SessionSnapshot, x_csrf_header: str | None,
@@ -238,7 +238,7 @@
 
 ## Fáze 5b: Rate limiter přihlášení
 
-- [ ] Úkol: Implementovat třídu `LoginAttemptLimiter` s `threading.Lock`:
+- [x] Úkol: Implementovat třídu `LoginAttemptLimiter` s `threading.Lock`:
   - `check_and_record(ip: str) -> bool`: vrací True pokud pokus povolen
     (≤ 5 za rolling 60s), zaznamená časové razítko. Vrací False pokud
     překročeno.
@@ -256,7 +256,7 @@
 
 ## Fáze 6: Provisioning CLI
 
-- [ ] Úkol: Vytvořit `tools/auth_setup.py` s podpříkazy `expert`,
+- [x] Úkol: Vytvořit `tools/auth_setup.py` s podpříkazy `expert`,
   `admin`, `api-key`. Používá `ssh-askpass` / `$SSH_ASKPASS` pokud je
   `$DISPLAY` nebo `$SSH_ASKPASS` nastaveno, s fallback na `getpass.getpass()`.
   Hesla se nikdy nepředávají jako argv.
@@ -283,7 +283,7 @@
 
 ## Fáze 7: Integrace middleware
 
-- [ ] Úkol: Rozšířit `rpi_dashboard/api/middleware.py` o:
+- [x] Úkol: Rozšířit `rpi_dashboard/api/middleware.py` o:
   - `extract_session_cookie(request) -> str | None`: čte cookie
     `rpi_session` z hlaviček requestu.
   - `extract_bearer_role(request, auth_store) -> Role | None`: čte
@@ -323,7 +323,7 @@
 
 ## Fáze 8: Webserver auth endpointy a brány
 
-- [ ] Úkol: Přidat auth endpointy do `webserver.py`:
+- [x] Úkol: Přidat auth endpointy do `webserver.py`:
   - `POST /auth/login`: přijímá `{"password": "...", "role": "expert|admin"}`,
     ověřuje vůči hashu pro požadovanou roli (nikdy tiše nepreferuje
     druhou), vytváří session, nastavuje cookies, vrací `{ok, role}`.
@@ -354,7 +354,7 @@
   - **Evidence:** výstup pytest ukazuje pass.
   - **Rollback:** revertovat commit který přidal auth endpointy.
 
-- [ ] Úkol: Přidat auth bránu v `do_GET` a `do_POST` po IP allowlist.
+- [x] Úkol: Přidat auth bránu v `do_GET` a `do_POST` po IP allowlist.
   Logika brány na request:
   1. Extrakce session cookie nebo Bearer token.
   2. Pokud je některý credential přítomen a `credential_transport_allowed()` vrací false, vrátit 403 před validací credentialu; externí HTTP nikdy nesmí nést Cookie ani Bearer credential, loopback HTTP zůstává povoleno.
@@ -384,7 +384,7 @@
 
 ## Fáze 9: Regrese route inventáře
 
-- [ ] Úkol: Napsat regresní test který čte všechny registrované routy
+- [x] Úkol: Napsat regresní test který čte všechny registrované routy
   z `rpi_dashboard/api/routes.py` a legacy dispatch tabulky
   `webserver.py` a ověřuje že každá route je přítomna v
   `ENDPOINT_ROLES` nebo je explicitně vyňata (statické assety,
@@ -403,7 +403,7 @@
 
 ## Fáze 10: Integrační ověření
 
-- [ ] Úkol: Spustit kompletní testovací sadu, ověřit:
+- [x] Úkol: Spustit kompletní testovací sadu, ověřit:
   - Všechny existující testy procházejí s kompatibilními testy
     aktualizovanými podle potřeby (Basic routy beze změny).
   - Nové auth testy procházejí.
@@ -425,9 +425,9 @@
 
 ## Dokončení
 
-- [ ] Úkol: Aktualizovat `metadata.json` status na `"complete"`,
+- [x] Úkol: Aktualizovat `metadata.json` status na `"complete"`,
   přidat `completed_at` časové razítko a `implementation_notes`
   sumarizující co bylo dodáno.
-- [ ] Úkol: Spustit `tools/verify-done.sh` a potvrdit exit code 0
+- [x] Úkol: Spustit `tools/verify-done.sh` a potvrdit exit code 0
   s platným receipt.
-- [ ] Úkol: Aktualizovat `conductor/tracks.md` na `[x]`.
+- [x] Úkol: Aktualizovat `conductor/tracks.md` na `[x]`.

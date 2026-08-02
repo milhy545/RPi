@@ -60,6 +60,23 @@ def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
     assert steps[-1]["name"] == "Upload CI report"
 
 
+def test_ci_fast_workflow_enforces_quality_and_security_gates() -> None:
+    workflow = _workflow("ci-fast.yml")
+    steps = workflow["jobs"]["local-sync"]["steps"]
+    commands = {step["name"]: step.get("run", "") for step in steps}
+
+    assert commands["Ruff lint"] == ".venv/bin/ruff check ."
+    assert commands["Mypy type check"] == ".venv/bin/mypy rpi_dashboard"
+    assert "--cov-fail-under=55" in commands["Run pytest with coverage gate"]
+    assert "--cov-report=xml" in commands["Run pytest with coverage gate"]
+    assert commands["Bandit high-severity scan"] == (
+        ".venv/bin/bandit -q -lll -r rpi_dashboard"
+    )
+    assert commands["Dependency vulnerability audit"] == (
+        ".venv/bin/pip-audit --skip-editable"
+    )
+
+
 def test_ci_rpi_workflow_is_separate_and_self_hosted() -> None:
     workflow = _workflow("ci-rpi.yml")
 

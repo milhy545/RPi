@@ -1,5 +1,7 @@
 # Implementation Plan for Modularization, Test Coverage, CI, Config & Audio Mixer Fix
 
+> **Archived:** This umbrella plan is retained for audit history. Remaining work is owned by `backend-modularization-completion_20260723`, `verification-coverage-hardening_20260723`, and `audio-fullstack-refactor_20260725`; do not execute this plan independently.
+
 ## Sprint 1 (Days 1‑2) – Configuration & CI Foundations
 1. **Create `config.py`** with all current constants (ports, timeouts, rate‑limit, audio defaults). Replace literals in existing code.
 2. **Update CI workflow** (`.github/workflows/ci.yml`): add steps for `mypy`, `ruff`, `pytest‑cov`, Docker build, Trivy scan.
