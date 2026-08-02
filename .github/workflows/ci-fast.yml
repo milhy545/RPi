@@ -57,7 +57,7 @@ jobs:
             --cov=rpi_dashboard \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=60
+            --cov-fail-under=69
 
       - name: Bandit high-severity scan
         run: .venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests
