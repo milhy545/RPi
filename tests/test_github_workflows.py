@@ -66,11 +66,11 @@ def test_ci_fast_workflow_enforces_quality_and_security_gates() -> None:
     commands = {step["name"]: step.get("run", "") for step in steps}
 
     assert commands["Ruff lint"] == ".venv/bin/ruff check ."
-    assert commands["Mypy type check"] == ".venv/bin/mypy rpi_dashboard"
-    assert "--cov-fail-under=55" in commands["Run pytest with coverage gate"]
+    assert commands["Mypy type check"] == ".venv/bin/mypy ."
+    assert "--cov-fail-under=62" in commands["Run pytest with coverage gate"]
     assert "--cov-report=xml" in commands["Run pytest with coverage gate"]
     assert commands["Bandit high-severity scan"] == (
-        ".venv/bin/bandit -q -lll -r rpi_dashboard"
+        ".venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests"
     )
     assert commands["Dependency vulnerability audit"] == (
         ".venv/bin/pip-audit --skip-editable"
