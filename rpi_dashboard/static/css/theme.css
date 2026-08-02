@@ -2,7 +2,10 @@
 :root {
     /* Color Tokens (Dark Modern Theme) */
     --bg-dark: #0d1117;
+    --bg-primary: #0d1117;
     --bg-card: rgba(22, 27, 34, 0.75);
+    --bg-secondary: rgba(22, 27, 34, 0.75);
+    --bg-tertiary: #21262d;
     --bg-card-hover: rgba(33, 38, 45, 0.85);
     --bg-glass: rgba(13, 17, 23, 0.65);
     --border-color: rgba(48, 54, 61, 0.6);
@@ -10,12 +13,25 @@
 
     /* Accent & State Colors */
     --accent-blue: #58a6ff;
+    --accent-color: #58a6ff;
+    --accent-hover: #1f6feb;
     --accent-green: #3fb950;
+    --success-color: #3fb950;
+    --success-bg: #0d2818;
     --accent-purple: #bc8cff;
     --accent-orange: #d29922;
+    --warning-color: #d29922;
+    --warning-bg: #2d2308;
     --accent-red: #f85149;
+    --danger-color: #f85149;
+    --danger-bg: #3d1214;
+    --info-bg: #0c2d6b;
+
+    /* Text Colors */
     --text-main: #c9d1d9;
+    --text-primary: #c9d1d9;
     --text-muted: #8b949e;
+    --text-secondary: #8b949e;
     --text-bright: #f0f6fc;
 
     /* Spacing & Compact Sizing Tokens */
@@ -36,11 +52,27 @@
 /* Light Theme Variables Fallback */
 [data-theme="light"] {
     --bg-dark: #f6f8fa;
+    --bg-primary: #f6f8fa;
     --bg-card: rgba(255, 255, 255, 0.85);
+    --bg-secondary: rgba(255, 255, 255, 0.85);
+    --bg-tertiary: #e5e7eb;
     --bg-card-hover: rgba(243, 244, 246, 0.95);
     --bg-glass: rgba(255, 255, 255, 0.75);
     --border-color: rgba(208, 215, 222, 0.8);
+    
     --text-main: #24292f;
+    --text-primary: #24292f;
     --text-muted: #57606a;
+    --text-secondary: #57606a;
     --text-bright: #0969da;
+    
+    --accent-color: #0969da;
+    --accent-hover: #005cc5;
+    --success-color: #1a7f37;
+    --success-bg: #dafbe1;
+    --warning-color: #9a6700;
+    --warning-bg: #fff8c5;
+    --danger-color: #cf222e;
+    --danger-bg: #FFEBE9;
+    --info-bg: #ddf4ff;
 }
