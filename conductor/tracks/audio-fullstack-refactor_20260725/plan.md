@@ -1,6 +1,15 @@
 ## Background
 The `audio-fullstack-refactor_20260725` track addresses a comprehensive refactor of the RPi Dashboard audio subsystem. It tackles the current technical debt by breaking down the 1,033-line `rpi_dashboard/services/audio.py` monolith into a modular package architecture. Additionally, it resolves a synchronization bug between PipeWire and Bluetooth AVRCP volumes, introduces a global master volume API, enhances the WebUI with an Audio Flow Topology canvas, and modernizes the Textual-based TUI with an ASCII flow diagram while keeping diacritic-free Czech strings for TV console compatibility. All 312 existing tests must continue to pass on this memory-constrained (1 GB RAM) environment.
 
+## Current implementation status (audited 2026-08-02)
+- [x] Modular `rpi_dashboard/services/audio/` package replaces the former monolith and preserves public imports.
+- [x] Global master volume service, API route, WebUI slider, and topology canvas are implemented with automated coverage.
+- [ ] PipeWire sink volume and BlueZ AVRCP volume are synchronized in both directions.
+- [ ] The Textual TUI provides the planned `AudioFlowDiagram` and master-volume layout.
+- [ ] Focused AVRCP/TUI tests and target-RPi verification are recorded.
+
+The detailed checklist below remains the implementation history. Open items above are the authoritative remaining scope.
+
 ## Phase 1: Backend modularization (split audio.py into package)
 - [ ] Task: Create directory `rpi_dashboard/services/audio/` and rename the existing `rpi_dashboard/services/audio.py` to `rpi_dashboard/services/audio/_legacy_audio.py`.
 - [ ] Task: Create `rpi_dashboard/services/audio/state.py` and move the functions `parse_pactl_output`, `get_sinks`, `get_sources`, `get_active_sink` from `_legacy_audio.py`.
