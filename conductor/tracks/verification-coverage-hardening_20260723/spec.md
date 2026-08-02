@@ -9,8 +9,9 @@ the Pi. The evidence ledger is `log-audit.md` in this track.
 
 ## Motivation
 
-Current package coverage is 62%, but the live host shows failures that coverage
-alone would miss. The audit found a report worker failing every minute, a stale
+Current package coverage is 60.11% (measured by GitHub Actions on 2026-08-02;
+583 tests passed), but the live host shows failures that coverage alone would
+miss. The audit found a report worker failing every minute, a stale
 failed tmux restore unit, dashboard stop timeouts, WebUI broken-pipe tracebacks,
 USB transport loss, PipeWire xruns/resyncs, Bluetooth profile and controller
 errors, transient Wi-Fi/Tailscale failures, and triggerhappy device-hook errors.
