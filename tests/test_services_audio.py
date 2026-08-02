@@ -56,7 +56,7 @@ def test_load_audio_latency_default():
 def test_audio_set_volume_clamp():
     """Test volume clamping."""
     from rpi_dashboard.services.audio import audio_set_volume
-    with patch("rpi_dashboard.services.audio._run") as mock_run:
+    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
         result = audio_set_volume("sink", "test", 200)
         assert result["volume"] == 150  # Clamped to max
