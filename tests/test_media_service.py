@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -38,7 +38,7 @@ def install_fake_ytdlp(monkeypatch: Any, info: dict[str, Any]) -> None:
 
 def test_norm_and_direct_resolution() -> None:
     assert media.norm(" https://example.com/a//b/../c?q=1 ") == "https://example.com/a/c?q=1"
-    assert media.norm(None) == ""
+    assert media.norm(cast(Any, None)) == ""
     assert media.resolve("https://example.com/video.mp4") == (
         "https://example.com/video.mp4",
         {"title": "https://example.com/video.mp4"},
