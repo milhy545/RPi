@@ -2137,6 +2137,15 @@ class H(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
 
+    def _write_body(self, body: bytes) -> bool:
+        """Write one response body, treating client disconnects as bounded outcomes."""
+        try:
+            self.wfile.write(body)
+            return True
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            return False
+
     def sj(self, c, o, extra_headers=None):
         d = json.dumps(o, ensure_ascii=False).encode()
         self.send_response(c)
@@ -2147,14 +2156,14 @@ class H(BaseHTTPRequestHandler):
             for name, value in extra_headers:
                 self.send_header(name, value)
         self.end_headers()
-        self.wfile.write(d)
+        self._write_body(d)
 
     def st(self,c,b,ct="text/html;charset=utf-8"):
         d=b.encode()
         self.send_response(c);self.send_header("Content-Type",ct)
         self.send_header("Content-Length",str(len(d)))
         self._send_cors_headers()
-        self.end_headers();self.wfile.write(d)
+        self.end_headers();self._write_body(d)
 
     # ─── Auth Gate ──────────────────────────────────────────────────
     def _run_auth_gate(self, path: str, method: str) -> tuple[bool, dict | None]:
