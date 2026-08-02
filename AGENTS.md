@@ -2,57 +2,36 @@
 
 ## Operating Context
 
-This repository is the RPi-TV Dashboard application. The home directory (`~`) is the Raspberry Pi host operations space; application development belongs here in `~/rpi-dashboard`. Inspect state first, preserve user data, prefer reversible changes, and verify runtime behavior.
+This repository contains the RPi-TV Dashboard. The production checkout is `/home/milhy777/rpi-dashboard` on host `RPi`; the development and GitHub gateway mirror is `/home/milhy777/Develop/RPi` on `Milhy-PC`. Resolve the Git root and host before changing runtime state. Preserve user data, prefer reversible changes, and verify behaviour on the affected host.
 
-## Project Structure & Module Organization
+## Project Structure & Module Organisation
 
-- `webserver.py` is still the main WebUI/API entrypoint and compatibility surface.
-- `rpi_dashboard/api/` contains the newer route registry and request handlers.
-- `rpi_dashboard/services/` contains extracted audio, player, devices, CEC, terminal, and system logic.
-- `rpi_dashboard/static/` contains extracted WebUI HTML, CSS, and JavaScript.
-- `rpi_dashboard/tui/modern.py` contains the modern Textual dashboard work.
-- `tests/` contains pytest coverage; `tests/e2e/` contains the Playwright smoke suite.
-- `conductor/` contains product context, workflow rules, tracks, CI receipts, and reports.
+- `webserver.py` is the WebUI/API compatibility entrypoint; HTTP routing lives in `rpi_dashboard/api/`.
+- `rpi_dashboard/services/` contains audio, Bluetooth, player, devices, CEC, terminal, smart-home, and system logic.
+- `rpi_dashboard/static/` contains the WebUI HTML, CSS, JavaScript, manifest, and service worker.
+- `tui.py` is the production Textual dashboard. `rpi_dashboard/tui/modern.py` remains a non-production prototype.
+- `tests/` contains pytest coverage; `tests/e2e/` contains the Playwright hardware smoke flow.
+- `provisioning/` and `systemd/` contain deployment assets. `conductor/` is the intended product and track record; validate completion against its plan, CI, and receipt.
 
-This repository's `conductor/` directory is the single authoritative Conductor state for RPi Dashboard. Host-specific startup routing and compatibility links belong in local agent configuration, not in this repository.
-
-Do not edit generated artifacts, caches, reports, or runtime state unless the task explicitly requires cleanup.
+Do not edit caches, reports, receipts, logs, or runtime files unless the task explicitly targets them.
 
 ## Build, Test, and Development Commands
 
-- `uv sync` installs Python dependencies.
-- `uv run python tui.py` starts the TUI dashboard.
-- `uv run python webserver.py` starts the WebUI/API server.
-- `uv run pytest` runs the Python test suite.
-- `uv run ruff check .` runs lint checks.
-- `uv run mypy .` runs static typing checks.
-- `cd tests/e2e && npm test` runs the Playwright WebUI smoke tests.
-- `tools/verify-done.sh` is mandatory before claiming completion; exit `1` means not complete.
+- `uv sync --extra dev` installs Python runtime and development dependencies.
+- `uv run python tui.py` starts the TUI; `uv run python webserver.py` starts the WebUI/API.
+- `uv run python -m pytest -q` runs Python tests.
+- `uv run ruff check .` and `uv run mypy .` run lint and type checks.
+- `cd tests/e2e && npm install` installs Playwright. Run hardware E2E from Milhy-PC with `TARGET_URL=http://192.168.0.205:8080 npm test`.
+- `tools/run-ci.sh` runs the repository CI checks. `tools/verify-done.sh` is mandatory before any completion claim.
 
-## Coding Style & Naming Conventions
+## Coding Style & Testing
 
-Use Python 3.12 style with type hints on public functions where practical. Keep service logic in `rpi_dashboard/services/`, HTTP mapping in `rpi_dashboard/api/`, and compatibility glue in `webserver.py`. Use snake_case for Python symbols and kebab-case for shell scripts. Keep code, docs, commands, and commits in English.
+Use Python 3.12, four-space indentation, type hints on public APIs, `snake_case` Python names, and `kebab-case` shell scripts. Keep service logic out of HTTP handlers. Write code and primary documentation in UK English and maintain matching `*.cz.md` documentation.
 
-## Testing Guidelines
+Add focused `test_<behaviour>.py` coverage near changed behaviour. Mock hardware commands such as `pactl`, `bluetoothctl`, `nmcli`, `cec-client`, and `mpv` unless explicitly performing live RPi validation. WebUI changes require Playwright or equivalent browser evidence; service changes require logs, process, port, and API/UI verification.
 
-Add focused pytest tests near changed behavior. Mock `pactl`, `bluetoothctl`, `nmcli`, `cec-client`, and `mpv` unless doing hardware validation. For visible WebUI changes, run or update Playwright smoke tests. For RPi service changes, verify logs, process state, resources, and affected UI/API behavior.
+## Commits, Pull Requests, and Agent Safety
 
-## Current Refactor Handoff
+Use short imperative Conventional Commit subjects, for example `fix(webui): remove duplicate status bar`. Pull requests must describe intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware impact.
 
-As of 2026-07-07, the WebUI refactor is functionally complete and verified with remote Playwright from Milhy-PC, because local Chromium overloads this 1 GB Raspberry Pi. Use Milhy-PC for any browser-based checks.
-
-The production TV TUI still starts through `tui.py` via `dashboard@milhy777.service`; `rpi_dashboard/tui/modern.py` is only a prototype and is not the live TV entrypoint. A major TUI issue was fixed today: the "Zařízení & Nastavení" tab rendered as effectively empty because `TabbedContent`, `TabPane`, and `#settings-container` did not consume available height. The fix is covered by `tests/test_tui_modern.py::test_legacy_tui_settings_tab_has_usable_height`.
-
-Runtime state after the fix: `dashboard@milhy777.service` was restarted, the TUI is visible on `tty1`, and the service listens on port `8090`. Verified commands were `uv run ruff check tui.py tests/test_tui_modern.py`, `uv run mypy .`, and `uv run python -m pytest -q` (`122 passed`).
-
-Current TUI state as of 2026-07-09: the live `tui.py` path now has task-oriented tabs, a persistent status bar, readable Audio/Bluetooth/Wi-Fi empty states, human audio/Bluetooth labels, and a visible CZ/EN language switch. The default language mirrors WebUI (`cz`), but TUI Czech strings intentionally omit diacritics because the physical TV console/tty buffer renders UTF-8 Czech characters incorrectly. Verified live through `dashboard@milhy777.service` on `tty1`; `/dev/vcs1` showed `Jazyk: Cestina`, `CZ ON`, `EN`, and readable tab labels.
-
-Remaining TUI work for the next session: continue the visual/UX modernization on the real `tui.py` path, verify every active TUI control on the TV, and decide whether to merge or replace the unused `rpi_dashboard/tui/modern.py` prototype.
-
-## Commit & Pull Request Guidelines
-
-Use short, imperative commit subjects with prefixes such as `fix(webui):`, `feat(audio):`, `test(dashboard):`, and `chore(conductor):`. Pull requests should include intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware notes. Never commit secrets, `.env` files, generated reports or receipts, caches, or machine-specific state.
-
-## Agent-Specific Rules
-
-Before editing, run `git status --short` and work with existing changes. Treat `conductor/ci/SAFETY-RULES.md` and `tools/verify-done.sh` as authoritative. If `verify-done.sh` fails, report the exact blocker instead of saying the project is done.
+Before editing, run `git status --short` and preserve unrelated changes. Follow `conductor/ci/SAFETY-RULES.md`: use `tools/finish-track.sh` for commits, never push directly from RPi, and report an exact blocker whenever `tools/verify-done.sh` fails.

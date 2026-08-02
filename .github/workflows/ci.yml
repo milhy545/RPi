@@ -10,3 +10,29 @@ on:
 jobs:
   local-sync:
     uses: ./.github/workflows/ci-fast.yml
+
+  verify-done:
+    name: verify-done
+    needs: local-sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Download CI receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-receipt
+          path: conductor/ci/receipts
+
+      - name: Download CI report
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-report-ubuntu
+          path: conductor/ci/reports
+
+      - name: Verify completion receipt
+        run: tools/verify-done.sh

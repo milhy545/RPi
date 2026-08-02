@@ -22,8 +22,20 @@ def test_ci_approves_pull_requests_only_after_verification() -> None:
     assert "workflow_dispatch" in workflow["on"]
 
     jobs = workflow["jobs"]
-    assert list(jobs) == ["local-sync"]
+    assert list(jobs) == ["local-sync", "verify-done"]
     assert jobs["local-sync"]["uses"] == "./.github/workflows/ci-fast.yml"
+
+    verify = jobs["verify-done"]
+    assert verify["name"] == "verify-done"
+    assert verify["needs"] == "local-sync"
+    assert verify["runs-on"] == "ubuntu-latest"
+    assert [step["name"] for step in verify["steps"]] == [
+        "Checkout branch",
+        "Download CI receipt",
+        "Download CI report",
+        "Verify completion receipt",
+    ]
+    assert verify["steps"][-1]["run"] == "tools/verify-done.sh"
 
 
 def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:

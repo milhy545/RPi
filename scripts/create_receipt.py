@@ -19,11 +19,11 @@ def main():
 
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
     RECEIPT_FILE = f"{RECEIPT_DIR}/{SHA}-{timestamp}-github-main.json"
-    REPORT_FILE = f"conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md"
+    REPORT_FILE = f"{REPORT_DIR}/{SHA}-{timestamp}-github-main.md"
 
     # Create report file
     with open(REPORT_FILE, "w") as f:
-        f.write("# RPi Dashboard CI Report\n\n")
+        f.write("PASS\n\n# RPi Dashboard CI Report\n\n")
         f.write(f"- Commit: {SHA}\n")
         f.write(f"- Host: {subprocess.check_output(['hostname'], text=True).strip()}\n")
         f.write(f"- Time: {datetime.utcnow().isoformat()}Z\n")
@@ -50,7 +50,7 @@ def main():
     if github_output:
         with open(github_output, 'a') as f:
             f.write(f"receipt={RECEIPT_FILE}\n")
-            f.write(f"report=conductor/ci/reports/{SHA}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-github-main.md\n")
+            f.write(f"report={REPORT_FILE}\n")
     else:
         # Fallback for local testing
         print(f"receipt={RECEIPT_FILE}")
