@@ -69,7 +69,7 @@ def test_ci_fast_workflow_enforces_quality_and_security_gates() -> None:
     assert commands["Mypy type check"] == (
         ".venv/bin/mypy --explicit-package-bases ."
     )
-    assert "--cov-fail-under=60" in commands["Run pytest with coverage gate"]
+    assert "--cov-fail-under=69" in commands["Run pytest with coverage gate"]
     assert "--cov-report=xml" in commands["Run pytest with coverage gate"]
     assert commands["Bandit high-severity scan"] == (
         ".venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests"
