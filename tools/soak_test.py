@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Sequence
 
 
 class SoakTest:
@@ -28,11 +28,11 @@ class SoakTest:
         self.end_time = self.start_time + (duration_hours * 3600)
         self.samples: List[Dict[str, Any]] = []
 
-    def run_command(self, cmd: str) -> tuple[int, str, str]:
+    def run_command(self, cmd: Sequence[str]) -> tuple[int, str, str]:
         """Run command and return (exit_code, stdout, stderr)."""
         try:
             result = subprocess.run(
-                cmd, shell=True, cwd=self.project_root,
+                cmd, cwd=self.project_root,
                 capture_output=True, text=True, timeout=30
             )
             return result.returncode, result.stdout.strip(), result.stderr.strip()
@@ -49,17 +49,18 @@ class SoakTest:
         }
 
         # System info
-        rc, out, _ = self.run_command("uname -a")
+        rc, out, _ = self.run_command(["uname", "-a"])
         if rc == 0:
             snapshot["kernel"] = out
 
         # Uptime
-        rc, out, _ = self.run_command("cat /proc/uptime")
+        rc, out, _ = self.run_command(["cat", "/proc/uptime"])
         if rc == 0:
             snapshot["uptime_seconds"] = float(out.split()[0])
 
         # Memory
-        rc, out, _ = self.run_command("free -b")
+        lines: list[str] = []
+        rc, out, _ = self.run_command(["free", "-b"])
         if rc == 0:
             lines = out.strip().split('\n')
             if len(lines) >= 2:
@@ -81,53 +82,59 @@ class SoakTest:
             }
 
         # CPU per core
-        rc, out, _ = self.run_command("mpstat -P ALL 1 1")
+        rc, out, _ = self.run_command(["mpstat", "-P", "ALL", "1", "1"])
         if rc == 0:
             snapshot["cpu"] = out
 
         # Load average
-        rc, out, _ = self.run_command("cat /proc/loadavg")
+        rc, out, _ = self.run_command(["cat", "/proc/loadavg"])
         if rc == 0:
             snapshot["loadavg"] = out.strip()
 
         # Temperature
-        rc, out, _ = self.run_command("vcgencmd measure_temp")
+        rc, out, _ = self.run_command(["vcgencmd", "measure_temp"])
         if rc == 0:
             snapshot["temperature_c"] = float(out.replace("temp=", "").replace("'C", ""))
 
         # Disk
-        rc, out, _ = self.run_command("df -h /")
+        rc, out, _ = self.run_command(["df", "-h", "/"])
         if rc == 0:
             snapshot["disk"] = out.strip()
 
         # Process count
-        rc, out, _ = self.run_command("ps aux --no-headers | wc -l")
+        rc, out, _ = self.run_command(["ps", "-e", "--no-headers"])
         if rc == 0:
-            snapshot["process_count"] = int(out)
+            snapshot["process_count"] = len(out.splitlines())
 
         # Project services
         for svc in ["dashboard@milhy777", "mpv@milhy777", "report-processor", "tmux-restore"]:
-            rc, out, _ = self.run_command(f"systemctl is-active {svc}")
+            rc, out, _ = self.run_command(["systemctl", "is-active", svc])
             snapshot[f"service_{svc.replace('@', '_').replace('-', '_')}"] = out if rc == 0 else "inactive"
 
         # Audio (PipeWire)
-        rc, out, _ = self.run_command("pactl info 2>/dev/null | grep -E 'Server Name|Default Sink|Default Source'")
+        rc, out, _ = self.run_command(["pactl", "info"])
         if rc == 0:
-            snapshot["pipewire"] = out.strip()
+            snapshot["pipewire"] = "\n".join(
+                line for line in out.splitlines()
+                if line.startswith(("Server Name:", "Default Sink:", "Default Source:"))
+            )
 
         # Bluetooth
-        rc, out, _ = self.run_command("bluetoothctl show 2>/dev/null | grep -E 'Powered|Discoverable|Pairable'")
+        rc, out, _ = self.run_command(["bluetoothctl", "show"])
         if rc == 0:
-            snapshot["bluetooth"] = out.strip()
+            snapshot["bluetooth"] = "\n".join(
+                line for line in out.splitlines()
+                if line.strip().startswith(("Powered:", "Discoverable:", "Pairable:"))
+            )
 
         # Network
-        rc, out, _ = self.run_command("ip -brief addr show")
+        rc, out, _ = self.run_command(["ip", "-brief", "addr", "show"])
         if rc == 0:
             snapshot["network"] = out.strip()
 
         # Journal errors (last interval)
         rc, out, _ = self.run_command(
-            "journalctl --since '1 minute ago' -p err --no-pager -n 20"
+            ["journalctl", "--since", "1 minute ago", "-p", "err", "--no-pager", "-n", "20"]
         )
         if rc == 0 and out:
             snapshot["journal_errors"] = out.strip()
