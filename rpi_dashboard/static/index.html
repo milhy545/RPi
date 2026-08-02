@@ -435,24 +435,23 @@
     </div>
 
     <!-- Terminal Panel -->
-    <div id="p-terminal" class="pnl">
-        <div class="sec" style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+    <div id="p-terminal" class="pnl" style="display:flex; flex-direction:column; height:100%;">
+        <div id="terminal-locked-view" class="sec" style="height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;">
             <div style="text-align:center; margin-bottom:1rem;">
-                <h3>💻 Web Terminal Integration</h3>
+                <h3 data-i18n="terminal">💻 Web Terminal</h3>
                 <p style="color:#8b949e; max-width:500px; margin:0 auto;">
-                    This panel will host an xterm.js instance for direct shell access.
-                    A WebSocket connection will be established upon unlocking.
+                    Terminal access requires Admin role. Please verify your permissions.
                 </p>
-                <div style="margin-top:1rem; padding:1rem; border:1px solid var(--app-border); border-radius:8px; background:var(--app-panel-2); display:inline-block; text-align:left;">
-                    <p style="margin:0 0 0.5rem 0; font-weight:bold; color:var(--app-accent);">Integration Contract:</p>
-                    <ul style="margin:0; padding-left:1.5rem; color:var(--app-text); font-size:0.85rem;">
-                        <li><strong>Transport:</strong> WebSocket (requires Terminal Track implementation)</li>
-                        <li><strong>Access Control:</strong> Requires Auth Track JWT token for step-up auth</li>
-                        <li><strong>State:</strong> Currently 🔒 Locked</li>
-                    </ul>
-                </div>
             </div>
-            <button class="app-btn-danger" disabled style="opacity:0.5; cursor:not-allowed;">🔒 Unlock Terminal</button>
+            <button class="app-btn-danger" onclick="unlockTerminal()">🔓 Verify Permissions & Unlock</button>
+        </div>
+        <div id="terminal-active-view" style="display:none; height:100%; flex-direction:column; padding:.5rem;">
+            <div class="row">
+                <button onclick="termConnect()" data-i18n="termConnect">Connect</button>
+                <button onclick="termDisconnect()" data-i18n="termDisconnect">Disconnect</button>
+                <span id="term-status" style="margin-left:auto;font-family:monospace;font-size:.9rem;color:#c9d1d9">Disconnected</span>
+            </div>
+            <div id="terminal" class="terminal-container" style="flex:1; margin-top:.4rem; background:#0d1117; padding:.4rem; border:1px solid #30363d; border-radius:.3rem;"></div>
         </div>
     </div>
     <!-- Feedback Modal -->
@@ -472,6 +471,27 @@
                 <textarea id="feedback-desc" data-i18n-attr="placeholder" placeholder="Please describe the issue or your feature request..." style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem;resize:vertical;box-sizing:border-box"></textarea>
             </div>
             <button onclick="submitFeedback()" style="width:100%;margin-top:.4rem" data-i18n="feedbackSubmit">Submit</button>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeLogin()">×</button>
+            <h3 data-i18n="loginTitle">🔒 Authorization Required</h3>
+            <div id="login-error" style="color:var(--app-color-danger);margin-bottom:.4rem;font-size:.85rem;display:none"></div>
+            <div>
+                <label data-i18n="loginRoleLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Role:</label>
+                <select id="login-role" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem">
+                    <option value="expert">Expert</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            <div style="margin-top:.4rem">
+                <label data-i18n="loginPasswordLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Password:</label>
+                <input type="password" id="login-password" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem;box-sizing:border-box" onkeydown="if(event.key==='Enter')submitLogin()">
+            </div>
+            <button onclick="submitLogin()" style="width:100%;margin-top:.4rem" data-i18n="loginSubmit">Login</button>
         </div>
     </div>
 
