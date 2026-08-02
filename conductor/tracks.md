@@ -62,7 +62,7 @@
 - [x] **Track: dashboard-security-cleanup_20260723** — Move Wi-Fi settings to Network and close credential, WebSocket, and static-analysis security gaps — all phases verified complete | [Plan](./tracks/dashboard-security-cleanup_20260723/plan.md)
 - [ ] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
 - [x] **Track: unified-ui-ux-refactor_20260728** — Unified UI/UX Refactor & Theme Engine (Mobile-first, Active Status Bar, TUI parity) | [Plan](./tracks/unified-ui-ux-refactor_20260728/plan.md)
-- [x] **Track: lightweight-auth-boundaries_20260729** — Role-based access control with Basic/Expert/Admin tiers, session management, CSRF protection, and local CLI provisioning (depends: dashboard-security-cleanup_20260723; blocks: unified-ui-ux-refactor_20260728) | [Plan](./tracks/lightweight-auth-boundaries_20260728/plan.md)
+- [x] **Track: lightweight-auth-boundaries_20260729** — Role-based access control with Basic/Expert/Admin tiers, session management, CSRF protection, and local CLI provisioning (depends: dashboard-security-cleanup_20260723; blocks: unified-ui-ux-refactor_20260728) | [Plan](./tracks/lightweight-auth-boundaries_20260729/plan.md)
 - [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
 - [x] **Track: mpv-eof-runtime-return_20260723** — Unify return-to-dashboard across all modes, MPV EOF, keyboard shortcut, and Xbox B hold | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
 
