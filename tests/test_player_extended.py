@@ -98,7 +98,12 @@ def test_mpv_start_stop_and_status(monkeypatch: Any) -> None:
         pid = 4321
 
     commands: list[list[str]] = []
-    monkeypatch.setattr(player.subprocess, "Popen", lambda command, **kwargs: commands.append(command) or Proc())
+
+    def popen(command: list[str], **kwargs: Any) -> Proc:
+        commands.append(command)
+        return Proc()
+
+    monkeypatch.setattr(player.subprocess, "Popen", popen)
     assert player.mpv_start("movie.mp4", quality="360p", resume=True) == {"ok": True, "pid": 4321}
     assert "--start=0" in commands[0]
     assert "--ytdl-format=" + player.QUALITY["360p"] in commands[0]
@@ -141,14 +146,15 @@ def test_playback_memory_lifecycle(tmp_path: Path, monkeypatch: Any) -> None:
     monkeypatch.setattr(player, "_playback_memory_file", lambda: str(memory_file))
     monkeypatch.setattr(player, "mpv_ipc_socket_live", lambda: True)
     monkeypatch.setattr(player.time, "time", lambda: 123.0)
-    values = {"time-pos": 40, "duration": 100, "media-title": "Demo", "path": "https://youtu.be/dQw4w9WgXcQ"}
+    source_url = "https://youtu.be/dQw4w9WgXcQ"
+    values: dict[str, Any] = {"time-pos": 40, "duration": 100, "media-title": "Demo", "path": source_url}
     monkeypatch.setattr(player, "mget", lambda key: values[key])
 
     saved = player.save_mpv_resume_memory()
     assert saved == {"position": 40.0, "duration": 100.0, "title": "Demo", "timestamp": 123.0}
-    assert player.mpv_memory_for_url(values["path"]) == saved
-    assert player.mpv_memory_clear_for_url(values["path"]) is True
-    assert player.mpv_memory_clear_for_url(values["path"]) is False
+    assert player.mpv_memory_for_url(source_url) == saved
+    assert player.mpv_memory_clear_for_url(source_url) is True
+    assert player.mpv_memory_clear_for_url(source_url) is False
 
 
 def test_playback_memory_skips_start_and_clears_near_end(tmp_path: Path, monkeypatch: Any) -> None:
@@ -185,7 +191,12 @@ def test_eof_detection_listener_and_auto_return(monkeypatch: Any) -> None:
     assert callbacks == ["eof"]
 
     captured: list[Any] = []
-    monkeypatch.setattr(player, "mpv_listen_for_eof", lambda callback=None, **kwargs: captured.append(callback) or True)
+
+    def capture_listener(callback: Any = None, **kwargs: Any) -> bool:
+        captured.append(callback)
+        return True
+
+    monkeypatch.setattr(player, "mpv_listen_for_eof", capture_listener)
     monkeypatch.setattr(player, "save_mpv_resume_memory", lambda: None)
     returned: list[tuple[str, str]] = []
     monkeypatch.setattr(player.return_service, "return_to_dashboard", lambda reason, source: returned.append((reason, source)))
