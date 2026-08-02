@@ -92,9 +92,9 @@ přepínač CZ/EN, ale zatím neodpovídá struktuře WebUI.
   přetékání, všechny taby dostupné.
 - [x] Úkol: Ověřit na 1920x1080 (desktop): kompletní layout s dostatečnými
   mezerami, žádné roztažené nebo stlačené prvky.
-- [x] Úkol: Zachytit Playwright screenshots na každém rozlišení a uložit
+- [ ] Úkol: Zachytit Playwright screenshots na každém rozlišení a uložit
   do `conductor/tracks/unified-ui-ux-refactor_20260728/evidence/`.
-- [x] Ověření: Všechny 4 screenshots zachyceny; žádné viditelné porušení
+- [ ] Ověření: Všechny 4 screenshots zachyceny; žádné viditelné porušení
   layoutu.
 
 ## Fáze 7: Parita TUI
@@ -118,7 +118,7 @@ přepínač CZ/EN, ale zatím neodpovídá struktuře WebUI.
 
 - [x] Úkol: Spustit `uv run python -m pytest -q` — všechny testy projdou.
 - [x] Úkol: Spustit `uv run ruff check .` — žádné lint chyby.
-- [x] Úkol: Zachytit Playwright důkazy pro všechna 4 rozlišení.
+- [ ] Úkol: Zachytit Playwright důkazy pro všechna 4 rozlišení.
 - [x] Úkol: Spustit `tools/verify-done.sh` a potvrdit exit code 0.
 - [x] Ověření: CI receipt zapsán pro SHA commitu.
 
@@ -131,8 +131,8 @@ přepínač CZ/EN, ale zatím neodpovídá struktuře WebUI.
 - [x] Nula chyb v konzoli během čisté 30sekundové relace.
 - [x] Terminal tab zobrazuje neprázdný shell s integrační smlouvou;
   žádný WebSocket otevřen, dokud jej terminal/auth tracky nedodají.
-- [x] Responzivní layout ověřen na 390x844, 768x1024, 1366x768, 1920x1080.
-- [x] Playwright screenshots zachyceny pro všechna 4 rozlišení.
+- [ ] Responzivní layout ověřen na 390x844, 768x1024, 1366x768, 1920x1080.
+- [ ] Playwright screenshots zachyceny pro všechna 4 rozlišení.
 - [x] Struktura tabů TUI, stavový panel a přepínač CZ/EN odpovídají WebUI.
 - [x] Všechny existující testy projdou: `uv run python -m pytest -q`.
 - [x] Lint projde: `uv run ruff check .`.

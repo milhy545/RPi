@@ -49,7 +49,7 @@ jobs:
         run: .venv/bin/ruff check .
 
       - name: Mypy type check
-        run: .venv/bin/mypy rpi_dashboard
+        run: .venv/bin/mypy .
 
       - name: Run pytest with coverage gate
         run: |
@@ -57,10 +57,10 @@ jobs:
             --cov=rpi_dashboard \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=55
+            --cov-fail-under=62
 
       - name: Bandit high-severity scan
-        run: .venv/bin/bandit -q -lll -r rpi_dashboard
+        run: .venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests
 
       - name: Dependency vulnerability audit
         run: .venv/bin/pip-audit --skip-editable

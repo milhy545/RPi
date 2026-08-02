@@ -2,11 +2,10 @@
   "id": "mpv-optimization-20260627",
   "title": "MPV Optimization for Faster Video Playback",
   "type": "performance",
-  "status": "done",
+  "status": "active",
   "priority": "high",
   "created": "2026-07-27",
-  "updated": "2026-07-26",
-  "completed": "2026-07-26",
+  "updated": "2026-08-02",
   "created_by": "agent",
   "description": "Optimize RPi Dashboard video playback performance",
   "acceptance_criteria": [
@@ -25,6 +24,7 @@
       "Reset Matrix button now works (added 'reset' action to audio/route/alexa-bt endpoint)",
       "Bluetooth scan timeout increased from 2s to 5s"
     ],
+    "verification_status": "Target-device startup, memory, and CPU acceptance criteria remain open.",
     "next_optimizations": [
       "Async Preloading",
       "Dynamic Core Pinning",

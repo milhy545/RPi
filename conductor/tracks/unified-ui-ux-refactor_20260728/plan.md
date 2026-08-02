@@ -140,9 +140,9 @@ structure.
   overflow, all tabs accessible.
 - [x] Task: Verify at 1920x1080 (desktop): complete layout with generous
   spacing, no stretched or compressed elements.
-- [x] Task: Capture Playwright screenshots at each viewport size and
+- [ ] Task: Capture Playwright screenshots at each viewport size and
   save to `conductor/tracks/unified-ui-ux-refactor_20260728/evidence/`.
-- [x] Verify: All four screenshots captured; no layout breakage visible.
+- [ ] Verify: All four screenshots captured; no layout breakage visible.
 
 ## Phase 7: TUI Parity
 
@@ -164,7 +164,7 @@ structure.
 
 - [x] Task: Run `uv run python -m pytest -q` — all tests pass.
 - [x] Task: Run `uv run ruff check .` — no lint errors.
-- [x] Task: Capture Playwright evidence for all four viewports.
+- [ ] Task: Capture Playwright evidence for all four viewports.
 - [x] Task: Run `tools/verify-done.sh` and confirm exit code 0.
 - [x] Verify: CI receipt written for the commit SHA.
 
@@ -176,8 +176,8 @@ structure.
 - [x] Zero console errors during a clean 30-second session.
 - [x] Terminal tab renders a non-blank shell with integration contract;
   no WebSocket opened until terminal/auth tracks deliver.
-- [x] Responsive layout verified at 390x844, 768x1024, 1366x768, 1920x1080.
-- [x] Playwright screenshots captured for all four viewports.
+- [ ] Responsive layout verified at 390x844, 768x1024, 1366x768, 1920x1080.
+- [ ] Playwright screenshots captured for all four viewports.
 - [x] TUI tab structure, status bar, and CZ/EN toggle match WebUI.
 - [x] All existing tests pass: `uv run python -m pytest -q`.
 - [x] Lint passes: `uv run ruff check .`.
