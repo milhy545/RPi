@@ -124,7 +124,11 @@ def test_basic_csrf_origin_defense(test_server):
         status = e.code
     assert status in (200, 201)
 
-def _get(url: str, session_cookie: str = None, csrf_token: str = None) -> tuple[int, dict]:
+def _get(
+    url: str,
+    session_cookie: str | None = None,
+    csrf_token: str | None = None,
+) -> tuple[int, dict]:
     req = urllib.request.Request(url, method="GET")
     if session_cookie:
         req.add_header("Cookie", f"rpi_session={session_cookie}")
