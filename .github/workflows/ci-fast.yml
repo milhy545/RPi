@@ -49,7 +49,7 @@ jobs:
         run: .venv/bin/ruff check .
 
       - name: Mypy type check
-        run: .venv/bin/mypy .
+        run: .venv/bin/mypy --explicit-package-bases .
 
       - name: Run pytest with coverage gate
         run: |
