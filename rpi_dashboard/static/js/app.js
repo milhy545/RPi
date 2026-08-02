@@ -578,7 +578,12 @@ async function termRequestAccess(){
     else { openLoginModal('admin'); }
 }
 
-function termConnect(){
+async function termConnect(){
+    let r = await api('/auth/whoami');
+    if (!r.authenticated || r.role !== 'admin') {
+        msg('Admin session required for Terminal', 'err');
+        return;
+    }
     $('#term-lock-screen').style.display='none';
     $('#terminal').style.display='block';
     termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg(L('connected'),'ok');$('#term-status').textContent=L('connected');term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent=L('disconnected');msg(L('disconnected'),'info')};termWs.onerror=()=>msg(L('connectionError'),'err')
