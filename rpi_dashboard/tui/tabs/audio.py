@@ -10,9 +10,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Static, Label
-from textual.reactive import reactive
+from textual.containers import Vertical
+from textual.widgets import Static
 
 from rpi_dashboard.services.audio.state import audio_state
 
