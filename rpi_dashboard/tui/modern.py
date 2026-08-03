@@ -19,6 +19,7 @@ from textual import work
 import time
 import asyncio
 from datetime import datetime
+from rpi_dashboard.tui.tabs.audio import AudioTab
 
 
 # Modern color scheme
@@ -345,8 +346,9 @@ class ModernDashboard(App):
         Binding("q", "quit", "Quit"),
         Binding("r", "refresh", "Refresh"),
         Binding("1", "switch_tab('control')", "Control"),
-        Binding("2", "switch_tab('devices')", "Devices"),
-        Binding("3", "switch_tab('settings')", "Settings"),
+        Binding("2", "switch_tab('audio')", "Audio"),
+        Binding("3", "switch_tab('devices')", "Devices"),
+        Binding("4", "switch_tab('settings')", "Settings"),
         Binding("s", "scan.bluetooth", "Scan BT"),
     ]
     
@@ -357,11 +359,14 @@ class ModernDashboard(App):
             with TabPane("🎮 Control & Telemetry", id="control"):
                 yield SystemStats(id="stats-panel")
                 yield Log(id="log-panel")
-            
+
+            with TabPane("🔊 Audio", id="audio"):
+                yield AudioTab(id="audio-tab")
+
             with TabPane("📱 Devices", id="devices"):
                 yield DeviceList(id="devices-panel")
                 yield WiFiPanel(id="wifi-panel")
-            
+
             with TabPane("⚙️ Settings", id="settings"):
                 yield SettingsPanel(id="settings-panel")
         
@@ -393,6 +398,11 @@ class ModernDashboard(App):
     
     def on_refresh_event(self) -> None:
         """Handle refresh event."""
+        try:
+            audio_tab = self.query_one("#audio-tab", AudioTab)
+            audio_tab.refresh_audio()
+        except Exception:
+            pass
         self.write_log("[ACTION] Refresh complete")
 
 

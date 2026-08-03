@@ -114,6 +114,11 @@ def main() -> int:
     )
     failures += check("volume slider is debounced", "taSetVolDebounced" in html)
     failures += check(
+        "master volume slider exists",
+        'id="master-volume-slider"' in html
+        and 'oninput="masterVolChanged' in html,
+    )
+    failures += check(
         "YouTube cookie diagnostics exist",
         "/youtube/cookies/status" in html and "/youtube/age-check" in html,
     )

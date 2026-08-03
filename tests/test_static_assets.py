@@ -52,7 +52,7 @@ def test_protected_basic_actions_prompt_login_from_api_wrapper() -> None:
     assert "authRequired:true" in app_js
     assert "if(pendingAuthRetry)" in app_js
     assert "async function masterVolChanged(v)" in app_js
-    assert "if(r&&r.ok)msg('Master volume" in app_js
+    assert "msg('Master volume" in app_js
 
 
 def test_tui_proxy_forwards_auth_cookies_and_csrf_headers() -> None:

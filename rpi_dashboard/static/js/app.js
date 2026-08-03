@@ -309,8 +309,20 @@ async function masterVolChanged(v){
     let lbl=$('#master-volume-value');
     if(lbl)lbl.textContent=v+'%';
     let r=await api('/audio/volume/global?volume='+v);
-    if(r&&r.ok)msg('Master volume → '+v+'%','ok');
+    if(r&&r.ok){
+        msg('Master volume → '+v+'%','ok');
+        // Sync BT tab slider if present
+        let btSlider=$('#bt-soundbar-volume');
+        if(btSlider){btSlider.value=v;}
+    }
     else if(r&&!r.authRequired)msg(r.error||'Master volume failed','err');
+}
+// BT-to-Audio sync: when BT volume changes, update master slider
+function btVolSyncToAudio(vol){
+    let mvSlider=$('#master-volume-slider');
+    let mvLabel=$('#master-volume-value');
+    if(mvSlider){mvSlider.value=vol;}
+    if(mvLabel){mvLabel.textContent=vol+'%';}
 }
 let topoSelectedSource=null;
 function renderAudioTopology(r){
@@ -436,7 +448,7 @@ async function dlnainMode(mode){msg('Switching DLNA Input to '+mode+'...','info'
 async function dlnainTarget(sink){msg('Setting DLNA Input target...','info');let r=await api('/audio/route/dlna-input/target?sink='+encodeURIComponent(sink));msg(r.ok?'Target set':(r.error||'target failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
 async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
 async function taSwitch(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err');setTimeout(taRefresh,800)}
-async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
+async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');if(kind==='sink'&&name&&name.includes('bluez'))btVolSyncToAudio(v);setTimeout(taRefresh,600)}
 async function taMute(kind,name){let r=await api('/audio/mute?kind='+kind+'&name='+encodeURIComponent(name));msg(r.ok?'Mute toggled':(r.error||'fail'),r.ok?'ok':'err')}
 async function taSetDefault(name){let r=await api('/audio/default-sink?name='+encodeURIComponent(name));msg(r.ok?'Default → '+name.split('.').pop():r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
 async function taSetLatency(key,v){let r=await api('/audio/latency?key='+key+'&value='+v);msg(r.ok?'Latency saved':r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}

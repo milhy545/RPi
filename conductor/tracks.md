@@ -101,3 +101,63 @@
 - [ ] **Track: report_1785774807_bug** — Bug report | [Plan](./tracks/report_1785774807_bug/plan.md)
 
 - [ ] **Track: report_1785774889_bug** — Bug report | [Plan](./tracks/report_1785774889_bug/plan.md)
+
+- [ ] **Track: report_1785798141_bug** — Bug report | [Plan](./tracks/report_1785798141_bug/plan.md)
+
+- [ ] **Track: report_1785798224_bug** — Bug report | [Plan](./tracks/report_1785798224_bug/plan.md)
+
+- [ ] **Track: report_1785798325_bug** — Bug report | [Plan](./tracks/report_1785798325_bug/plan.md)
+
+- [ ] **Track: report_1785798407_bug** — Bug report | [Plan](./tracks/report_1785798407_bug/plan.md)
+
+- [ ] **Track: report_1785798509_bug** — Bug report | [Plan](./tracks/report_1785798509_bug/plan.md)
+
+- [ ] **Track: report_1785798589_bug** — Bug report | [Plan](./tracks/report_1785798589_bug/plan.md)
+
+- [ ] **Track: report_1785798772_bug** — Bug report | [Plan](./tracks/report_1785798772_bug/plan.md)
+
+- [ ] **Track: report_1785798692_bug** — Bug report | [Plan](./tracks/report_1785798692_bug/plan.md)
+
+- [ ] **Track: report_1785798877_bug** — Bug report | [Plan](./tracks/report_1785798877_bug/plan.md)
+
+- [ ] **Track: report_1785798957_bug** — Bug report | [Plan](./tracks/report_1785798957_bug/plan.md)
+
+- [ ] **Track: report_1785799061_bug** — Bug report | [Plan](./tracks/report_1785799061_bug/plan.md)
+
+- [ ] **Track: report_1785799141_bug** — Bug report | [Plan](./tracks/report_1785799141_bug/plan.md)
+
+- [ ] **Track: report_1785799244_bug** — Bug report | [Plan](./tracks/report_1785799244_bug/plan.md)
+
+- [ ] **Track: report_1785799324_bug** — Bug report | [Plan](./tracks/report_1785799324_bug/plan.md)
+
+- [ ] **Track: report_1785799432_bug** — Bug report | [Plan](./tracks/report_1785799432_bug/plan.md)
+
+- [ ] **Track: report_1785799512_bug** — Bug report | [Plan](./tracks/report_1785799512_bug/plan.md)
+
+- [ ] **Track: report_1785799559_bug** — Bug report | [Plan](./tracks/report_1785799559_bug/plan.md)
+
+- [ ] **Track: report_1785799639_bug** — Bug report | [Plan](./tracks/report_1785799639_bug/plan.md)
+
+- [ ] **Track: report_1785799745_bug** — Bug report | [Plan](./tracks/report_1785799745_bug/plan.md)
+
+- [ ] **Track: report_1785799825_bug** — Bug report | [Plan](./tracks/report_1785799825_bug/plan.md)
+
+- [ ] **Track: report_1785799928_bug** — Bug report | [Plan](./tracks/report_1785799928_bug/plan.md)
+
+- [ ] **Track: report_1785800122_bug** — Bug report | [Plan](./tracks/report_1785800122_bug/plan.md)
+
+- [ ] **Track: report_1785800008_bug** — Bug report | [Plan](./tracks/report_1785800008_bug/plan.md)
+
+- [ ] **Track: report_1785800203_bug** — Bug report | [Plan](./tracks/report_1785800203_bug/plan.md)
+
+- [ ] **Track: report_1785800388_bug** — Bug report | [Plan](./tracks/report_1785800388_bug/plan.md)
+
+- [ ] **Track: report_1785800307_bug** — Bug report | [Plan](./tracks/report_1785800307_bug/plan.md)
+
+- [ ] **Track: report_1785800499_bug** — Bug report | [Plan](./tracks/report_1785800499_bug/plan.md)
+
+- [ ] **Track: report_1785800579_bug** — Bug report | [Plan](./tracks/report_1785800579_bug/plan.md)
+
+- [ ] **Track: report_1785800798_bug** — Bug report | [Plan](./tracks/report_1785800798_bug/plan.md)
+
+- [ ] **Track: report_1785800881_bug** — Bug report | [Plan](./tracks/report_1785800881_bug/plan.md)
