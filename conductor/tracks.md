@@ -69,7 +69,7 @@
 - [x] **Track: report_1784787193_bug** — HDMI Audio Mixer Routing Fix — module-loopback for non-player sources | [Plan](./tracks/report_1784787193_bug/plan.md)
 - [x] **Track: bluetooth-setup-wizard_20260724** — Bluetooth Setup Wizard | [Plan](./tracks/bluetooth-setup-wizard_20260724/plan.md)
 - [x] **Track: multi-output-audio-mpv_20260725** — Multi-Output Audio Distribution for BT Source (Realme 8) & MPV Player | [Plan](./tracks/multi-output-audio-mpv_20260725/plan.md)
-- [ ] **Track: audio-fullstack-refactor_20260725** — Backend and WebUI are implemented; AVRCP sync, TUI flow diagram, and focused verification remain open (absorbs audio-multimixer-webui and report_1785203244_bug) | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
+- [ ] **Track: audio-fullstack-refactor_20260725** — Audio modularization done; BT sync transferred to bt-dbus-resilience; remaining: TUI flow diagram, WebUI topology polish, test coverage | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
 
 
 - [x] **Track: audio-multimixer-webui_20260725** — Absorbed into audio-fullstack-refactor_20260725 | [Plan](./tracks/audio-multimixer-webui_20260725/plan.md)
@@ -80,3 +80,24 @@
 - [x] **Track: report_1785203244_bug** — BT volume sync — absorbed into audio-fullstack-refactor_20260725 | [Plan](./tracks/report_1785203244_bug/plan.md)
 
 - [x] **Track: modular_test_ci_config_audio_fix_20260626** — Archived umbrella; remaining modularization, CI, coverage, and audio work is tracked by focused successor tracks | [Plan](./tracks/modular_test_ci_config_audio_fix_20260626/plan.md)
+- [ ] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
+
+- [ ] **Track: report_1785772160_bug** — Bug report | [Plan](./tracks/report_1785772160_bug/plan.md)
+
+- [ ] **Track: report_1785772251_bug** — Bug report | [Plan](./tracks/report_1785772251_bug/plan.md)
+
+- [ ] **Track: report_1785772405_bug** — Bug report | [Plan](./tracks/report_1785772405_bug/plan.md)
+
+- [ ] **Track: report_1785772487_bug** — Bug report | [Plan](./tracks/report_1785772487_bug/plan.md)
+
+- [ ] **Track: report_1785774148_bug** — Bug report | [Plan](./tracks/report_1785774148_bug/plan.md)
+
+- [ ] **Track: report_1785774230_bug** — Bug report | [Plan](./tracks/report_1785774230_bug/plan.md)
+
+- [ ] **Track: report_1785774501_bug** — Bug report | [Plan](./tracks/report_1785774501_bug/plan.md)
+
+- [ ] **Track: report_1785774585_bug** — Bug report | [Plan](./tracks/report_1785774585_bug/plan.md)
+
+- [ ] **Track: report_1785774807_bug** — Bug report | [Plan](./tracks/report_1785774807_bug/plan.md)
+
+- [ ] **Track: report_1785774889_bug** — Bug report | [Plan](./tracks/report_1785774889_bug/plan.md)

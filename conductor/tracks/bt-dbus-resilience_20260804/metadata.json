@@ -1,0 +1,11 @@
+{
+  "id": "bt-dbus-resilience_20260804",
+  "title": "BT D-Bus Resilience & Multi-Speaker Stability",
+  "type": "feature",
+  "status": "active",
+  "created_at": "2026-08-04T10:00:00Z",
+  "updated_at": "2026-08-04T10:30:00Z",
+  "implementation_notes": "New track. Absorbed BT volume sync (AVRCP ↔ PipeWire) and AVRCP tests from audio-fullstack-refactor_20260725. Scope: D-Bus crash recovery, adapter profiling, multi-speaker codec lock, Playwright E2E.",
+  "dependencies": ["audio-fullstack-refactor_20260725 (historical BT items transferred)"],
+  "blocks": []
+}

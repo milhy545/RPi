@@ -81,9 +81,11 @@ def test_tui_webui_proxy_covers_legacy_audio_and_preview_routes(monkeypatch):
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
 
-        monkeypatch.setattr(webserver, "audio_state", lambda: {"ok": True, "source": "test"})
+        from rpi_dashboard.services import audio as _audio_svc
+        monkeypatch.setattr(_audio_svc, "audio_state", lambda **kw: {"ok": True, "source": "test"})
+        from rpi_dashboard.services import media as _media_svc
         monkeypatch.setattr(
-            webserver,
+            _media_svc,
             "media_preview",
             lambda url: {"ok": True, "url": url, "title": "Preview"},
         )

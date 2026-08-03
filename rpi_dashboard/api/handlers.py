@@ -769,9 +769,9 @@ def handle_youtube_age_check(q: Dict[str, Any]) -> Dict[str, Any]:
 
 def handle_media_preview(q: Dict[str, Any]) -> Dict[str, Any]:
     """Preview a media URL."""
-    import webserver
+    from ..services.media import media_preview
 
-    return webserver.media_preview(_get(q, "url"))
+    return media_preview(_get(q, "url"))
 
 
 def handle_dlna_select(q: Dict[str, Any]) -> Dict[str, Any]:
@@ -841,4 +841,55 @@ def handle_ha_config(q: Dict[str, Any]) -> Dict[str, Any]:
     if yaml_path.exists():
         return {"ok": True, "yaml": yaml_path.read_text()}
     return {"ok": False, "error": "ha_configuration.yaml not found"}
+
+
+# ─── POST Handlers ─────────────────────────────────────────────────
+
+def handle_post_report(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle bug/feature report submission via POST /report."""
+    import time as _time
+
+    report = q.get("_body", {})
+    if not isinstance(report, dict):
+        return {"ok": False, "error": "Invalid JSON"}
+    if report.get("type") not in ("bug", "feature"):
+        return {"ok": False, "error": "type must be 'bug' or 'feature'"}
+    desc = report.get("description", "")
+    if not isinstance(desc, str) or not desc.strip():
+        return {"ok": False, "error": "description must be non-empty"}
+
+    from pathlib import Path as _Path
+    import json as _json
+
+    reports_dir = _Path(__file__).resolve().parents[2] / "reports"
+    reports_dir.mkdir(exist_ok=True)
+    ts = int(_time.time())
+    filename = f"report_{ts}_{report['type']}.json"
+    filepath = reports_dir / filename
+    filepath.write_text(_json.dumps({**report, "timestamp": ts}, indent=2))
+    return {"ok": True, "file": filename}
+
+
+def handle_post_return(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle return to dashboard via POST /return."""
+    body = q.get("_body", {})
+    reason = body.get("reason", "unknown") if isinstance(body, dict) else "unknown"
+    source = body.get("source", "webapi") if isinstance(body, dict) else "webapi"
+    ok = return_service.return_to_dashboard(reason, source)
+    return {"ok": ok}
+
+
+def handle_post_wifi_connect(q: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle Wi-Fi connection via POST /wifi/connect."""
+    import webserver as _ws
+    body = q.get("_body", {})
+    if isinstance(body, dict):
+        ssid = body.get("ssid", "").strip()
+        password = body.get("password", "")
+    else:
+        ssid = ""
+        password = ""
+    if not ssid:
+        return {"ok": False, "error": "ssid required"}
+    return _ws.wifi_connect(ssid, password)
 

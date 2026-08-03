@@ -19,7 +19,7 @@ from config import (
     KODI_HOST, KODI_PORT, MPV_SOCKET, WS_PORT, PA_DLNA_PORT, AUDIO_STATE_CACHE_TTL
 )
 from rpi_dashboard.api import middleware as api_middleware
-from rpi_dashboard.api.routes import get_route
+from rpi_dashboard.api.routes import get_route, get_post_route
 from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.services import return_service
 from rpi_dashboard.services import terminal as terminal_service
@@ -2407,7 +2407,8 @@ class H(BaseHTTPRequestHandler):
         action_endpoints = {
             "/system/reboot", "/devices/bt/scan", "/wifi/scan", "/audio/default-sink",
             "/audio/latency", "/dlna/select", "/dlna/connect", "/dlna/disconnect",
-            "/keepalive", "/dlna/scan", "/youtube/age-check",             "/mpv/play", "/mpv/stop", "/mpv/toggle", "/mpv/seek", "/mpv/volume", "/mpv/mute",
+            "/keepalive", "/dlna/scan", "/youtube/age-check",
+            "/mpv/play", "/mpv/stop", "/mpv/toggle", "/mpv/seek", "/mpv/volume", "/mpv/mute",
             "/cec/send", "/cec/key", "/cec/in", "/cec/br/start", "/cec/br/stop",
             "/system/restart-mpv", "/system/restart-dashboard", "/system/restart-rpi"
         }
@@ -2434,7 +2435,7 @@ class H(BaseHTTPRequestHandler):
         # Static file serving
         if path.startswith("/static/"):
             static_dir = os.path.join(os.path.dirname(__file__), "rpi_dashboard", "static")
-            file_path = os.path.join(static_dir, path[8:])  # Remove /static/
+            file_path = os.path.join(static_dir, path[8:])
             if os.path.isfile(file_path):
                 ext = os.path.splitext(file_path)[1]
                 mime_types = {".css": "text/css", ".js": "application/javascript", ".html": "text/html", ".json": "application/json"}
@@ -2448,116 +2449,10 @@ class H(BaseHTTPRequestHandler):
                 return
 
         try:
-            registry_first = {
-                "/bt/state",
-                "/bt/discovery",
-                "/bt/adapter-power",
-                "/bt/discoverable",
-                "/bt/settings",
-                "/bt/device-action",
-                "/audio/multi-output",
-                "/audio/bluetooth-profiles",
-                "/audio/mute-state",
-                "/bt/device-profile",
-                "/bt/device-hid",
-                "/bt/transfers",
-                "/bt/files",
-                "/bt/diagnostics",
-                "/bt/file-send",
-                "/bt/file-cancel",
-                "/bt/operation",
-                "/bt/media",
-                "/bt/pairing",
-                "/bt/reset",
-                "/bt/capabilities",
-                "/bt/phone-role",
-                "/devices",
-                "/devices/bt/scan",
-                "/audio/bt",
-                "/audio/hdmi",
-                "/audio/dlna",
-                "/audio/mute",
-                "/audio/route/alexa-bt",
-                "/audio/route/alexa-retarget",
-                "/audio/route/dlna-input/status",
-                "/audio/route/dlna-input/start",
-                "/audio/route/dlna-input/stop",
-                "/audio/route/dlna-input/mode",
-                "/audio/route/dlna-input/target",
-                "/keepalive",
-                "/mpv/toggle",
-                "/mpv/seekabs",
-                "/mpv/vol",
-                "/mpv/memory",
-                "/mpv/memory/clear",
-                "/mpv/memory-save",
-                "/system/hw-stats",
-                "/system/https-info",
-                "/youtube/cookies/status",
-                "/youtube/age-check",
-                "/dlna/select",
-                "/dlna/connect",
-                "/dlna/disconnect",
-                "/dlna/scan",
-                "/dlna/renderer/status",
-                "/dlna/renderer/start",
-                "/dlna/renderer/stop",
-                "/cec/send",
-                "/cec/key",
-                "/cec/in",
-                "/cec/br/start",
-                "/cec/br/stop",
-                "/cec/br/st",
-                "/system/status",
-                "/system/restart-mpv",
-                "/system/restart-dashboard",
-                "/system/restart-rpi",
-            "/media/preview",
-                "/audio/default-sink",
-                "/audio/latency",
-                "/audio/matrix",
-                "/audio/matrix/link",
-                "/audio/volume",
-                "/bt/connect",
-                "/bt/controller",
-                "/bt/device-autoconnect",
-                "/bt/disconnect",
-                "/bt/remove",
-                "/bt/trust",
-                "/cec/input",
-                "/cec/nav",
-                "/cec/power",
-                "/cec/scan",
-                "/cec/vol",
-                "/devices/state",
-                "/mpv/play",
-                "/mpv/status",
-                "/mpv/stop",
-                "/mpv/volume",
-                "/network/info",
-                "/network/tailscale",
-                "/restart/dashboard",
-                "/restart/mpv",
-                "/restart/rpi",
-                "/system/logs",
-            "/return/config",
-            "/return/config/set",
-            "/return/last",
-                "/system/stats",
-                "/terminal/connect",
-                "/terminal/disconnect",
-                "/wifi/connect",
-                "/wifi/scan",
-                "/wifi/status"
-            }
-            if path in registry_first:
-                handler = get_route(path)
-                if handler:
-                    return self.sj(200, handler(_route_query(path, q)))
+            # ── Non-registered inline endpoints (utility, deprecated, special) ──
             if path in ("/","/index.html"): return self.st(200,page())
-            elif path=="/favicon.ico": return self.st(204,"","image/x-icon")
-            elif path=="/manifest.json":
-                import json
+            if path=="/favicon.ico": return self.st(204,"","image/x-icon")
+            if path=="/manifest.json":
                 m = {
                     "name": "RPi Dashboard",
                     "short_name": "RPiDash",
@@ -2569,397 +2464,26 @@ class H(BaseHTTPRequestHandler):
                     "share_target": {"action": "/", "method": "GET", "params": {"title": "title", "text": "text", "url": "share_url"}}
                 }
                 return self.st(200,json.dumps(m),"application/manifest+json")
-            elif path=="/mpv/play":
-                u=(q.get("url")or[""])[0].strip();ql=(q.get("q")or[None])[0]
-                resume=(q.get("resume")or["0"])[0] not in ("0", "", "false", "False")
-                if not u: return self.sj(400,{"error":"no url"})
-                self.sj(200,mpv_start(u,ql,resume))
-            elif path=="/mpv/stop":
-                memory = save_mpv_resume_memory() if mpv_ipc_socket_live() else None
-                stopped=mpv_stop();self.sj(200,{"ok":True,"memory":memory,"stop":stopped})
-            elif path=="/mpv/toggle":
-                mcmd("cycle","pause");s=mget("pause")
-                self.sj(200,{"ok":True,"paused":s.get("data",False)})
-            elif path=="/mpv/status": self.sj(200,mpv_st())
-            elif path=="/mpv/seek":
-                d=(q.get("d")or["10"])[0];mcmd("seek",float(d),"relative");self.sj(200,{"ok":True})
-            elif path=="/mpv/seekabs":
-                pos=(q.get("pos")or["0"])[0];mcmd("seek",float(pos),"absolute");self.sj(200,{"ok":True})
-            elif path=="/mpv/vol":
-                d=(q.get("d")or["10"])[0];mcmd("add","volume",int(d));self.sj(200,{"ok":True})
-            elif path=="/mpv/memory":
-                u=(q.get("url")or[""])[0].strip()
-                if not u: return self.sj(400,{"error":"no url"})
-                memory = get_mpv_memory_for_url(u)
-                self.sj(200,{"ok":True,"memory":memory})
-            elif path=="/mpv/memory/clear":
-                u=(q.get("url")or[""])[0].strip()
-                if not u: return self.sj(400,{"error":"no url"})
-                cleared = clear_mpv_memory_for_url(u)
-                self.sj(200,{"ok":True,"cleared":cleared})
-            elif path=="/mpv/memory-save":
-                if mpv_ipc_socket_live():
-                    memory = save_mpv_resume_memory()
-                    self.sj(200,{"ok":True,"memory":memory})
-                else:
-                    self.sj(200,{"ok":True,"memory":"mpv not running"})
-            elif path=="/ws/token": self.sj(200,{"token":WS_AUTH_TOKEN})
-            elif path=="/cache/stats": self.sj(200,{"entries":len(_url_cache._data),"ttl_hours":URL_CACHE_TTL//3600})
-            elif path=="/cache/clear": _url_cache._data={};_url_cache._save();self.sj(200,{"ok":True,"message":"Cache cleared"})
-            elif path=="/pool/stats": self.sj(200,_mpv_pool.stats())
-            elif path=="/pool/clear": _mpv_pool.close_all();self.sj(200,{"ok":True,"message":"Pool cleared"})
-            elif path=="/cec/send":
-                c=(q.get("c")or[""])[0].strip()
-                if not c: return self.sj(400,{"error":"no cmd"})
-                self.sj(200,cec_cmd(c))
-            elif path=="/cec/key":
-                k=(q.get("k")or[""])[0].strip()
-                if not k: return self.sj(400,{"error":"no key"})
-                self.sj(200,cec_cmd(f"user-control pressed '{k}'"))
-            elif path=="/cec/in":
-                n=(q.get("n")or["1"])[0]
-                # Send active-source to request TV to switch to our input
-                self.sj(200,cec_cmd("active-source phys-addr=1.0.0.0"))
-            elif path=="/cec/scan": self.sj(200,{"ok":True,"out":cec_scan()})
-            elif path=="/cec/br/start": self.sj(200,br_start())
-            elif path=="/cec/br/stop": br_stop();self.sj(200,{"ok":True})
-            elif path=="/cec/br/st": self.sj(200,br_st())
-            elif path=="/play":
-                self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi launcher was removed; use /mpv/play or the Player tab."})
-            elif path=="/kodi/st": self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
-            elif path=="/kodi/status": self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
-            elif path=="/selftest/testaudio": self.sj(200,selftest_testaudio())
-            elif path=="/audio/state": self.sj(200,audio_state())
-            elif path=="/audio/matrix": self.sj(200,get_audio_matrix())
-            elif path=="/audio/matrix/link":
-                o=(q.get("out")or[""])[0]; i=(q.get("in")or[""])[0]; s=(q.get("state")or["1"])[0]
-                self.sj(200,audio_matrix_link(o,i,s))
-            elif path=="/audio/volume":
-                kind=(q.get("kind")or[""])[0].strip()
-                name=(q.get("name")or[""])[0].strip()
-                vol=(q.get("volume")or["100"])[0].strip()
-                self.sj(200,audio_set_volume(kind,name,vol))
-            elif path=="/audio/mute":
-                kind=(q.get("kind")or[""])[0].strip()
-                name=(q.get("name")or[""])[0].strip()
-                if not kind or not name: return self.sj(400,{"error":"kind and name required"})
-                r=_run(["pactl","set-"+kind+"-mute",name,"toggle"], t=5)
-                self.sj(200,{"ok":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:200]})
-            elif path=="/audio/test":
-                self.sj(200,audio_play_test())
-            elif path=="/audio/default-sink":
-                name=(q.get("name")or[""])[0].strip()
-                self.sj(200,audio_set_default(name))
-            elif path=="/audio/latency":
-                key=(q.get("key")or[""])[0].strip()
-                value=(q.get("value")or["0"])[0].strip()
-                self.sj(200,audio_set_latency(key,value))
-            elif path=="/dlna/select":
-                name=(q.get("name")or[""])[0].strip()
-                location=(q.get("location")or[""])[0].strip()
-                usn=(q.get("usn")or[""])[0].strip()
-                self.sj(200,audio_select_dlna_renderer(name,location,usn))
-            elif path=="/dlna/connect":
-                self.sj(200,audio_connect_dlna())
-            elif path=="/dlna/disconnect":
-                self.sj(200,audio_disconnect_dlna())
-            elif path=="/keepalive":
-                action=(q.get("action")or["status"])[0].strip()
-                sink=(q.get("sink")or[""])[0].strip()
-                self.sj(200,audio_keepalive(action,sink))
-            elif path=="/audio/route/alexa-bt":
-                a=(q.get("action")or["status"])[0].strip()
-                if a=="status":
-                    running,target,mid=_alexa_loopback_running()
-                    return self.sj(200,{"ok":True,"route":"alexa_to_bt","on":running,"target":target,"module_id":mid,"default_sink":_get_default_sink()})
-                self.sj(200,audio_route_alexa_bt(a))
-            elif path=="/audio/route/alexa-retarget":
-                self.sj(200,_retarget_alexa())
-            elif path=="/audio/route/dlna-input/status":
-                running,src=_dlnain_loopback_running()
-                cfg=_load_dlnain_mode()
-                target=_resolve_dlnain_target() if running else None
-                self.sj(200,{"ok":True,"running":running,"source":src,"mode":cfg.get("mode","follow"),"manual_sink":cfg.get("manual_sink"),"active_target":target,"default_sink":_get_default_sink()})
-            elif path=="/audio/route/dlna-input/start":
-                self.sj(200,_dlnain_start())
-            elif path=="/audio/route/dlna-input/stop":
-                self.sj(200,_dlnain_stop())
-            elif path=="/audio/route/dlna-input/mode":
-                mode=(q.get("mode")or["follow"])[0].strip()
-                if mode not in ("follow","manual"): return self.sj(400,{"error":"mode must be follow or manual"})
-                cfg=_load_dlnain_mode(); cfg["mode"]=mode; _save_dlnain_mode(cfg)
-                self.sj(200,{"ok":True,"mode":mode})
-            elif path=="/audio/route/dlna-input/target":
-                sink=(q.get("sink")or[""])[0].strip()
-                if not sink: return self.sj(400,{"error":"no sink"})
-                cfg=_load_dlnain_mode(); cfg["manual_sink"]=sink; _save_dlnain_mode(cfg)
-                # If running in manual mode, retarget now
-                if cfg.get("mode")=="manual":
-                    _dlnain_retarget(sink)
-                self.sj(200,{"ok":True,"manual_sink":sink})
-            elif path=="/audio/bt":
-                if _pa_dlna_running(): audio_disconnect_dlna()
-                o=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True)
-                sinks=[l.split()[1] for l in o.stdout.strip().split('\n') if len(l.split())>1]
-                bt=next((s for s in sinks if s.startswith("bluez_sink") or s.startswith("bluez_output")),None)
-                if bt:
-                    subprocess.run(["pactl","set-default-sink",bt],capture_output=True)
-                    self.sj(200,{"result":f"BT → {bt}"})
-                else:
-                    paired=subprocess.run(["bluetoothctl","devices","Paired"],capture_output=True,text=True)
-                    self.sj(200,{"result":"No BT sink. Paired: "+paired.stdout.strip()[:200]})
-            elif path=="/audio/hdmi":
-                if _pa_dlna_running(): audio_disconnect_dlna()
-                subprocess.run(["pactl","set-default-sink","alsa_output.platform-3f902000.hdmi.hdmi-stereo"],capture_output=True)
-                subprocess.run(["pactl","set-sink-mute","alsa_output.platform-3f902000.hdmi.hdmi-stereo","0"],capture_output=True)
-                self.sj(200,{"result":"HDMI set"})
-            elif path=="/audio/dlna":
-                o=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True)
-                sinks=[l.split()[1] for l in o.stdout.strip().split('\n') if len(l.split())>1]
-                dlna=next((s for s in sinks if ("uuid_" in s or "WiiMu" in s or "LinkPlayer" in s or "Sphere" in s) and "LG" not in s),None)
-                if dlna:
-                    subprocess.run(["pactl","set-default-sink",dlna],capture_output=True)
-                    self.sj(200,{"result":f"DLNA → {dlna}"})
-                else:
-                    self.sj(200,{"result":"No DLNA sink. Available: "+', '.join(sinks)})
-            elif path=="/devices/state": self.sj(200,devices_state())
-            elif path=="/devices/bt/scan":
-                seconds=(q.get("seconds")or["5"])[0]
-                self.sj(200,bluetooth_scan_devices(seconds))
-            elif path=="/wifi/status": self.sj(200,wifi_status())
-            elif path=="/wifi/scan": self.sj(200,wifi_scan())
-
-            elif path=="/youtube/cookies/status": self.sj(200,youtube_cookie_status())
-            elif path=="/youtube/age-check":
-                u=(q.get("url")or[""])[0].strip()
-                self.sj(200,youtube_age_check(u))
-            elif path=="/media/preview":
-                u=(q.get("url")or[""])[0].strip()
-                self.sj(200,media_preview(u))
-            elif path=="/devices":
-                o=subprocess.run(["pactl","list","short","sinks"],capture_output=True,text=True)
-                sinks=[l.split()[1] for l in o.stdout.strip().split('\n') if len(l.split())>1]
-                bt,dlna,hdmi=[],[],[]
-                for s in sinks:
-                    if s.startswith("bluez_sink") or s.startswith("bluez_output"): bt.append(f"BT ({s.split('.')[1].replace('_',':')})")
-                    elif "-uuid_" in s and "LG" not in s: dlna.append(f"DLNA ({s})")
-                    elif "hdmi" in s.lower(): hdmi.append(f"HDMI ({s})")
-                paired=subprocess.run(["bluetoothctl","devices","Paired"],capture_output=True,text=True)
-                for line in paired.stdout.strip().split('\n'):
-                    if line.startswith("Device"):
-                        parts=line.split()
-                        if len(parts)>=3:
-                            name=' '.join(parts[2:])
-                            bt.append(f"Paired: {name} ({parts[1]})")
-                self.sj(200,{"bt":bt,"dlna":dlna,"hdmi":hdmi})
-            elif path=="/bt/scan":
-                seconds=(q.get("seconds")or["5"])[0]
-                self.sj(200,devices_service.bluetooth_scan_devices(seconds))
-            elif path=="/bt/controller":
-                self.sj(200,{"ok":True,"controller":devices_service.bluetooth_controller_status()})
-            elif path=="/dlna/scan":
-                try:
-                    r=subprocess.run(["gssdp-discover","-n","5","-t","urn:schemas-upnp-org:device:MediaRenderer:1"],capture_output=True,text=True,timeout=10)
-                    # Parse output for MediaRenderer devices
-                    lines=r.stdout.strip().split('\n')
-                    devices=[]
-                    current={}
-                    for l in lines:
-                        l=l.strip()
-                        if l.startswith("resource available"):
-                            if current: devices.append(current)
-                            current={}
-                        elif l.startswith("USN:"):
-                            current["usn"]=l[4:].strip()
-                        elif l.startswith("Location:"):
-                            current["location"]=l.split(":",1)[1].strip()
-                    if current: devices.append(current)
-                    # Filter MediaRenderer
-                    renderers=[d for d in devices if "MediaRenderer" in d.get("usn","")]
-                    for rd in renderers:
-                        usn=rd.get("usn","")
-                        rd["name"]=usn.split("::")[0].replace("uuid:","")[:24]
-                        loc=rd.get("location","")
-                        rd["host"]=(loc.split(":")[1] if":" in loc else "").replace("//","")
-                    self.sj(200,{"devices":renderers,"count":len(renderers)})
-                except Exception as e:
-                    self.sj(200,{"error":str(e)})
-            elif path=="/dlna/renderer/status":
-                self.sj(200,dlna_renderer_status())
-            elif path=="/dlna/renderer/start":
-                self.sj(200,dlna_renderer_start())
-            elif path=="/dlna/renderer/stop":
-                self.sj(200,dlna_renderer_stop())
-            elif path=="/bt/trust":
-                mac=(q.get("mac")or[""])[0].strip()
-                if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(_route_query(path, q)))
-            elif path=="/bt/pair":
-                mac=(q.get("mac")or[""])[0].strip()
-                if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(_route_query(path, q)))
-            elif path=="/bt/connect":
-                mac=(q.get("mac")or[""])[0].strip()
-                if not mac: return self.sj(400,{"error":"no mac"})
-                result=get_route(path)(_route_query(path, q))
-                bt_sink=None
-                if result.get("ok"):
-                    for _ in range(10):
-                        bt_sink=next((s["name"] for s in _pactl_lines("sinks") if s["name"].startswith("bluez_")),None)
-                        if bt_sink: break
-                        time.sleep(1)
-                    if bt_sink: _keepalive_start(bt_sink)
-                result.update({"bt_sink":bt_sink,"keepalive":_keepalive_status()})
-                self.sj(200,result)
-            elif path=="/bt/disconnect":
-                mac=(q.get("mac")or[""])[0].strip()
-                if not mac: return self.sj(400,{"error":"no mac"})
-                result=get_route(path)(_route_query(path, q))
-                if result.get("ok"): _keepalive_stop()
-                result.update({"keepalive":_keepalive_status()})
-                self.sj(200,result)
-            elif path=="/bt/remove":
-                mac=(q.get("mac")or[""])[0].strip()
-                if not mac: return self.sj(400,{"error":"no mac"})
-                self.sj(200,get_route(path)(_route_query(path, q)))
-            elif path=="/system/hw-stats":
-                def _cpu_sample():
-                    out=[]
-                    with open("/proc/stat") as f:
-                        for line in f:
-                            if re.match(r"^cpu[0-3] ", line):
-                                p=[int(x) for x in line.split()[1:]]
-                                idle=p[3]+p[4]
-                                total=sum(p)
-                                out.append((total,idle))
-                    return out
-                a=_cpu_sample(); __import__('time').sleep(0.35); b=_cpu_sample()
-                cpu=[]
-                for (t0,i0),(t1,i1) in zip(a,b):
-                    dt=t1-t0; di=i1-i0
-                    cpu.append(round(100*(dt-di)/dt,1) if dt>0 else 0.0)
-                mem={}
-                with open("/proc/meminfo") as f:
-                    for line in f:
-                        k,v=line.split(":",1); mem[k]=int(v.split()[0])
-                total_mb=mem.get("MemTotal",0)//1024
-                avail_mb=mem.get("MemAvailable",0)//1024
-                used_mb=max(0,total_mb-avail_mb)
-                st=os.statvfs("/")
-                total_gb=round(st.f_blocks*st.f_frsize/1024/1024/1024,1)
-                free_gb=round(st.f_bfree*st.f_frsize/1024/1024/1024,1)
-                avail_gb=round(st.f_bavail*st.f_frsize/1024/1024/1024,1)
-                used_gb=round(total_gb-free_gb,1)
-                temp_c=None
-                for tp in ("/sys/class/thermal/thermal_zone0/temp","/sys/class/thermal/thermal_zone1/temp"):
-                    try:
-                        with open(tp) as f:
-                            temp_c=round(int(f.read().strip())/1000,1); break
-                    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-                global _hw_stats_freq_cache
-                now = time.monotonic()
-                if now - _hw_stats_freq_cache["time"] > 2.0:
-                    freq = []
-                    for i in range(4):
-                        try:
-                            with open(f"/sys/devices/system/cpu/cpu{i}/cpufreq/scaling_cur_freq") as f:
-                                freq.append(int(f.read().strip()) // 1000)
-                        except Exception:
-                            freq.append(None)
-                    _hw_stats_freq_cache["data"] = freq
-                    _hw_stats_freq_cache["time"] = now
-                else:
-                    freq = _hw_stats_freq_cache["data"]
-                gpu={"core_mhz": None, "temp_c": temp_c}
-                try:
-                    raw=subprocess.check_output(["vcgencmd","measure_clock","core"], text=True, timeout=2).strip()
-                    gpu["core_mhz"]=int(raw.split("=")[-1])//1000000
-                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-                try:
-                    raw=subprocess.check_output(["vcgencmd","measure_temp"], text=True, timeout=2).strip()
-                    gpu["temp_c"]=round(float(raw.split("=")[-1].replace("'C","")),1)
-                except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-                with open("/proc/uptime") as f:
-                    up=int(float(f.read().split()[0])); h=up//3600; m=(up%3600)//60; s=up%60
-                self.sj(200,{"cpu":cpu,"loadavg":list(os.getloadavg()),"temp_c":temp_c,"freq_mhz":freq,"gpu":gpu,"ram":{"used_mb":used_mb,"total_mb":total_mb,"percent":round(100*used_mb/total_mb,1) if total_mb else 0},"disk":{"used_gb":used_gb,"total_gb":total_gb,"free_gb":free_gb,"avail_gb":avail_gb,"percent":round(100*used_gb/total_gb,1) if total_gb else 0},"uptime":f"{h}h {m}m {s}s"})
-            elif path=="/system/https-info":
-                host=(self.headers.get('Host','').split(':')[0] or '192.168.0.205')
-                names, ips = _dashboard_hostnames_and_ips()
-                self.sj(200,{"ok":True,"http_port":PORT,"https_port":HTTPS_PORT,"friendly_http_port":HTTP_PORT,"friendly_https_port":HTTPS_PORT_ALT,"cert_exists":os.path.exists(HTTPS_CERT_FILE),"https_url":f"https://{host}:{HTTPS_PORT}/","friendly_https_url":f"https://{host}/","friendly_http_url":f"http://{host}/","names":names,"ips":ips})
-            elif path=="/system/status":
-                # Get CPU mask info for all services
-                try:
-                    mpv_pid = subprocess.check_output(["pgrep", "-x", "mpv"], text=True).strip().splitlines()[0]
-                except Exception:
-                    mpv_pid = ""
-                mpv_mask = "N/A"
-                mpv_cores = "N/A"
-                if mpv_pid:
-                    mpv_mask = subprocess.check_output(["taskset", "-p", mpv_pid], text=True).strip().split(":")[-1].strip()
-                    # Parse mask to core list
-                    try:
-                        mask_val = int(mpv_mask, 16)
-                        cores = [str(i) for i in range(4) if mask_val & (1 << i)]
-                        mpv_cores = ",".join(cores) if cores else "none"
-                    except Exception:
-                        mpv_cores = "?"
-
-                dash_pid = subprocess.check_output(["systemctl", "show", "dashboard@milhy777", "-p", "MainPID", "--value"], text=True).strip()
-                dash_mask = "N/A"
-                if dash_pid and dash_pid != "0":
-                    dash_mask = subprocess.check_output(["taskset", "-p", dash_pid], text=True).strip().split(":")[-1].strip()
-
-                keys_pid = subprocess.check_output(["systemctl", "show", "keys2mpv", "-p", "MainPID", "--value"], text=True).strip()
-                keys_mask = "N/A"
-                if keys_pid and keys_pid != "0":
-                    keys_mask = subprocess.check_output(["taskset", "-p", keys_pid], text=True).strip().split(":")[-1].strip()
-
-                ws_pid = subprocess.check_output(["systemctl", "show", "webserver", "-p", "MainPID", "--value"], text=True).strip()
-                ws_mask = "N/A"
-                if ws_pid and ws_pid != "0":
-                    ws_mask = subprocess.check_output(["taskset", "-p", ws_pid], text=True).strip().split(":")[-1].strip()
-
-                # Audio services (user systemd)
-                pw_pid = subprocess.check_output(["systemctl", "--user", "show", "pipewire", "-p", "MainPID", "--value"], text=True).strip()
-                pw_mask = "N/A"
-                if pw_pid and pw_pid != "0":
-                    pw_mask = subprocess.check_output(["taskset", "-p", pw_pid], text=True).strip().split(":")[-1].strip()
-
-                wp_pid = subprocess.check_output(["systemctl", "--user", "show", "wireplumber", "-p", "MainPID", "--value"], text=True).strip()
-                wp_mask = "N/A"
-                if wp_pid and wp_pid != "0":
-                    wp_mask = subprocess.check_output(["taskset", "-p", wp_pid], text=True).strip().split(":")[-1].strip()
-
-                self.sj(200,{
-                    "mpv": {"pid": mpv_pid, "mask": mpv_mask, "cores": mpv_cores},
-                    "dashboard": {"pid": dash_pid, "mask": dash_mask, "cores": "0" if dash_mask=="1" else dash_mask},
-                    "keys2mpv": {"pid": keys_pid, "mask": keys_mask, "cores": "0" if keys_mask=="1" else keys_mask},
-                    "webserver": {"pid": ws_pid, "mask": ws_mask, "cores": "0" if ws_mask=="1" else ws_mask},
-                    "pipewire": {"pid": pw_pid, "mask": pw_mask, "cores": "3" if pw_mask=="8" else pw_mask},
-                    "wireplumber": {"pid": wp_pid, "mask": wp_mask, "cores": "3" if wp_mask=="8" else wp_mask},
-                    "summary": {
-                        "core0_background": ["dashboard", "keys2mpv", "webserver"],
-                        "core1_2_media": ["mpv"],
-                        "core3_audio": ["pipewire", "wireplumber"]
-                    }
-                })
-            elif path=="/system/restart-mpv":
-                stopped=mpv_stop()
-                self.sj(200,{"ok":stopped.get("ok",False),"out":"mpv stopped (will restart on next play)","stop":stopped})
-            elif path=="/system/restart-dashboard":
-                r=subprocess.run(["sudo","systemctl","restart","dashboard@milhy777"],capture_output=True,text=True)  # nosec B603
-                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Dashboard restarting..."})
-            elif path=="/system/restart-rpi":
-                r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)  # nosec B603
-                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
-            elif path=="/system/reboot":
+            if path=="/ws/token": return self.sj(200,{"token":WS_AUTH_TOKEN})
+            if path=="/cache/stats": return self.sj(200,{"entries":len(_url_cache._data),"ttl_hours":URL_CACHE_TTL//3600})
+            if path=="/cache/clear": _url_cache._data={};_url_cache._save();return self.sj(200,{"ok":True,"message":"Cache cleared"})
+            if path=="/pool/stats": return self.sj(200,_mpv_pool.stats())
+            if path=="/pool/clear": _mpv_pool.close_all();return self.sj(200,{"ok":True,"message":"Pool cleared"})
+            if path=="/play": return self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi launcher was removed; use /mpv/play or the Player tab."})
+            if path=="/kodi/st": return self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
+            if path=="/kodi/status": return self.sj(410,{"ok":False,"deprecated":True,"error":"Kodi support was removed from this RPi."})
+            if path=="/selftest/testaudio": return self.sj(200,selftest_testaudio())
+            if path=="/audio/test": return self.sj(200,audio_play_test())
+            if path=="/system/reboot":
                 r=subprocess.run(["sudo","reboot"],capture_output=True,text=True)
-                self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
-            else:
-                handler = get_route(path)
-                if handler:
-                    return self.sj(200, handler(_route_query(path, q)))
-                self.st(404,"nf","text/plain")
+                return self.sj(200,{"ok":r.returncode==0,"returncode":r.returncode,"out":(r.stdout+r.stderr).strip()[:500] or "Rebooting..."})
+
+            # ── All registered routes via get_route() ──
+            handler = get_route(path)
+            if handler:
+                return self.sj(200, handler(_route_query(path, q)))
+
+            self.st(404,"nf","text/plain")
         except Exception as e: self.sj(500,{"error":str(e)})
     def do_POST(self):
         # IP allowlist check for POST requests
@@ -2991,45 +2515,23 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/auth/step-up":
             return self._handle_auth_step_up(body)
 
-        if self.path == "/wifi/connect":
+        # POST routes delegated via registry
+        p=urlparse(self.path);q=parse_qs(p.query)
+        post_handler = get_post_route(self.path)
+        if post_handler:
             try:
-                data = json.loads(body)
+                body_data = json.loads(body) if body.strip() else {}
             except Exception:
                 try:
-                    data = {k: v[0] for k, v in parse_qs(body).items()}
+                    body_data = {k: v[0] for k, v in parse_qs(body).items()}
                 except Exception:
-                    return self.st(400, "Invalid JSON or body", "text/plain")
-            ssid = data.get("ssid", "").strip()
-            password = data.get("password", "")
-            return self.sj(200, wifi_connect(ssid, password))
-        # Handle bug/feature reports submitted via POST /report
-        if self.path == "/report":
-            try:
-                report=json.loads(body)
-            except Exception:
-                return self.st(400,"Invalid JSON", "text/plain")
-            # Ensure required fields and validate type/description
-            if not isinstance(report, dict) or report.get("type") not in ("bug", "feature") or not isinstance(report.get("description"), str) or not report["description"].strip():
-                return self.st(400,"Missing or invalid required fields (type must be 'bug' or 'feature', description must be non-empty)", "text/plain")
-            client_ip=self.client_address[0]
-            filename=_save_report({**report, "timestamp": int(time.time())}, client_ip)
-            return self.sj(201,{"ok":True,"file": filename})
-        # Handle return to dashboard via POST /return
-        if self.path == "/return":
-            try:
-                data = {}
-                if ln > 0:
-                    try:
-                        data = json.loads(body)
-                    except Exception:
-                        data = {}
-                reason = data.get("reason", "unknown")
-                source = data.get("source", "webapi")
-                ok = return_service.return_to_dashboard(reason, source)
-                self.sj(200, {"ok": ok})
-            except Exception as e:
-                self.sj(500, {"error": str(e)})
-            return
+                    body_data = {}
+            route_q = dict(q)
+            route_q["_body"] = [body_data]
+            route_q["_body"] = body_data  # also as plain dict for handlers
+            result = post_handler(route_q)
+            code = 201 if self.path == "/report" else 200
+            return self.sj(code, result)
         # Existing deprecated endpoint handling
         u=(parse_qs(body).get("url")or[""])[0].strip()
         if not u: return self.st(400,page())

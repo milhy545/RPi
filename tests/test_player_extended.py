@@ -107,6 +107,8 @@ def test_mpv_start_stop_and_status(monkeypatch: Any) -> None:
     assert player.mpv_start("movie.mp4", quality="360p", resume=True) == {"ok": True, "pid": 4321}
     assert "--start=0" in commands[0]
     assert "--ytdl-format=" + player.QUALITY["360p"] in commands[0]
+    assert "--vo=drm" in commands[0]
+    assert "--vo=gpu,x11,drm" not in commands[0]
 
     calls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(player, "mpv_ipc_socket_live", lambda: True)

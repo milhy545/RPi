@@ -11,6 +11,7 @@ import sys
 import socket
 import asyncio
 import shlex
+import ssl
 import threading
 import urllib.error
 import urllib.request
@@ -26,6 +27,10 @@ from rpi_dashboard.api.routes import get_route
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
+HTTP_PORT = int(os.getenv("RPIDASHBOARD_HTTP_PORT", "0") or "0")
+HTTPS_PORT = int(os.getenv("RPIDASHBOARD_HTTPS_PORT", "8443") or "0")
+HTTPS_CERT_FILE = os.path.expanduser("~/.config/rpi-dashboard/https/webui.crt")
+HTTPS_KEY_FILE = os.path.expanduser("~/.config/rpi-dashboard/https/webui.key")
 
 I18N = {
     "cz": {
@@ -1677,6 +1682,9 @@ class RPiDashboard(App):
 
     async def on_unmount(self) -> None:
         """Clean up background tasks and close the API server."""
+        if hasattr(self, "api_sites"):
+            for site in getattr(self, "api_sites", []):
+                await site.stop()
         if hasattr(self, "api_runner") and self.api_runner:
             await self.api_runner.cleanup()
         legacy_server = getattr(self, "_legacy_webserver", None)
@@ -1760,12 +1768,35 @@ class RPiDashboard(App):
 
         self.api_runner = web.AppRunner(api_app)
         await self.api_runner.setup()
-        self.api_site = web.TCPSite(self.api_runner, "0.0.0.0", API_PORT)
-        try:
-            await self.api_site.start()
-            self.write_log(f"[NETWORK] API server listening on 0.0.0.0:{API_PORT} with CORS and Auth enabled")
-        except Exception as e:
-            self.write_log(f"[ERROR] Failed to start API server: {e}")
+        ports = [API_PORT]
+        if HTTP_PORT and HTTP_PORT not in ports:
+            ports.append(HTTP_PORT)
+        self.api_sites = []
+        for port in ports:
+            site = web.TCPSite(self.api_runner, "0.0.0.0", port)
+            try:
+                await site.start()
+                self.api_sites.append(site)
+                if port == API_PORT:
+                    self.api_site = site
+                self.write_log(f"[NETWORK] API server listening on 0.0.0.0:{port} with CORS and Auth enabled")
+            except Exception as e:
+                self.write_log(f"[ERROR] Failed to start API server on port {port}: {e}")
+        if HTTPS_PORT:
+            if os.path.exists(HTTPS_CERT_FILE) and os.path.exists(HTTPS_KEY_FILE):
+                ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+                ssl_context.load_cert_chain(HTTPS_CERT_FILE, HTTPS_KEY_FILE)
+                site = web.TCPSite(self.api_runner, "0.0.0.0", HTTPS_PORT, ssl_context=ssl_context)
+                try:
+                    await site.start()
+                    self.api_sites.append(site)
+                    self.write_log(
+                        f"[NETWORK] HTTPS server listening on 0.0.0.0:{HTTPS_PORT} with CORS and Auth enabled"
+                    )
+                except Exception as e:
+                    self.write_log(f"[ERROR] Failed to start HTTPS server on port {HTTPS_PORT}: {e}")
+            else:
+                self.write_log(f"[ERROR] HTTPS cert/key missing for port {HTTPS_PORT}")
 
     def _start_legacy_webserver(self) -> None:
         """Start an internal compatibility server for legacy WebUI endpoints."""
@@ -1791,10 +1822,14 @@ class RPiDashboard(App):
         body = await request.read()
         url = f"http://127.0.0.1:{server.server_port}{request.path_qs}"
 
-        def proxy_request() -> tuple[int, bytes, str]:
+        def proxy_request() -> tuple[int, bytes, str, list[str]]:
             headers = {}
             if request.content_type:
                 headers["Content-Type"] = request.content_type
+            for name in ("Cookie", "X-CSRF-Token", "Authorization"):
+                value = request.headers.get(name)
+                if value:
+                    headers[name] = value
             proxied = urllib.request.Request(
                 url,
                 data=body if request.method in {"POST", "PUT", "PATCH"} else None,
@@ -1807,16 +1842,23 @@ class RPiDashboard(App):
                         response.status,
                         response.read(),
                         response.headers.get("Content-Type", "application/json"),
+                        response.headers.get_all("Set-Cookie", []),
                     )
             except urllib.error.HTTPError as exc:
                 return (
                     exc.code,
                     exc.read(),
                     exc.headers.get("Content-Type", "application/json"),
+                    exc.headers.get_all("Set-Cookie", []),
                 )
 
-        status, payload, content_type = await asyncio.to_thread(proxy_request)
-        return web.Response(status=status, body=payload, headers={"Content-Type": content_type})
+        status, payload, content_type, set_cookies = await asyncio.to_thread(proxy_request)
+        response = web.Response(status=status, body=payload, headers={"Content-Type": content_type})
+        for cookie in set_cookies:
+            if request.secure and "secure" not in cookie.lower():
+                cookie = f"{cookie}; Secure"
+            response.headers.add("Set-Cookie", cookie)
+        return response
 
     def static_dir(self) -> str:
         """Return the static WebUI asset directory."""
@@ -1825,7 +1867,8 @@ class RPiDashboard(App):
     async def handle_webui_index(self, request: web.Request) -> web.StreamResponse:
         """Serve the browser WebUI from the live TUI service."""
         index_path = os.path.join(self.static_dir(), "index.html")
-        return web.FileResponse(index_path)
+        with open(index_path, "rb") as handle:
+            return web.Response(body=handle.read(), content_type="text/html", charset="utf-8")
 
     async def handle_webui_manifest(self, request: web.Request) -> web.Response:
         """Serve a minimal PWA manifest compatible with the legacy webserver."""
@@ -2027,7 +2070,7 @@ class RPiDashboard(App):
         """Inject CORS headers into aiohttp response."""
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-API-Key, X-CSRF-Token, Authorization"
 
     async def handle_play(self, request: web.Request) -> web.Response:
         """Route to cast/play a URL. Rejects with 409 if a mode is already active."""

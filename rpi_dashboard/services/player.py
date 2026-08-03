@@ -210,7 +210,7 @@ def mpv_start(url: str, quality: Optional[str] = None, resume: bool = False) -> 
         "--keep-open=always",
         "--framedrop=vo",
         "--hwdec=auto",
-        "--vo=gpu,x11,drm",
+        "--vo=drm",
         "--ao=pulse",
     ]
 

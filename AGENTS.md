@@ -12,6 +12,7 @@ This repository contains the RPi-TV Dashboard. The production checkout is `/home
 - `tui.py` is the production Textual dashboard. `rpi_dashboard/tui/modern.py` remains a non-production prototype.
 - `tests/` contains pytest coverage; `tests/e2e/` contains the Playwright hardware smoke flow.
 - `provisioning/` and `systemd/` contain deployment assets. `conductor/` is the intended product and track record; validate completion against its plan, CI, and receipt.
+- `.agents/` and `.Jules/` contain agent-specific configuration and session state.
 
 Do not edit caches, reports, receipts, logs, or runtime files unless the task explicitly targets them.
 
@@ -35,3 +36,33 @@ Add focused `test_<behaviour>.py` coverage near changed behaviour. Mock hardware
 Use short imperative Conventional Commit subjects, for example `fix(webui): remove duplicate status bar`. Pull requests must describe intent, affected modules, verification, linked track or issue, screenshots for UI changes, and hardware impact.
 
 Before editing, run `git status --short` and preserve unrelated changes. Follow `conductor/ci/SAFETY-RULES.md`: use `tools/finish-track.sh` for commits, never push directly from RPi, and report an exact blocker whenever `tools/verify-done.sh` fails.
+
+## 💻 Hardware & Performance (Critical)
+
+This system runs on extremely constrained hardware. Every line of code must account for this:
+
+- **Target HW:** Raspberry Pi 3 Model B (4× Cortex-A53, only **731 MB usable RAM**).
+- **Limitations:** Shared L2 cache (only 512 KB) creates a memory throughput bottleneck. The CPU is prone to thermal throttling.
+- **Coding Rule:** Backend and frontend must be extremely lightweight. Avoid CPU-intensive blocking operations. Aggressively use non-blocking asyncio architecture, conserve memory, and avoid creating unnecessary threads unless absolutely essential (e.g., isolating a crashing D-Bus call).
+
+## 🌍 Globální pravidla (Global Rules)
+
+- **Language (Critical):** Always communicate, explain steps, propose plans, and write code comments **exclusively in Czech**.
+- **Conductor Standard:** All development follows Conductor tracks in `conductor/tracks/`. Always read the relevant `spec.md` and `plan.md` before starting a task.
+- **Goat Principle:** Don't be unnecessarily verbose — be pragmatic. Before refactoring, ensure you have exact data and context.
+
+## 🛠️ Architektura a Vývoj (Dev Guidelines)
+
+- **Backend:** Written in Python using asyncio. Avoid blocking calls, especially with D-Bus.
+- **BlueZ & D-Bus:** Any D-Bus crashes must be caught via custom exceptions (e.g. `BluetoothDBusError`). The system must never crash. Use isolated Threads or pure async approaches for D-Bus calls.
+- **Frontend:** No React/Angular. UI changes are made in vanilla JS, HTML, and CSS (Tailwind).
+- **Testing:** Every implementation must pass local tests. Pytest for backend, Playwright for E2E.
+
+## 🤖 Conductor Workflow (Jules Instructions)
+
+Since Jules operates primarily over the repository without complex external skills, follow this manual procedure for every task:
+
+1. **Context:** Read this `AGENTS.md` at the start of every new session.
+2. **Task (Spec):** Find your concrete task for the session. It will be stored in `spec.md` (e.g. `conductor/tracks/<track-name>/spec.md`).
+3. **Plan & Architecture:** Along with the spec, also read `plan.md` in the same folder to understand the broader context and logic of the task.
+4. **Execution:** Follow the spec step by step. Before creating a Pull Request, verify syntax and run local tests in your sandbox environment (using mocks where the real Raspberry Pi hardware is unavailable).

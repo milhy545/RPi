@@ -1,7 +1,11 @@
 function $(s){return document.querySelector(s)}function $$(s){return document.querySelectorAll(s)}
 function msg(t,c){let box=$('#toast');while(box.children.length>=3)box.firstElementChild.remove();let d=document.createElement('div');d.className='t '+c;d.textContent=t;box.appendChild(d);setTimeout(()=>d.remove(),4000)}
 function getCookie(name){let v=document.cookie.match('(^|;) ?'+name+'=([^;]*)(;|$)');return v?v[2]:null}
-async function api(u, opts={}){try{opts.headers=opts.headers||{};if(opts.method&&opts.method!=='GET'&&opts.method!=='HEAD'){let token=getCookie('rpi_csrf');if(token)opts.headers['X-CSRF-Token']=token;}let response=await fetch(u,opts);if(response.status===401){appSetMode('basic');updateRoleBadge('basic');msg('Session expired — please log in again','err');return{ok:false,error:'Session expired'}}let text=await response.text(),data;try{data=JSON.parse(text)}catch{return{ok:false,error:'HTTP '+response.status+' returned a non-JSON response'}}if(!response.ok&&!data.error)data.error='HTTP '+response.status;return data}catch(e){return{ok:false,error:e.message}}}
+let pendingAuthRetry=null;
+function authRoleForUrl(u){let path=String(u||'').split('?')[0];if(path.startsWith('http')){try{path=new URL(path).pathname}catch(e){}}let admin=['/terminal/','/system/restart-','/system/reboot','/restart/','/ws/','/bt/file-','/bt/remove','/bt/reset','/selftest/','/system/logs'];return admin.some(p=>path.startsWith(p))?'admin':'expert'}
+function cloneApiOpts(opts){let cloned=Object.assign({},opts||{});cloned.headers=Object.assign({},(opts&&opts.headers)||{});return cloned}
+function maybePromptLogin(u,status,data,retry){if(String(u||'').startsWith('/auth/'))return false;let err=(data&&data.error)||'';if(status===503&&/not provisioned/i.test(err)){msg(err,'err');return true}if(status===401||status===403){let role=authRoleForUrl(u);if(status===401){appSetMode('basic');updateRoleBadge('basic')}if(typeof retry==='function')pendingAuthRetry=retry;msg(role.charAt(0).toUpperCase()+role.slice(1)+' login required','err');openLoginModal(role);return true}return false}
+async function api(u, opts={}, internal={}){try{opts=cloneApiOpts(opts);opts.credentials=opts.credentials||'same-origin';let token=getCookie('rpi_csrf');if(token)opts.headers['X-CSRF-Token']=token;let response=await fetch(u,opts);let text=await response.text(),data;try{data=JSON.parse(text)}catch{return{ok:false,error:'HTTP '+response.status+' returned a non-JSON response'}}if(!response.ok){if(!data.error)data.error='HTTP '+response.status;if(!internal.skipAuthRetry&&maybePromptLogin(u,response.status,data,async()=>api(u,opts,{skipAuthRetry:true})))return{ok:false,error:data.error,authRequired:true,status:response.status};}return data}catch(e){return{ok:false,error:e.message}}}
 function appSetMode(m){let app=$('#webui-app');if(!app)return;app.classList.remove('mode-basic','mode-expert');app.classList.add('mode-'+m);let b1=$('#mode-btn-basic'),b2=$('#mode-btn-expert');if(b1)b1.classList.toggle('active',m==='basic');if(b2)b2.classList.toggle('active',m==='expert');try{localStorage.setItem('webui-mode',m)}catch(e){}}
 function sw(n){$$('.tab, .app-nav-item').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='bluetooth'){btInitInteractions();bluetoothRefresh();setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},120)}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
 let previewTimer=null,previewSeq=0;
@@ -301,10 +305,12 @@ async function taRefresh(){
         if(vols.length > 0) { let avg = Math.round(vols.reduce((a,b)=>a+b,0)/vols.length); mvSlider.value = Math.min(avg, 100); $('#master-volume-value').textContent = mvSlider.value + '%'; }
     }
 }
-function masterVolChanged(v){
+async function masterVolChanged(v){
     let lbl=$('#master-volume-value');
     if(lbl)lbl.textContent=v+'%';
-    api('/audio/volume/global?volume='+v);
+    let r=await api('/audio/volume/global?volume='+v);
+    if(r&&r.ok)msg('Master volume → '+v+'%','ok');
+    else if(r&&!r.authRequired)msg(r.error||'Master volume failed','err');
 }
 let topoSelectedSource=null;
 function renderAudioTopology(r){
@@ -564,6 +570,7 @@ async function submitLogin(){
     if(r.ok){
         closeLoginModal(); msg('Logged in as '+role,'ok');
         appSetMode(role); updateRoleBadge(role);
+        if(pendingAuthRetry){let retry=pendingAuthRetry;pendingAuthRetry=null;let rr=await retry();if(rr&&rr.ok)msg('Blocked action completed','ok');else if(rr&&rr.error)msg(rr.error,'err');}
         if(role==='admin' && $('#p-terminal').classList.contains('active')) termConnect();
     } else { msg(r.error||'Login failed','err'); }
 }
@@ -988,5 +995,3 @@ async function logsRefresh() {
         el.textContent = 'No logs returned';
     }
 }
-
-

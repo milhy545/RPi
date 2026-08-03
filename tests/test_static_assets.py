@@ -39,6 +39,33 @@ def test_audio_multi_output_uses_real_backend_state() -> None:
     assert "function multiOutputToggle(){let on=getCookie" not in app_js
 
 
+def test_protected_basic_actions_prompt_login_from_api_wrapper() -> None:
+    """Basic UI controls that hit Expert/Admin endpoints should open auth."""
+    app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
+
+    assert "function maybePromptLogin(u,status,data,retry)" in app_js
+    assert "pendingAuthRetry=retry" in app_js
+    assert "openLoginModal(role)" in app_js
+    assert "opts.credentials=opts.credentials||'same-origin'" in app_js
+    assert "if(token)opts.headers['X-CSRF-Token']=token" in app_js
+    assert "opts.method&&opts.method!=='GET'" not in app_js
+    assert "authRequired:true" in app_js
+    assert "if(pendingAuthRetry)" in app_js
+    assert "async function masterVolChanged(v)" in app_js
+    assert "if(r&&r.ok)msg('Master volume" in app_js
+
+
+def test_tui_proxy_forwards_auth_cookies_and_csrf_headers() -> None:
+    """The aiohttp HTTPS WebUI proxy must preserve legacy auth cookies."""
+    tui_py = (REPO_ROOT / "tui.py").read_text()
+
+    assert 'for name in ("Cookie", "X-CSRF-Token", "Authorization")' in tui_py
+    assert 'response.headers.get_all("Set-Cookie", [])' in tui_py
+    assert 'if request.secure and "secure" not in cookie.lower()' in tui_py
+    assert 'response.headers.add("Set-Cookie", cookie)' in tui_py
+    assert "X-API-Key, X-CSRF-Token, Authorization" in tui_py
+
+
 def test_aria_label_i18n_preserves_icon_button_content() -> None:
     """Icon-only controls should translate accessibility text, not visible labels."""
     app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
