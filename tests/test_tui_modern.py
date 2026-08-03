@@ -77,7 +77,6 @@ def test_tui_webui_proxy_covers_legacy_audio_and_preview_routes(monkeypatch):
 
     async def run_check():
         import tui
-        import webserver
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
 

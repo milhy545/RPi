@@ -21,7 +21,6 @@ from config import (
 from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route, get_post_route
 from rpi_dashboard.services import devices as devices_service
-from rpi_dashboard.services import return_service
 from rpi_dashboard.services import terminal as terminal_service
 from rpi_dashboard.services import audio_routing as audio_routing_service
 from rpi_dashboard.auth import (
