@@ -2,10 +2,10 @@
   "track_id": "backend-modularization-completion_20260723",
   "title": "Backend Modularization, Visual Redesign, and Legacy Retirement",
   "type": "refactor",
-  "status": "active",
+  "status": "completed",
   "created_at": "2026-07-23T00:00:00Z",
   "approved_at": "2026-07-23T14:40:52Z",
   "updated_at": "2026-08-04T17:35:00Z",
   "tags": ["backend", "refactor", "services", "api", "redesign", "webui", "tui", "legacy", "migration"],
-  "implementation_notes": "do_GET cleaned from 565 to 89 lines. webserver.py reduced from 3394 to 2896 lines. All 702 tests pass. Phase 4 (UI redesign) remains as future work."
+  "implementation_notes": "Completed 2026-08-04. do_GET: 565→89 lines. webserver.py: 3394→2896 lines. Phase 4 transferred to unified-ui-ux-refactor_20260728. All 702 tests pass. verify-done.sh: PASS."
 }
