@@ -160,7 +160,20 @@ structure.
   tab labels and status bar render correctly. The `modern.py` prototype
   is not used as a reference test.
 
-## Phase 8: Full Verification Gate
+## Phase 8: Production Visual Redesign (WebUI/TUI)
+
+> Moved from `backend-modularization-completion_20260723` Phase 4.
+
+- [ ] Task: Audit current WebUI component styles — identify outdated colors, inconsistent spacing, missing hover/focus states.
+- [ ] Task: Apply `theme.css` CSS variables consistently across all component files (`main.css`, `audio.css`, `bluetooth.css`, etc.).
+- [ ] Task: Redesign card/panel components with modern border-radius, shadow, and transition tokens from `theme.css`.
+- [ ] Task: Ensure all interactive elements (buttons, inputs, sliders) have visible focus/hover/active states.
+- [ ] Task: Standardize icon sizing and alignment across all tabs.
+- [ ] Task: Verify dark/light theme toggle applies correctly to all new styles.
+- [ ] Task: Apply equivalent visual polish to TUI Textual CSS where the framework permits.
+- [ ] Verify: Visual inspection at 1920x1080 — consistent modern look across all tabs.
+
+## Phase 9: Full Verification Gate
 
 - [x] Task: Run `uv run python -m pytest -q` — all tests pass.
 - [x] Task: Run `uv run ruff check .` — no lint errors.

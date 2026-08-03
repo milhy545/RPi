@@ -13,7 +13,7 @@ Phases 1–3 of the backend modularization are completed (Ownership/inventory, I
 - [x] Remaining 18 inline větve are utility/deprecated endpoints not in registry: `/`, `/favicon.ico`, `/manifest.json`, `/ws/token`, `/cache/*`, `/pool/*`, `/play`, `/kodi/*`, `/selftest/testaudio`, `/audio/test`, `/system/reboot`.
 - [x] webserver.py reduced from 3394 → 2896 lines (-498 lines).
 - [x] All 702 tests pass.
-- [ ] Phase 4: Production visual redesign (WebUI/TUI) — remains as future work.
+- [x] Phase 4: Production visual redesign (WebUI/TUI) — **transferred to `unified-ui-ux-refactor_20260728` Phase 8**.
 - [ ] Phase 6: Full verification gate with `tools/verify-done.sh`.
 
 ## What was done today (2026-08-04)
@@ -32,4 +32,4 @@ Phases 1–3 of the backend modularization are completed (Ownership/inventory, I
 - [x] do_GET reduced from 565 → 89 lines.
 - [x] webserver.py reduced from 3394 → 2896 lines.
 - [x] All 702 tests pass.
-- [ ] Phase 4–6 complete (future work).
+- [x] Phase 4 complete (transferred). Phase 6 pending.
