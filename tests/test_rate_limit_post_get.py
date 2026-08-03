@@ -73,7 +73,9 @@ def test_get_root_not_rate_limited():
 def test_get_audio_state_not_rate_limited(monkeypatch):
     """Frontend polls /audio/state repeatedly — must never get 429."""
     # Mock audio_state to avoid pactl dependency in test env
-    monkeypatch.setattr(webserver, "audio_state", lambda: {"ok": True})
+    # Patch the service module used by the API handler
+    from rpi_dashboard.services import audio as _audio_svc
+    monkeypatch.setattr(_audio_svc, "audio_state", lambda force=False: {"ok": True})
     statuses = [get("/audio/state") for _ in range(5)]
     assert all(s == 200 for s in statuses), (
         f"/audio/state got rate‑limited: {statuses}"
