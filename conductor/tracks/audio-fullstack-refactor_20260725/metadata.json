@@ -2,8 +2,8 @@
   "id": "audio-fullstack-refactor_20260725",
   "title": "Audio Full-Stack Refactor: Modular Backend, WebUI Scaffold & Flow Topology, Modern TUI",
   "type": "feature",
-  "status": "active",
+  "status": "completed",
   "created_at": "2026-07-25T18:07:00Z",
-  "updated_at": "2026-08-04T10:30:00Z",
+  "updated_at": "2026-08-04T06:43:41Z",
   "implementation_notes": "BT volume sync and AVRCP tests transferred to bt-dbus-resilience_20260804. Remaining scope: TUI AudioFlowDiagram, WebUI topology polish, global master volume UI, test coverage."
 }

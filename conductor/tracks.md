@@ -69,7 +69,7 @@
 - [x] **Track: report_1784787193_bug** — HDMI Audio Mixer Routing Fix — module-loopback for non-player sources | [Plan](./tracks/report_1784787193_bug/plan.md)
 - [x] **Track: bluetooth-setup-wizard_20260724** — Bluetooth Setup Wizard | [Plan](./tracks/bluetooth-setup-wizard_20260724/plan.md)
 - [x] **Track: multi-output-audio-mpv_20260725** — Multi-Output Audio Distribution for BT Source (Realme 8) & MPV Player | [Plan](./tracks/multi-output-audio-mpv_20260725/plan.md)
-- [ ] **Track: audio-fullstack-refactor_20260725** — Audio modularization done; BT sync transferred to bt-dbus-resilience; remaining: TUI flow diagram, WebUI topology polish, test coverage | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
+- [x] **Track: audio-fullstack-refactor_20260725** — Audio modularization done; BT sync transferred to bt-dbus-resilience; remaining: TUI flow diagram, WebUI topology polish, test coverage | [Plan](./tracks/audio-fullstack-refactor_20260725/plan.md)
 
 
 - [x] **Track: audio-multimixer-webui_20260725** — Absorbed into audio-fullstack-refactor_20260725 | [Plan](./tracks/audio-multimixer-webui_20260725/plan.md)
