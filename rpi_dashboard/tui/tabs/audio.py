@@ -219,10 +219,10 @@ class AudioTab(Vertical):
         sink_list.update_sinks(sinks_list, default_sink)
 
         # Compute average volume for master display
-        vols = [
-            d.get("volume")
-            for d in sinks_list
-            if d.get("volume") is not None
+        vols: List[int] = [
+            int(d["volume"]) 
+            for d in sinks_list 
+            if isinstance(d.get("volume"), int)
         ]
         avg_vol = int(sum(vols) / len(vols)) if vols else 100
         master = self.query_one("#audio-master-volume", AudioMasterVolume)
