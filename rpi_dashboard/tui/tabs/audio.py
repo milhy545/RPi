@@ -7,7 +7,7 @@ for TV console (tty) compatibility.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from textual.app import ComposeResult
 from textual.containers import Vertical
