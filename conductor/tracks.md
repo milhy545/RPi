@@ -1,4 +1,5 @@
 # Tracks Registry
+# Updated after closing audio-fullstack-refactor track
 
 <!-- Register new tracks below. Format: - [ ] **Track: <id>** — <description> | [Plan](./tracks/<id>/plan.md) -->
 
@@ -161,3 +162,7 @@
 - [ ] **Track: report_1785800798_bug** — Bug report | [Plan](./tracks/report_1785800798_bug/plan.md)
 
 - [ ] **Track: report_1785800881_bug** — Bug report | [Plan](./tracks/report_1785800881_bug/plan.md)
+
+- [ ] **Track: report_1785826306_bug** — Bug report | [Plan](./tracks/report_1785826306_bug/plan.md)
+
+- [ ] **Track: report_1785826391_bug** — Bug report | [Plan](./tracks/report_1785826391_bug/plan.md)
