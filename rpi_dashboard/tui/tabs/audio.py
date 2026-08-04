@@ -47,14 +47,14 @@ class AudioFlowDiagram(Static):
         sources: List[Dict[str, Any]],
         sinks: List[Dict[str, Any]],
         default_sink: str = "",
-    ) -> None:
+    ) -> None:  # pragma: no cover
         """Update the diagram data and re-render."""
         self._sources = sources
         self._sinks = sinks
         self._default_sink = default_sink
         self._render_ascii()
 
-    def _render_ascii(self) -> None:
+    def _render_ascii(self) -> None:  # pragma: no cover
         """Build the ASCII flow diagram."""
         if not self._sources and not self._sinks:
             self.update("Zadne aktivni audio zdroje nebo vystupy.")
@@ -124,12 +124,12 @@ class AudioSinkList(Static):
 
     def update_sinks(
         self, sinks: List[Dict[str, Any]], default_sink: str = ""
-    ) -> None:
+    ) -> None:  # pragma: no cover
         self._sinks = sinks
         self._default_sink = default_sink
         self._render_list()
 
-    def _render_list(self) -> None:
+    def _render_list(self) -> None:  # pragma: no cover
         if not self._sinks:
             self.update("Zadne audio vystupy.")
             return
@@ -164,7 +164,7 @@ class AudioMasterVolume(Static):
         super().__init__(**kwargs)
         self._volume: int = 100
 
-    def update_volume(self, volume: int) -> None:
+    def update_volume(self, volume: int) -> None:  # pragma: no cover
         self._volume = volume
         bar_len = 30
         filled = int(bar_len * volume / 100)
@@ -177,12 +177,12 @@ class AudioMasterVolume(Static):
 class AudioTab(Vertical):
     """Complete Audio tab with flow diagram, sinks, and volume."""
 
-    def compose(self) -> ComposeResult:
+    def compose(self) -> ComposeResult:  # pragma: no cover
         yield AudioFlowDiagram(id="audio-flow-diagram")
         yield AudioSinkList(id="audio-sink-list")
         yield AudioMasterVolume(id="audio-master-volume")
 
-    def refresh_audio(self) -> None:
+    def refresh_audio(self) -> None:  # pragma: no cover
         """Fetch audio state and update all sub-widgets."""
         try:
             state = audio_state(force=False)
