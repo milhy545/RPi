@@ -161,7 +161,7 @@ run_once() {
     RPI_EVIDENCE_DIR="conductor/ci/receipts"
 
     # Check for E2E artifacts (Playwright results)
-    if [[ "$PROFILE" == "milhy-full" ]]; then
+    if [[ "$CI_PROFILE" == "milhy-full" ]]; then
       if [[ ! -d "$E2E_ARTIFACTS_DIR" || -z "$(ls -A "$E2E_ARTIFACTS_DIR" 2>/dev/null)" ]]; then
         notify_fail "EVIDENCE GATE FAILED: No Playwright/E2E artifacts found in $E2E_ARTIFACTS_DIR for SHA $source_sha. Push blocked."
         return 1
