@@ -59,11 +59,19 @@ def test_exact_process_matching_mpv_vs_keys2mpv():
         "comm": "moonlight",
         "args": "/usr/bin/moonlight stream",
     }
+    proc_tui = {
+        "pid": 105,
+        "ppid": 1,
+        "pcpu": 10.0,
+        "comm": "python3",
+        "args": "python3 /home/milhy777/rpi-dashboard/tui.py",
+    }
 
     assert is_exact_playback_process(proc_mpv) is True
     assert is_exact_playback_process(proc_steamlink) is True
     assert is_exact_playback_process(proc_moonlight) is True
     assert is_exact_playback_process(proc_keys2mpv) is False
+    assert is_exact_playback_process(proc_tui) is True
 
 
 def test_proc_ps_output_parsing():

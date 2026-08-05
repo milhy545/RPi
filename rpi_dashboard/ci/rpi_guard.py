@@ -113,6 +113,7 @@ def is_exact_playback_process(proc: Dict[str, Any]) -> bool:
     """Determine if process is an authoritative playback/gaming process.
 
     Strictly matches exact executables ('mpv', 'steamlink', 'moonlight').
+    Also detects TUI dashboard processes ('tui.py').
     Must NOT match helper scripts like 'keys2mpv.py' or python wrappers.
     """
     comm = proc.get("comm", "").strip()
@@ -129,6 +130,9 @@ def is_exact_playback_process(proc: Dict[str, Any]) -> bool:
     if comm in ("python", "python3", "python3.12") or "python" in first_arg:
         if "keys2mpv.py" in args:
             return False
+        # Check for TUI dashboard process
+        if "tui.py" in args or basename == "tui.py":
+            return True
 
     return False
 
@@ -223,28 +227,57 @@ class RPiGuard:
             pass
         return 45.0
 
-    def check_status(self, exclude_pids: Optional[Set[int]] = None) -> Dict[str, Any]:
-        """Check live RPi hardware status and process activity."""
+    def _get_sustained_user_cpu_pct(self, exclude_pids: Set[int], sample_count: int = 3, sample_delay: float = 0.5) -> float:
+        """Get sustained user CPU percentage by sampling multiple times.
+
+        Takes multiple samples to avoid false positives from brief CPU spikes.
+        Returns the average CPU usage across all samples.
+        """
+        total_cpu = 0.0
+        for _ in range(sample_count):
+            processes = self._get_processes()
+            sample_cpu = 0.0
+            for proc in processes:
+                pid = proc.get("pid", 0)
+                if pid not in exclude_pids:
+                    sample_cpu += proc.get("pcpu", 0.0)
+            total_cpu += sample_cpu
+            if _ < sample_count - 1:
+                time.sleep(sample_delay)
+        return total_cpu / sample_count
+
+    def check_status(self, exclude_pids: Optional[Set[int]] = None, sustained_cpu_samples: int = 1) -> Dict[str, Any]:
+        """Check live RPi hardware status and process activity.
+
+        For sustained CPU measurement, takes multiple samples to avoid brief spike
+        false positives. Set sustained_cpu_samples > 1 for sustained measurement.
+        Default is 1 for backwards compatibility (instantaneous check).
+        """
         if exclude_pids is None:
             exclude_pids = get_current_pid_family()
 
         processes = self._get_processes()
         active_playback = False
-        user_cpu_pct = 0.0
 
+        # Check for playback processes in the snapshot
         for proc in processes:
-            pid = proc.get("pid", 0)
-            ppid = proc.get("ppid", 0)
-
             if is_exact_playback_process(proc):
                 active_playback = True
+                break
 
-            # Exclude self PIDs from user CPU attribution
-            if pid not in exclude_pids:
-                user_cpu_pct += proc.get("pcpu", 0.0)
+        # Get sustained CPU measurement (average across multiple samples)
+        if sustained_cpu_samples > 1:
+            user_cpu_pct = self._get_sustained_user_cpu_pct(exclude_pids, sustained_cpu_samples)
+        else:
+            # Single sample for backwards compatibility
+            user_cpu_pct = 0.0
+            for proc in processes:
+                pid = proc.get("pid", 0)
+                if pid not in exclude_pids:
+                    user_cpu_pct += proc.get("pcpu", 0.0)
 
         active_mode = get_active_mode(self.mode_file_path)
-        if active_mode in ("mpv", "steamlink", "moonlight", "spotify", "media_player"):
+        if active_mode in ("mpv", "steamlink", "moonlight", "spotify", "media_player", "tui"):
             active_playback = True
 
         ram_free_mb = self._get_ram_free_mb()
@@ -255,7 +288,7 @@ class RPiGuard:
 
         if active_playback:
             busy = True
-            reasons.append("Active playback/gaming detected")
+            reasons.append("Active playback/gaming/TUI detected")
         if user_cpu_pct > self.cpu_threshold_pct:
             busy = True
             reasons.append(f"User CPU usage {user_cpu_pct:.1f}% exceeds {self.cpu_threshold_pct}%")
@@ -281,10 +314,11 @@ class RPiGuard:
         max_wait_seconds: float = 30.0,
         backoff_seconds: float = 2.0,
         exclude_pids: Optional[Set[int]] = None,
+        sustained_cpu_samples: int = 1,
     ) -> Dict[str, Any]:
         """Wait up to max_wait_seconds with backoff until system is idle."""
         start = time.time()
-        last_status = self.check_status(exclude_pids=exclude_pids)
+        last_status = self.check_status(exclude_pids=exclude_pids, sustained_cpu_samples=sustained_cpu_samples)
 
         while last_status["busy"]:
             elapsed = time.time() - start
@@ -293,7 +327,7 @@ class RPiGuard:
                     f"RPi remained busy after {max_wait_seconds}s timeout: {', '.join(last_status['reasons'])}"
                 )
             time.sleep(backoff_seconds)
-            last_status = self.check_status(exclude_pids=exclude_pids)
+            last_status = self.check_status(exclude_pids=exclude_pids, sustained_cpu_samples=sustained_cpu_samples)
 
         return last_status
 

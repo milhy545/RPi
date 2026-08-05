@@ -200,7 +200,7 @@ case "$PROFILE" in
     append "## Execution Profile: rpi-candidate"
 
     # Ban browser execution on RPi
-    if pgrep -f "chromium|chrome|firefox|playwright" >/dev/null 2>&1; then
+    if pgrep -f "chromium" >/dev/null 2>&1 || pgrep -f "chrome" >/dev/null 2>&1 || pgrep -f "firefox" >/dev/null 2>&1 || pgrep -f "playwright" >/dev/null 2>&1; then
       run_step "RPi Browser Ban Enforcement" bash -c "echo 'ERROR: Browser processes detected on RPi!' && exit 1"
     else
       run_step "RPi Browser Ban Enforcement" true
