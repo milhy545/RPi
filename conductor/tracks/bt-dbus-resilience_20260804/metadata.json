@@ -4,8 +4,8 @@
   "type": "feature",
   "status": "active",
   "created_at": "2026-08-04T10:00:00Z",
-  "updated_at": "2026-08-04T10:30:00Z",
-  "implementation_notes": "New track. Absorbed BT volume sync (AVRCP ↔ PipeWire) and AVRCP tests from audio-fullstack-refactor_20260725. Scope: D-Bus crash recovery, adapter profiling, multi-speaker codec lock, Playwright E2E.",
+  "updated_at": "2026-08-05T13:50:00Z",
+  "implementation_notes": "Expanded before implementation. In addition to D-Bus recovery, AVRCP/PipeWire sync, adapter profiling and multi-speaker codec lock, the track now removes unproven WebUI operational status claims and replaces fixed bt_soundbar/alexa_to_bt diagnostics with dynamic BlueZ/PipeWire/WirePlumber sink and route evidence. Includes explicit not-applicable/stale/error semantics and remote Playwright coverage.",
   "dependencies": ["audio-fullstack-refactor_20260725 (historical BT items transferred)"],
   "blocks": []
 }

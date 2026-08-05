@@ -36,11 +36,23 @@ Na základě rešerše a specifikací RPi projektů jsme identifikovali 4 hlavn�
 - [ ] Pomocí `pactl`/`wpctl` uzamkne výstupní formát na `s16le 44100Hz` (společný formát).
 - [ ] Vytvoří uzamčený spojený sink s pevným bufferováním.
 
-### Fáze 5: Frontend UI a Playwright Testy
+### Fáze 5: Real-Status WebUI and BT Audio Diagnostics
 
-- [ ] Implementovat UI pro detailní přehled o BT: RSSI, baterie, driver adaptéru.
-- [ ] Upravit dialog multi-audia: zakliknutí jen specifických výstupů, varovný banner (`.adapter-warning`) při překročení limitu adaptéru.
-- [ ] Zapsat Playwright E2E testy v `tests/e2e/bt_webui_test.mjs`.
+- [ ] Inventory every WebUI status pill, badge, summary, quick-action state, and footer value. Remove decorative operational claims and map each retained state to a documented live API field, collection timestamp, and explicit loading/stale/degraded/unavailable behaviour.
+- [ ] Replace the hard-coded footer claims (`Service Running`, `Bluetooth Ready`, `Audio HDMI`) with bounded periodic status aggregation. Do not require the user to open the hardware panel before CPU/RAM/temperature values become truthful.
+- [ ] Collect real RPi samples first (`wpctl status`, `pactl list short sinks`, default sink, active stream links, and relevant WirePlumber metadata), document parser provenance, and prove parsing in a scratch script before production implementation.
+- [ ] Replace the fixed `bt_soundbar`/`alexa_to_bt` readiness assumption with dynamic matching between connected BlueZ audio devices and PipeWire/WirePlumber sinks/routes. Treat a default BT sink, an active stream routed to the BT sink, or an explicitly enabled loopback according to their real semantics; an optional inactive loopback alone is not a blocker.
+- [ ] Represent `pass`, `blocked`, `not applicable`, `unknown`, and `stale` separately. No connected BT audio device must produce `not applicable`, while command/API failure must produce `unknown` or `degraded`, never a fabricated red or green result.
+- [ ] Implement UI for detailed BT information: RSSI, battery, codec, adapter driver, and actionable reason text for every non-passing readiness state.
+- [ ] Update the multi-audio dialog to select explicit outputs and show `.adapter-warning` when adapter limits are exceeded.
+
+### Fáze 6: Tests and Live Validation
+
+- [ ] Add focused backend tests for dynamic sink identity, default route, active stream, optional loopback, multiple BT sinks, no connected BT audio device, stale evidence, bounded command timeout, and malformed real command output.
+- [ ] Add static regression tests forbidding hard-coded operational success labels/classes in production WebUI markup and payloads.
+- [ ] Extend `tests/e2e/bt_webui_test.mjs` with loading, real-success, blocked, not-applicable, stale, and backend-unavailable states, plus the integrated-adapter third-device warning.
+- [ ] Run Playwright from Milhy-PC against the exact staged RPi candidate. Verify the two reported readiness rows become green only when supported by live audio evidence and preserve screenshots/API evidence for both connected and disconnected cases.
+- [ ] Run the one-hour HDMI + one-BT and two-BT stability checks without disrupting user playback, then complete exact-SHA RPi validation and receipt generation.
 
 ## 3. Akceptační kritéria
 
@@ -65,5 +77,8 @@ Nová route v `rpi_dashboard/api/routes.py` — detaily HCI adaptérů přes `hc
 ### Task 4: Multi-Speaker Audio Lock
 Nový modul `rpi_dashboard/services/audio/multi_negotiator.py` — vezme seznam sinků, proiteruje capabilities, uzamkne formát na `s16le 44100Hz` přes `pactl`/`wpctl`.
 
-### Task 5: E2E Playwright
-Test v `tests/e2e/bt_webui_test.mjs` — simulace přidání Multi-Audio zařízení. Assert: při `integrated` adaptér + 3. BT zařízení → `.adapter-warning` banner. Proklikat všechny DOM elementy.
+### Task 5: Truthful WebUI Status and Dynamic Audio Readiness
+Audit the bottom status line and all status-like WebUI components. Replace hard-coded success labels with backend-derived state plus freshness/error semantics. Refactor BT soundbar readiness to correlate actual BlueZ audio devices with real PipeWire/WirePlumber sinks and routes instead of assuming `bt_soundbar` and `alexa_to_bt`. Keep optional loopback state distinct from valid direct BT routing.
+
+### Task 6: Backend and Playwright Evidence
+Add deterministic backend tests from documented real command samples and fuzzed identifiers. Extend `tests/e2e/bt_webui_test.mjs` to cover truthful loading/pass/blocked/not-applicable/stale/unavailable rendering, the two reported audio readiness rows, and the integrated-adapter third-device warning. Run browser tests remotely from Milhy-PC against an exact-SHA staged RPi candidate; never run a browser on RPi.
