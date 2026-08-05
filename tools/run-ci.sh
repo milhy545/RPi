@@ -178,7 +178,7 @@ case "$PROFILE" in
 
     _MYPY="$(command -v mypy || ls .venv/bin/mypy 2>/dev/null || true)"
     if [[ -n "$_MYPY" && -x "$_MYPY" ]]; then
-      run_step "Mypy type checker" "$_MYPY" .
+      run_step "Mypy type checker" "$_MYPY" --explicit-package-bases .
     fi
 
     # Full pytest suite execution on Milhy-PC
