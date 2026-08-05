@@ -35,3 +35,15 @@ Přidávej zaměřené `test_<behaviour>.py` testy poblíž měněného chován�
 Používej krátké rozkazovací Conventional Commit subjecty, například `fix(webui): remove duplicate status bar`. Pull request musí popsat záměr, dotčené moduly, verifikaci, související track nebo issue, screenshoty UI změn a dopad na hardware.
 
 Před úpravami spusť `git status --short` a zachovej nesouvisející změny. Dodržuj `conductor/ci/SAFETY-RULES.md`: pro commity používej `tools/finish-track.sh`, nikdy nepushuj přímo z RPi a při selhání `tools/verify-done.sh` uveď přesný blokátor.
+
+## Bezpečná validační pipeline a směrování hostů
+
+- **Jediná gateway pro push**: Milhy-PC je jediná gateway pro `git push` a merge na GitHub. RPi host NIKDY nesmí provádět `git push`.
+- **Explicitness profilů**:
+  - `rpi-focused`: Rychlé unit a syntax kontroly pro RPi (bez těžkého pytestu a prohlížečů).
+  - `milhy-full`: Plný pytest, Ruff, mypy, bezpečnostní sken a vzdálený Playwright E2E.
+  - `rpi-candidate`: Bezpečný HW smoke na izolovaném kandidátním worktree na RPi.
+  - `github-safe`: Finální CI gateway validace na Milhy-PC před push na GitHub.
+- **Ochrana přehrávání a uživatele**: Kontroly na RPi NIKDY nesmí přerušit aktivní přehrávání (`mpv`), hraní (`steamlink`/`moonlight`), TUI režimy, audio, Bluetooth, CEC ani služby. Pokud během validace kandidáta začne přehrávání, procesy kandidáta se ihned ukončí a úkol se zařadí zpět do fronty.
+- **Izolace kandidáta**: Kód kandidáta se sestavuje v izolovaných adresářích (`/home/milhy777/rpi-dashboard-candidate-<sha>`). Nikdy nepřeplánovávat ani neprovádět `rsync --delete` přes špinavý živý checkout.
+- **Vazba na přesný receipt**: Agent NESMÍ tvrdit dokončení bez atomického receiptu (`conductor/ci/receipts/{sha}-{timestamp}.json`) vázaného na přesný commit SHA nebo tree hash.

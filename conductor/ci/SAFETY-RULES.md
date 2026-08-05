@@ -55,6 +55,23 @@ pre-finish-track-{timestamp}
 ```
 If something goes wrong, this stash can be restored.
 
+### Rule 8: Explicit execution profiles & host routing
+- `rpi-focused`: RPi unit/syntax checks (no full pytest or browser runs).
+- `milhy-full`: Milhy-PC full pytest, Ruff, mypy, security tools, and remote browser E2E.
+- `rpi-candidate`: Non-mutating hardware smoke on staged SHA candidate on RPi.
+- `github-safe`: Gateway verification prior to Milhy-PC push to GitHub.
+
+### Rule 9: Non-disruptive RPi hardware guard
+- Exact process matching for `mpv`, `steamlink`, `moonlight`, TUI mode (excludes substring scripts like `keys2mpv.py`).
+- Sustained user CPU >20% gates candidate execution; self-CPU is excluded to prevent self-deadlock.
+- If user playback starts mid-run, abort candidate processes immediately and requeue.
+- Browsers (Playwright/Chrome/Firefox) are strictly forbidden on RPi.
+
+### Rule 10: Candidate worktree isolation & flock ownership
+- Candidate code is staged in an isolated worktree outside live checkout.
+- Refuse `rsync --delete` if live checkout or target worktree has uncommitted dirty changes.
+- Pipeline execution uses `flock` lock file (`/tmp/rpi-ci-pipeline.lock`) for exclusive ownership.
+
 ## VERIFICATION WORKFLOW
 
 ```

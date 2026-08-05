@@ -73,7 +73,7 @@ echo "Pre-commit state: SHA=$PRE_COMMIT_SHA TREE=$PRE_TREE_HASH DIFF=$PRE_DIFF_H
 
 # ─── Step 3: Run local CI (must PASS) ───────────────────────────────────────
 echo "Running local CI..."
-if ! tools/run-ci.sh; then
+if ! CI_PROFILE="${CI_PROFILE:-milhy-full}" tools/run-ci.sh; then
   echo "FATAL: local CI failed — no commit created, no receipt generated" >&2
   exit 1
 fi

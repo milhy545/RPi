@@ -3,6 +3,8 @@
 
 <!-- Register new tracks below. Format: - [ ] **Track: <id>** — <description> | [Plan](./tracks/<id>/plan.md) -->
 
+- [ ] **Track: rpi-safe-ci-workflow_20260805** — Safe RPi / Milhy-PC / Jules Validation Pipeline & Execution Profiles | [Plan](./tracks/rpi-safe-ci-workflow_20260805/plan.md)
+
 - [x] **Track: network-cast-api** — Network Cast API (Port 8099) — merged into WebUI / mode-switcher | [Plan](./tracks/network-cast-api_20260602/plan.md)
 - [x] **Track: automated-provisioning** — Automated Provisioning (Ansible/Shell) — done; superseded by live stack baseline | [Plan](./tracks/automated-provisioning_20260602/plan.md)
 - [x] **Track: mode-switcher-engine** — Zero-Overhead Mode Switcher Engine (TUI suspension, subprocess spawning & recovery) — done; UI parity leftovers tracked elsewhere | [Plan](./tracks/mode-switcher-engine/plan.md)

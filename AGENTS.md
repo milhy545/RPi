@@ -37,6 +37,18 @@ Use short imperative Conventional Commit subjects, for example `fix(webui): remo
 
 Before editing, run `git status --short` and preserve unrelated changes. Follow `conductor/ci/SAFETY-RULES.md`: use `tools/finish-track.sh` for commits, never push directly from RPi, and report an exact blocker whenever `tools/verify-done.sh` fails.
 
+## Safe Validation Pipeline & Host Routing
+
+- **Sole Push Gateway**: Milhy-PC is the sole GitHub push and merge gateway. The RPi host MUST NEVER execute `git push` or push commits to GitHub.
+- **Execution Profiles**:
+  - `rpi-focused`: Lightweight unit & syntax checks for RPi (no full pytest or browser runs).
+  - `milhy-full`: Full pytest suite, Ruff, mypy, security tools, and remote Playwright E2E.
+  - `rpi-candidate`: Non-mutating hardware smoke on staged candidate worktree on RPi.
+  - `github-safe`: Final CI gateway verification on Milhy-PC prior to GitHub push.
+- **Playback & User Protection**: Candidate checks on RPi must NEVER disrupt active playback (`mpv`), gaming (`steamlink`/`moonlight`), TUI modes, audio, Bluetooth, CEC, or system services. If playback starts during candidate validation, candidate processes are terminated immediately and requeued.
+- **Candidate Staging**: Candidate code is staged in isolated worktrees (`/home/milhy777/rpi-dashboard-candidate-<sha>`). Never overwrite or `rsync --delete` over dirty live checkouts.
+- **Exact Receipt Requirement**: Agents MUST NOT claim completion without an atomic receipt (`conductor/ci/receipts/{sha}-{timestamp}.json`) matching the exact commit SHA or Git tree hash.
+
 ## 💻 Hardware & Performance (Critical)
 
 This system runs on extremely constrained hardware. Every line of code must account for this:

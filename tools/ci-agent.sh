@@ -138,8 +138,16 @@ run_once() {
     return 0
   fi
 
-  if tools/run-ci.sh; then
-    echo "CI passed for $source_sha. Pushing to $TARGET_REMOTE/$BRANCH"
+  # Enforce Milhy-PC sole push gateway contract
+  local host_name
+  host_name="$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")"
+  if [[ "$host_name" == *"rpi"* ]]; then
+    notify_fail "FATAL: RPi host is forbidden from executing git push. Milhy-PC is sole push gateway."
+    return 1
+  fi
+
+  if CI_PROFILE="${CI_PROFILE:-github-safe}" tools/run-ci.sh; then
+    echo "CI passed for $source_sha under profile ${CI_PROFILE:-github-safe}. Pushing to $TARGET_REMOTE/$BRANCH"
     if GIT_TERMINAL_PROMPT=0 git push "$TARGET_REMOTE" "$BRANCH:$BRANCH"; then
       echo "Pushed $source_sha to GitHub remote $TARGET_REMOTE."
       if ! dispatch_ci; then
