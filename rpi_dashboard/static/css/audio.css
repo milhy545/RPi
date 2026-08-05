@@ -7,8 +7,9 @@
 .audio-controls {
     display: flex;
     gap: 1rem;
-    background: #161b22;
+    background: var(--bg-surface);
     padding: 1rem;
-    border-radius: 8px;
-    border: 1px solid #30363d;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--bg-hover);
+    box-shadow: var(--shadow-sm);
 }

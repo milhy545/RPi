@@ -587,7 +587,7 @@ def build_bluetooth_console(
         f"RPI OS: {facts.get('os', '--')} | CPU: {cpu} | Mem: {memory}"
     )
     compact_rows = [
-        f"[bold cyan](BT)[/] [bold]RPi Bluetooth Control Center[/] | Auto: {'ON' if auto_connect else 'OFF'}",
+        f"[bold cyan](BT)[/] [bold]RPi Bluetooth Control Center[/] | {_text(language, 'settings')} | Auto: {'ON' if auto_connect else 'OFF'}",
         f"{_text(language, 'service')} [{service_color}]{service}[/] | "
         f"{_text(language, 'adapters')} {len(adapters)} | {_text(language, 'connected')} {connected} | "
         f"{_text(language, 'paired')} {paired}",

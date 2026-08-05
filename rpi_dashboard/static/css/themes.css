@@ -1,25 +1,40 @@
 /* Theme System for RPi-TV Dashboard */
-
-
+:root {
+    --bg-primary: var(--bg-dark);
+    --bg-secondary: var(--bg-surface);
+    --bg-tertiary: var(--bg-surface-raised);
+    --text-primary: var(--text-main);
+    --text-secondary: var(--text-muted);
+    --danger-color: var(--color-error);
+    --danger-bg: var(--color-error-bg);
+    --success-color: var(--color-success);
+    --success-bg: var(--color-success-bg);
+    --warning-color: var(--color-warning);
+    --warning-bg: var(--color-warning-bg);
+    --info-color: var(--color-info);
+    --info-bg: var(--color-info-bg);
+    --accent-color: var(--accent-blue);
+    --accent-hover: var(--bg-active);
+}
 
 [data-accent="green"] {
-    --accent-color: #3fb950;
-    --accent-hover: #238636;
+    --accent-color: var(--accent-green);
+    --accent-hover: color-mix(in srgb, var(--accent-green) 80%, black);
 }
 
 [data-accent="purple"] {
-    --accent-color: #a371f7;
-    --accent-hover: #8957e5;
+    --accent-color: var(--accent-purple);
+    --accent-hover: color-mix(in srgb, var(--accent-purple) 80%, black);
 }
 
 [data-accent="orange"] {
-    --accent-color: #f0883e;
-    --accent-hover: #db6d28;
+    --accent-color: var(--accent-orange);
+    --accent-hover: color-mix(in srgb, var(--accent-orange) 80%, black);
 }
 
 [data-accent="pink"] {
     --accent-color: #f778ba;
-    --accent-hover: #db61a2;
+    --accent-hover: color-mix(in srgb, #f778ba 80%, black);
 }
 
 /* Apply theme to body */
@@ -76,7 +91,7 @@ a {
 .lang-btn.active {
     background-color: var(--accent-hover);
     border-color: var(--accent-color);
-    color: #fff;
+    color: var(--text-bright);
 }
 
 .tab {
@@ -187,7 +202,7 @@ pre {
 }
 
 .modal {
-    background-color: rgba(0, 0, 0, 0.7);
+    background-color: var(--bg-overlay);
 }
 
 .modal-content {

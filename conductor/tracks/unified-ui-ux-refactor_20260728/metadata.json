@@ -4,7 +4,7 @@
   "type": "feature",
   "status": "active",
   "created_at": "2026-07-28T00:00:00Z",
-  "updated_at": "2026-08-04T17:10:00Z",
+  "updated_at": "2026-08-04T10:11:43Z",
   "tags": ["webui", "tui", "css", "responsive", "theme", "status-bar", "i18n", "parity"],
-  "implementation_notes": "Phase 8 (Production Visual Redesign) absorbed from backend-modularization-completion_20260723. Four Playwright viewport captures still missing."
+  "implementation_notes": "Phase 8 WebUI/TUI polish is implemented and verified with Playwright screenshots at 390x844, 768x1024, 1366x768, and 1920x1080 plus a separate 1920x1080 light-theme pass. Visual inspection confirms the modern shell and theme toggle behave correctly."
 }

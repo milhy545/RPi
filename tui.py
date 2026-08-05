@@ -497,6 +497,78 @@ class RPiDashboard(App):
     #panel_bluetooth.bt-compact { padding: 0; }
     #panel_bluetooth.bt-compact #bt_legacy_controls { height: 5; }
     #panel_bluetooth.bt-compact #txt_bt_compact { height: 1fr; }
+
+    /* Shared polish for modern shell parity */
+    Header, Footer {
+        background: $panel;
+        color: $text;
+    }
+    Screen {
+        background: $surface-darken-1;
+    }
+    TabbedContent {
+        height: 1fr;
+        background: $panel;
+        border: solid $secondary;
+    }
+    TabPane {
+        height: 1fr;
+        background: $surface-darken-1;
+    }
+    Button {
+        width: 100%;
+        margin-bottom: 1;
+        background: $surface;
+        border: solid $secondary;
+        color: $text;
+        text-style: none;
+    }
+    Button:hover {
+        background: $surface-darken-1;
+        border: solid $accent;
+    }
+    Button:focus {
+        border: solid $accent;
+    }
+    Input, OptionList, Switch {
+        background: $surface;
+        border: solid $secondary;
+        color: $text;
+    }
+    Input:focus, OptionList:focus, Switch:focus {
+        border: solid $accent;
+    }
+    SystemStats, ModeStatus, .settings-panel, .bt-terminal-panel {
+        border: solid $secondary;
+        background: $surface;
+    }
+    SystemStats, ModeStatus {
+        border: round $secondary;
+    }
+    .settings-panel {
+        border: round $secondary;
+    }
+    .settings-title {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
+    }
+    #sidebar, #main-content {
+        background: $surface-darken-1;
+    }
+    #language_switch {
+        border-bottom: solid $secondary;
+    }
+    #top_status {
+        border-bottom: solid $secondary;
+    }
+    #bt_legacy_buttons Button {
+        margin: 0 1 0 0;
+        min-width: 11;
+    }
+    #bt_legacy_buttons Button:last-child {
+        margin-right: 0;
+    }
     """
 
     def tr(self, key: str) -> str:

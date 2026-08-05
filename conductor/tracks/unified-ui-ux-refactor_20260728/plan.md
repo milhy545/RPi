@@ -140,9 +140,9 @@ structure.
   overflow, all tabs accessible.
 - [x] Task: Verify at 1920x1080 (desktop): complete layout with generous
   spacing, no stretched or compressed elements.
-- [ ] Task: Capture Playwright screenshots at each viewport size and
+- [x] Task: Capture Playwright screenshots at each viewport size and
   save to `conductor/tracks/unified-ui-ux-refactor_20260728/evidence/`.
-- [ ] Verify: All four screenshots captured; no layout breakage visible.
+- [x] Verify: All four screenshots captured; no layout breakage visible.
 
 ## Phase 7: TUI Parity
 
@@ -164,20 +164,20 @@ structure.
 
 > Moved from `backend-modularization-completion_20260723` Phase 4.
 
-- [ ] Task: Audit current WebUI component styles — identify outdated colors, inconsistent spacing, missing hover/focus states.
-- [ ] Task: Apply `theme.css` CSS variables consistently across all component files (`main.css`, `audio.css`, `bluetooth.css`, etc.).
-- [ ] Task: Redesign card/panel components with modern border-radius, shadow, and transition tokens from `theme.css`.
-- [ ] Task: Ensure all interactive elements (buttons, inputs, sliders) have visible focus/hover/active states.
-- [ ] Task: Standardize icon sizing and alignment across all tabs.
-- [ ] Task: Verify dark/light theme toggle applies correctly to all new styles.
-- [ ] Task: Apply equivalent visual polish to TUI Textual CSS where the framework permits.
-- [ ] Verify: Visual inspection at 1920x1080 — consistent modern look across all tabs.
+- [x] Task: Audit current WebUI component styles — identify outdated colors, inconsistent spacing, missing hover/focus states.
+- [x] Task: Apply `theme.css` CSS variables consistently across all component files (`main.css`, `audio.css`, `bluetooth.css`, etc.).
+- [x] Task: Redesign card/panel components with modern border-radius, shadow, and transition tokens from `theme.css`.
+- [x] Task: Ensure all interactive elements (buttons, inputs, sliders) have visible focus/hover/active states.
+- [x] Task: Standardize icon sizing and alignment across all tabs.
+- [x] Task: Verify dark/light theme toggle applies correctly to all new styles.
+- [x] Task: Apply equivalent visual polish to TUI Textual CSS where the framework permits.
+- [x] Verify: Visual inspection at 1920x1080 — consistent modern look across all tabs.
 
 ## Phase 9: Full Verification Gate
 
 - [x] Task: Run `uv run python -m pytest -q` — all tests pass.
 - [x] Task: Run `uv run ruff check .` — no lint errors.
-- [ ] Task: Capture Playwright evidence for all four viewports.
+- [x] Task: Capture Playwright evidence for all four viewports.
 - [x] Task: Run `tools/verify-done.sh` and confirm exit code 0.
 - [x] Verify: CI receipt written for the commit SHA.
 
@@ -189,8 +189,8 @@ structure.
 - [x] Zero console errors during a clean 30-second session.
 - [x] Terminal tab renders a non-blank shell with integration contract;
   no WebSocket opened until terminal/auth tracks deliver.
-- [ ] Responsive layout verified at 390x844, 768x1024, 1366x768, 1920x1080.
-- [ ] Playwright screenshots captured for all four viewports.
+- [x] Responsive layout verified at 390x844, 768x1024, 1366x768, 1920x1080.
+- [x] Playwright screenshots captured for all four viewports.
 - [x] TUI tab structure, status bar, and CZ/EN toggle match WebUI.
 - [x] All existing tests pass: `uv run python -m pytest -q`.
 - [x] Lint passes: `uv run ruff check .`.

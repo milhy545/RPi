@@ -469,7 +469,7 @@
         display: block;
         width: 40px;
         height: 4px;
-        background: var(--text-secondary);
+        background: var(--text-muted);
         border-radius: 2px;
         margin: 0.3rem auto 0;
         opacity: 0.5;

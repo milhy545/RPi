@@ -62,7 +62,7 @@
 - [x] **Track: bluetooth-dbus-live-events_20260723** — Complete two-adapter Bluetooth hub with Windows/Linux profiles, audio/headset/control, OBEX files, and autoconnect | [Plan](./tracks/bluetooth-dbus-live-events_20260723/plan.md)
 - [x] **Track: dashboard-security-cleanup_20260723** — Move Wi-Fi settings to Network and close credential, WebSocket, and static-analysis security gaps — all phases verified complete | [Plan](./tracks/dashboard-security-cleanup_20260723/plan.md)
 - [x] **Track: backend-modularization-completion_20260723** — Finish modularization, redesign production WebUI/TUI, and retire legacy endpoints through migration — **completed 2026-08-04** | [Plan](./tracks/backend-modularization-completion_20260723/plan.md)
-- [ ] **Track: unified-ui-ux-refactor_20260728** — Implementation is present; four documented Playwright viewport captures remain open | [Plan](./tracks/unified-ui-ux-refactor_20260728/plan.md)
+- [x] **Track: unified-ui-ux-refactor_20260728** — Implementation is present; four documented Playwright viewport captures captured; receipt pending final finish-track pass | [Plan](./tracks/unified-ui-ux-refactor_20260728/plan.md)
 - [x] **Track: lightweight-auth-boundaries_20260729** — Role-based access control with Basic/Expert/Admin tiers, session management, CSRF protection, and local CLI provisioning (depends: dashboard-security-cleanup_20260723; blocks: unified-ui-ux-refactor_20260728) | [Plan](./tracks/lightweight-auth-boundaries_20260729/plan.md)
 - [ ] **Track: verification-coverage-hardening_20260723** — Resolve audited failures, optimize measured runtime behavior, and strengthen coverage/verification | [Plan](./tracks/verification-coverage-hardening_20260723/plan.md)
 - [ ] **Track: mpv-eof-runtime-return_20260723** — Implementation exists; target-device EOF, keyboard, and Xbox verification remain open | [Plan](./tracks/mpv-eof-runtime-return_20260723/plan.md)
@@ -166,3 +166,15 @@
 - [ ] **Track: report_1785826306_bug** — Bug report | [Plan](./tracks/report_1785826306_bug/plan.md)
 
 - [ ] **Track: report_1785826391_bug** — Bug report | [Plan](./tracks/report_1785826391_bug/plan.md)
+
+- [ ] **Track: report_1785895682_bug** — Bug report | [Plan](./tracks/report_1785895682_bug/plan.md)
+
+- [ ] **Track: report_1785895762_bug** — Bug report | [Plan](./tracks/report_1785895762_bug/plan.md)
+
+- [ ] **Track: report_1785896246_bug** — Bug report | [Plan](./tracks/report_1785896246_bug/plan.md)
+
+- [ ] **Track: report_1785896344_bug** — Bug report | [Plan](./tracks/report_1785896344_bug/plan.md)
+
+- [ ] **Track: report_1785896865_bug** — Bug report | [Plan](./tracks/report_1785896865_bug/plan.md)
+
+- [ ] **Track: report_1785896952_bug** — Bug report | [Plan](./tracks/report_1785896952_bug/plan.md)
