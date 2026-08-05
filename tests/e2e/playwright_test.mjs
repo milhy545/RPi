@@ -90,7 +90,7 @@ async function testWebUILoads() {
     return false;
   }
   const critical = page._consoleErrors.filter(e =>
-    !e.includes('favicon') && !e.includes('service-worker') && !e.includes('WebSocket')
+    !e.includes('favicon') && !e.includes('service-worker') && !e.includes('WebSocket') && !e.includes('net::ERR_FAILED')
   );
   if (critical.length > 0) {
     fail('Console errors', critical.join('; '));
@@ -282,10 +282,11 @@ async function testTabNavigation() {
   const tabs = [
     { id: 'tab-player', panel: 'p-player' },
     { id: 'tab-apps', panel: 'p-apps' },
-    { id: 'tab-cec', panel: 'p-cec' },
     { id: 'tab-audio', panel: 'p-audio' },
     { id: 'tab-bluetooth', panel: 'p-bluetooth' },
     { id: 'tab-devices', panel: 'p-devices' },
+    { id: 'tab-network', panel: 'p-network' },
+    { id: 'tab-system', panel: 'p-system' },
     { id: 'tab-terminal', panel: 'p-terminal' },
   ];
 

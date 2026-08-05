@@ -239,7 +239,8 @@ class RPiGuard:
             sample_cpu = 0.0
             for proc in processes:
                 pid = proc.get("pid", 0)
-                if pid not in exclude_pids:
+                comm = proc.get("comm", "").strip()
+                if pid not in exclude_pids and comm not in ("ps", "top", "pgrep", "pi"):
                     sample_cpu += proc.get("pcpu", 0.0)
             total_cpu += sample_cpu
             if _ < sample_count - 1:
@@ -258,10 +259,15 @@ class RPiGuard:
 
         processes = self._get_processes()
         active_playback = False
+        active_mode = get_active_mode(self.mode_file_path)
 
         # Check for playback processes in the snapshot
         for proc in processes:
             if is_exact_playback_process(proc):
+                comm = proc.get("comm", "").strip()
+                args = proc.get("args", "").strip()
+                if ("tui.py" in args or comm == "tui.py") and active_mode not in ("tui", "mpv", "steamlink", "moonlight", "spotify", "media_player"):
+                    continue
                 active_playback = True
                 break
 
@@ -273,10 +279,10 @@ class RPiGuard:
             user_cpu_pct = 0.0
             for proc in processes:
                 pid = proc.get("pid", 0)
-                if pid not in exclude_pids:
+                comm = proc.get("comm", "").strip()
+                if pid not in exclude_pids and comm not in ("ps", "top", "pgrep", "pi"):
                     user_cpu_pct += proc.get("pcpu", 0.0)
 
-        active_mode = get_active_mode(self.mode_file_path)
         if active_mode in ("mpv", "steamlink", "moonlight", "spotify", "media_player", "tui"):
             active_playback = True
 
