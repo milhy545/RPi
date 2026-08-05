@@ -93,6 +93,12 @@ latest_report() {
 
 prepare_candidate() {
   if [[ "$SOURCE_REMOTE" == "local" ]]; then
+    # For local source, refuse if worktree is dirty (fail-loud preservation)
+    if [[ -n "$(git status --porcelain)" ]]; then
+      echo "FATAL: Dirty worktree detected. Refusing to modify/stash state per binding contract." >&2
+      echo "Preserve dirty changes manually, then retry." >&2
+      return 1
+    fi
     git rev-parse HEAD
     return 0
   fi
@@ -101,11 +107,11 @@ prepare_candidate() {
   local source_sha
   source_sha="$(git rev-parse FETCH_HEAD)"
 
+  # For remote source, also refuse if current worktree is dirty
   if [[ -n "$(git status --porcelain)" ]]; then
-    local backup
-    backup="ci-dirty-backup-$(date +%Y%m%d-%H%M%S)"
-    echo "Dirty worktree detected; stashing as $backup" >&2
-    git stash push -u -m "$backup" >/dev/null
+    echo "FATAL: Dirty worktree detected. Refusing to modify/stash state per binding contract." >&2
+    echo "Preserve dirty changes manually, then retry." >&2
+    return 1
   fi
 
   echo "Checking out candidate $source_sha" >&2
@@ -146,8 +152,31 @@ run_once() {
     return 1
   fi
 
-  if CI_PROFILE="${CI_PROFILE:-github-safe}" tools/run-ci.sh; then
-    echo "CI passed for $source_sha under profile ${CI_PROFILE:-github-safe}. Pushing to $TARGET_REMOTE/$BRANCH"
+  # Milhy-PC gateway must use milhy-full profile (enforces full backend/lint/type/security/E2E)
+  if CI_PROFILE="${CI_PROFILE:-milhy-full}" tools/run-ci.sh; then
+    echo "CI passed for $source_sha under profile ${CI_PROFILE:-milhy-full}."
+
+    # EVIDENCE GATE: Verify Playwright/E2E artifacts and RPi candidate evidence exist
+    E2E_ARTIFACTS_DIR="tests/e2e/results"
+    RPI_EVIDENCE_DIR="conductor/ci/receipts"
+
+    # Check for E2E artifacts (Playwright results)
+    if [[ "$PROFILE" == "milhy-full" ]]; then
+      if [[ ! -d "$E2E_ARTIFACTS_DIR" || -z "$(ls -A "$E2E_ARTIFACTS_DIR" 2>/dev/null)" ]]; then
+        notify_fail "EVIDENCE GATE FAILED: No Playwright/E2E artifacts found in $E2E_ARTIFACTS_DIR for SHA $source_sha. Push blocked."
+        return 1
+      fi
+      echo "E2E artifacts verified: $E2E_ARTIFACTS_DIR"
+    fi
+
+    # Check for exact-SHA RPi candidate evidence (atomic receipt)
+    if [[ ! -d "$RPI_EVIDENCE_DIR" || -z "$(find "$RPI_EVIDENCE_DIR" -name "*$source_sha*" -type f 2>/dev/null)" ]]; then
+      notify_fail "EVIDENCE GATE FAILED: No exact-SHA RPi candidate receipt found in $RPI_EVIDENCE_DIR for SHA $source_sha. Push blocked."
+      return 1
+    fi
+    echo "RPi candidate evidence verified for SHA $source_sha"
+
+    echo "Pushing to $TARGET_REMOTE/$BRANCH"
     if GIT_TERMINAL_PROMPT=0 git push "$TARGET_REMOTE" "$BRANCH:$BRANCH"; then
       echo "Pushed $source_sha to GitHub remote $TARGET_REMOTE."
       if ! dispatch_ci; then
