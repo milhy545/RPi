@@ -13,11 +13,13 @@
 
 - [x] **Phase 3: Profiles & Script Integration**
   - Update `tools/run-ci.sh` to implement explicit profiles (`rpi-focused`, `milhy-full`, `rpi-candidate`, `github-safe`) and fix pytest drift.
-  - Update `tools/ci-agent.sh`, `tools/finish-track.sh`, and `tools/verify-done.sh` to enforce profile evidence, RPi candidate gates, and Milhy-PC push restriction.
+  - Update `tools/ci-agent.sh` and `tools/finish-track.sh` to enforce profile evidence, RPi candidate gates, and Milhy-PC push restriction.
+  - Note: `tools/verify-done.sh` was NOT modified in this implementation.
 
 - [x] **Phase 4: RPi Core Rules Template & Idempotent Installer**
-  - Add `.agents/AGENTS.rpi.template.md` with hardware constraints and injected pipeline rules.
-  - Create `tools/install-rpi-core-rules.sh` with timestamped backup, symlink check, and destination validation.
+  - Add `.agents/core-rules/SKILL.rpi.template.md` with hardware constraints and injected pipeline rules for the actual CodeX skill system.
+  - Create `tools/install-rpi-core-rules.sh` with timestamped backup, symlink resolution, boundary validation, atomic install, and rollback on failure.
+  - Targets `~/.agents/skills/core-rules/SKILL.md` (not ~/AGENTS.md).
 
 - [x] **Phase 5: Documentation Alignment**
   - Update `AGENTS.md` (UK English) and `AGENTS.cz.md` (Czech).

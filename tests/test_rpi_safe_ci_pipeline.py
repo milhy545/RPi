@@ -323,28 +323,116 @@ def test_build_and_validate_evidence_record():
 
 # ─── 7. Host Routing & RPi Push / Browser Bans ───────────────────────────────
 
-def test_install_rpi_core_rules_idempotent(tmp_path):
-    """Verify install-rpi-core-rules.sh is idempotent and creates backups on changes."""
+# ─── 8. Core Rules SKILL.md Installer Tests ────────────────────────────────
+
+
+def test_install_rpi_core_rules_to_regular_skill_dir(tmp_path):
+    """Verify installer works with regular skill directory."""
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
-    dest_file = str(tmp_path / "AGENTS.md")
+    # Create proper structure: ~/.agents/skills/core-rules
+    skill_dir = str(tmp_path / ".agents" / "skills" / "core-rules")
+    os.makedirs(skill_dir, exist_ok=True)
 
-    # First run: installs template
-    res1 = subprocess.run([installer, dest_file], capture_output=True, text=True)
+    res = subprocess.run([installer, skill_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
+    assert res.returncode == 0
+    assert "Installing repository-managed RPi core-rules" in res.stdout
+    assert os.path.exists(os.path.join(skill_dir, "SKILL.md"))
+    skill_content = open(os.path.join(skill_dir, "SKILL.md")).read()
+    assert "RPi-Specific Core Rules" in skill_content
+    assert "731 MB usable RAM" in skill_content
+
+
+def test_install_rpi_core_rules_to_symlink_skill_dir(tmp_path):
+    """Verify installer resolves symlinks correctly."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
+    # Create proper structure with symlink
+    agents_dir = str(tmp_path / ".agents")
+    real_skill_dir = str(tmp_path / ".agents" / "skills" / "core-rules")
+    os.makedirs(real_skill_dir, exist_ok=True)
+    symlink_skill_dir = str(tmp_path / "symlink_skills" / "core-rules")
+    os.makedirs(os.path.dirname(symlink_skill_dir), exist_ok=True)
+    os.symlink(real_skill_dir, symlink_skill_dir)
+
+    res = subprocess.run([installer, symlink_skill_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
+    assert res.returncode == 0
+    assert "Installing repository-managed RPi core-rules" in res.stdout
+    # Should install to the real directory via symlink
+    assert os.path.exists(os.path.join(real_skill_dir, "SKILL.md"))
+
+
+def test_install_rpi_core_rules_idempotent(tmp_path):
+    """Verify installer is idempotent."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
+    skill_dir = str(tmp_path / ".agents" / "skills" / "core-rules")
+    os.makedirs(skill_dir, exist_ok=True)
+
+    # First run
+    res1 = subprocess.run([installer, skill_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
     assert res1.returncode == 0
-    assert "Installing repository-managed RPi core-rules" in res1.stdout
-    assert os.path.exists(dest_file)
 
-    # Second run: idempotent OK
-    res2 = subprocess.run([installer, dest_file], capture_output=True, text=True)
+    # Second run: should be idempotent
+    res2 = subprocess.run([installer, skill_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
     assert res2.returncode == 0
     assert "already up-to-date" in res2.stdout
 
-    # Modify dest_file
-    with open(dest_file, "a") as f:
-        f.write("\n# Extra user edit\n")
 
-    # Third run: creates timestamped backup and overwrites with template
-    res3 = subprocess.run([installer, dest_file], capture_output=True, text=True)
-    assert res3.returncode == 0
-    assert "Creating timestamped backup" in res3.stdout
+def test_install_rpi_core_rules_backup_on_change(tmp_path):
+    """Verify installer creates timestamped backup when modifying existing SKILL.md."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
+    skill_dir = str(tmp_path / ".agents" / "skills" / "core-rules")
+    os.makedirs(skill_dir, exist_ok=True)
+    skill_file = os.path.join(skill_dir, "SKILL.md")
+
+    # Create initial file
+    with open(skill_file, "w") as f:
+        f.write("# Old content\n")
+
+    res = subprocess.run([installer, skill_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
+    assert res.returncode == 0
+    assert "Creating timestamped backup" in res.stdout
+
+    # Verify backup exists
+    backup_files = [f for f in os.listdir(skill_dir) if f.startswith("SKILL.md.bak-")]
+    assert len(backup_files) == 1
+    backup_content = open(os.path.join(skill_dir, backup_files[0])).read()
+    assert "# Old content" in backup_content
+
+
+def test_install_rpi_core_rules_refuses_boundary_violation(tmp_path):
+    """Verify installer refuses to install outside allowed skill boundary."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
+    # Create a directory outside ~/.agents/skills
+    outside_dir = str(tmp_path / "outside_skills" / "core-rules")
+    os.makedirs(outside_dir, exist_ok=True)
+
+    res = subprocess.run([installer, outside_dir], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
+    assert res.returncode == 1
+    assert "outside allowed boundary" in res.stderr
+    assert "Refusing to install outside skill directory" in res.stderr
+
+
+def test_install_rpi_core_rules_refuses_agents_md_overwrite(tmp_path):
+    """Verify installer refuses to overwrite ~/AGENTS.md."""
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    installer = os.path.join(repo_root, "tools", "install-rpi-core-rules.sh")
+    agents_file = str(tmp_path / "AGENTS.md")
+
+    # Write existing AGENTS.md
+    with open(agents_file, "w") as f:
+        f.write("# Existing AGENTS.md\n")
+
+    # Pass AGENTS.md as the target
+    # The installer should reject this (either via boundary check or specific AGENTS.md check)
+    res = subprocess.run([installer, agents_file], capture_output=True, text=True, env={**os.environ, "HOME": str(tmp_path)})
+    assert res.returncode == 1
+    # Accept either boundary violation or specific AGENTS.md refusal
+    assert ("Refusing to overwrite ~/AGENTS.md" in res.stderr or
+            "outside allowed boundary" in res.stderr)
+
+    # Verify AGENTS.md was not modified
+    assert open(agents_file).read() == "# Existing AGENTS.md\n"
