@@ -47,6 +47,17 @@ def audio_set_volume(kind: str, name: str, volume: int) -> Dict[str, Any]:
         except Exception:
             pass
 
+        # Sync AVRCP if the sink is a Bluetooth device
+        if name.startswith("bluez_sink.") or name.startswith("bluez_output."):
+            mac_part = name.split(".")[1].replace("_", ":").upper()
+            scaled_volume = int((vol / 100.0) * 127)
+            scaled_volume = max(0, min(127, scaled_volume))
+            from rpi_dashboard.services.bluetooth import service as bt_service
+            bt_state = bt_service.bluetooth_state()
+            device = next((d for d in bt_state.get("devices", []) if d.get("address") == mac_part), None)
+            if device:
+                bt_service.media_action("volume", value=scaled_volume, adapter_id=device.get("adapter_id"), device_key=device.get("key"))
+
     return {"ok": r.returncode == 0, "volume": vol}
 
 

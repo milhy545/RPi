@@ -153,28 +153,49 @@ run_once() {
   fi
 
   # Milhy-PC gateway must use milhy-full profile (enforces full backend/lint/type/security/E2E)
-  if CI_PROFILE="${CI_PROFILE:-milhy-full}" tools/run-ci.sh; then
-    echo "CI passed for $source_sha under profile ${CI_PROFILE:-milhy-full}."
+  # Resolve CI_PROFILE once to avoid unbound variable under set -u
+  RESOLVED_CI_PROFILE="${CI_PROFILE:-milhy-full}"
+  if CI_PROFILE="$RESOLVED_CI_PROFILE" tools/run-ci.sh; then
+    echo "CI passed for $source_sha under profile $RESOLVED_CI_PROFILE."
 
-    # EVIDENCE GATE: Verify Playwright/E2E artifacts and RPi candidate evidence exist
-    E2E_ARTIFACTS_DIR="tests/e2e/results"
-    RPI_EVIDENCE_DIR="conductor/ci/receipts"
+    # EVIDENCE GATE: Verify schema-validated Playwright/E2E artifacts and RPi candidate evidence
+    E2E_MANIFEST_DIR="tests/e2e/results"
+    RPI_RECEIPT_DIR="conductor/ci/receipts"
 
-    # Check for E2E artifacts (Playwright results)
-    if [[ "$CI_PROFILE" == "milhy-full" ]]; then
-      if [[ ! -d "$E2E_ARTIFACTS_DIR" || -z "$(ls -A "$E2E_ARTIFACTS_DIR" 2>/dev/null)" ]]; then
-        notify_fail "EVIDENCE GATE FAILED: No Playwright/E2E artifacts found in $E2E_ARTIFACTS_DIR for SHA $source_sha. Push blocked."
+    # Check for SHA-bound E2E manifest (schema-validated)
+    if [[ "$RESOLVED_CI_PROFILE" == "milhy-full" ]]; then
+      E2E_MANIFEST="$E2E_MANIFEST_DIR/e2e-manifest-$source_sha.json"
+      if [[ ! -f "$E2E_MANIFEST" ]]; then
+        notify_fail "EVIDENCE GATE FAILED: No SHA-bound E2E manifest at $E2E_MANIFEST for SHA $source_sha. Push blocked."
         return 1
       fi
-      echo "E2E artifacts verified: $E2E_ARTIFACTS_DIR"
+      # Validate manifest schema: must have sha, tree_hash, status='done'
+      if ! python3 -c "import json, sys; m=json.load(open('$E2E_MANIFEST')); assert m.get('sha')=='$source_sha' and m.get('status')=='done' and m.get('tree_hash'); print('E2E manifest valid')" 2>/dev/null; then
+        notify_fail "EVIDENCE GATE FAILED: E2E manifest at $E2E_MANIFEST has invalid schema or wrong SHA for $source_sha. Push blocked."
+        return 1
+      fi
+      echo "E2E evidence verified: $E2E_MANIFEST"
     fi
 
-    # Check for exact-SHA RPi candidate evidence (atomic receipt)
-    if [[ ! -d "$RPI_EVIDENCE_DIR" || -z "$(find "$RPI_EVIDENCE_DIR" -name "*$source_sha*" -type f 2>/dev/null)" ]]; then
-      notify_fail "EVIDENCE GATE FAILED: No exact-SHA RPi candidate receipt found in $RPI_EVIDENCE_DIR for SHA $source_sha. Push blocked."
+    # Check for exact-SHA RPi candidate evidence (schema-validated receipt)
+    RPI_RECEIPT="$RPI_RECEIPT_DIR/${source_sha}-receipt.json"
+    if [[ ! -f "$RPI_RECEIPT" ]]; then
+      notify_fail "EVIDENCE GATE FAILED: No exact-SHA RPi receipt at $RPI_RECEIPT for SHA $source_sha. Push blocked."
       return 1
     fi
-    echo "RPi candidate evidence verified for SHA $source_sha"
+    # Validate receipt schema: must have commit_sha, tree_hash, profile, host, status='done'
+    if ! python3 -c "import json, sys; r=json.load(open('$RPI_RECEIPT')); assert r.get('commit_sha')=='$source_sha' and r.get('status')=='done' and r.get('tree_hash') and r.get('profile') and r.get('host'); print('Receipt valid')" 2>/dev/null; then
+      notify_fail "EVIDENCE GATE FAILED: RPi receipt at $RPI_RECEIPT has invalid schema or wrong SHA/tree for $source_sha. Push blocked."
+      return 1
+    fi
+    echo "RPi candidate evidence verified: $RPI_RECEIPT"
+
+    NO_PUSH="${NO_PUSH:-0}"
+    if [[ "$NO_PUSH" == "1" || "$NO_PUSH" == "true" ]]; then
+      echo "Evidence validation passed for $source_sha (NO_PUSH mode enabled). Skipping git push."
+      printf '%s\n' "$source_sha" > "$STATE_FILE"
+      return 0
+    fi
 
     echo "Pushing to $TARGET_REMOTE/$BRANCH"
     if GIT_TERMINAL_PROMPT=0 git push "$TARGET_REMOTE" "$BRANCH:$BRANCH"; then
@@ -242,6 +263,18 @@ run_once() {
 }
 
 main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-push|--validate-only)
+        NO_PUSH=1
+        shift 1
+        ;;
+      *)
+        shift 1
+        ;;
+    esac
+  done
+
   if [[ "$POLL_SECONDS" == "0" ]]; then
     run_once
     return $?

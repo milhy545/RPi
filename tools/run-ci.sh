@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+export PYTHONPATH=".:${PYTHONPATH:-}"
 
 # Determine host identity
 HOSTNAME_LOWER="$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "unknown")"
@@ -206,15 +207,68 @@ case "$PROFILE" in
       run_step "Run full pytest suite" python3 -m pytest -q
     fi
 
+    # Emit milhy-full receipt if all tests pass
+    if [[ $FAILURES -eq 0 ]]; then
+      CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+      CURRENT_TREE="$(git write-tree 2>/dev/null || echo unknown)"
+      RECEIPT_DIR="conductor/ci/receipts"
+      RECEIPT_FILE="$RECEIPT_DIR/${CURRENT_SHA}-receipt.json"
+      mkdir -p "$RECEIPT_DIR"
+      python3 -c "
+import json, datetime
+receipt = {
+  'commit_sha': '$CURRENT_SHA',
+  'tree_hash': '$CURRENT_TREE',
+  'profile': 'milhy-full',
+  'host': '$(hostname)',
+  'status': 'done',
+  'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  'ci_report': '$REPORT',
+  'actions_url': '',
+  'evidence': {'e2e': 'pending', 'rpi_gate': {'status': 'N/A'}}
+}
+with open('$RECEIPT_FILE', 'w') as f:
+  json.dump(receipt, f, indent=2)
+print('Emitted milhy-full receipt: $RECEIPT_FILE')
+" 2>/dev/null || echo "WARN: Failed to emit receipt"
+    fi
+
     # Remote Playwright E2E on Milhy-PC (required for milhy-full profile)
     # Only run if this is milhy-full (not github-safe which is cloud/hardware-safe)
+    CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
     if [[ "$PROFILE" == "milhy-full" ]]; then
-      if command -v npx >/dev/null 2>&1 && [[ -d "tests/e2e" ]]; then
-        run_step "Remote Playwright E2E (Milhy-PC)" bash -lc "cd tests/e2e && npx playwright test --reporter=line 2>&1 || echo 'E2E skipped or failed in test environment'"
+      if command -v npm >/dev/null 2>&1 && [[ -d "tests/e2e" ]]; then
+        # Preserve raw Playwright exit status - FAIL the step if E2E fails
+        # TARGET_URL must be set to staged RPi candidate for remote validation
+        if [[ -z "${TARGET_URL:-}" ]]; then
+          run_step "Remote Playwright E2E (Milhy-PC)" bash -c "echo 'ERROR: TARGET_URL not set for E2E. Set to staged candidate URL.' && exit 1"
+        else
+          if run_step "Remote Playwright E2E (Milhy-PC)" bash -c "cd tests/e2e && TARGET_URL='${TARGET_URL}' npm test"; then
+            # Emit SHA-bound E2E manifest on success
+            E2E_MANIFEST_DIR="tests/e2e/results"
+            mkdir -p "$E2E_MANIFEST_DIR"
+            CURRENT_TREE="$(git write-tree 2>/dev/null || echo unknown)"
+            python3 -c "
+import json, datetime
+manifest = {
+  'sha': '$CURRENT_SHA',
+  'tree_hash': '$CURRENT_TREE',
+  'status': 'done',
+  'profile': 'milhy-full',
+  'host': '$(hostname)',
+  'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  'target_url': '${TARGET_URL}'
+}
+with open('$E2E_MANIFEST_DIR/e2e-manifest-$CURRENT_SHA.json', 'w') as f:
+  json.dump(manifest, f, indent=2)
+with open('$E2E_MANIFEST_DIR/$CURRENT_SHA.json', 'w') as f:
+  json.dump(manifest, f, indent=2)
+" 2>/dev/null
+          fi
+        fi
       else
-        append "## Remote Playwright E2E (Milhy-PC)"
-        append "SKIP: Playwright or E2E suite not available in this environment."
-        append ""
+        # FAIL: Playwright/E2E is required for milhy-full, missing means failure
+        run_step "Remote Playwright E2E (Milhy-PC)" bash -c "echo 'FAIL: Playwright or E2E suite not available. Required for milhy-full profile.' && exit 1"
       fi
     fi
     ;;
@@ -230,8 +284,8 @@ case "$PROFILE" in
       run_step "RPi Browser Ban Enforcement" true
     fi
 
-    # Check RPi Guard status
-    run_step "RPi Hardware & Playback Guard Check" python3 -c "from rpi_dashboard.ci.rpi_guard import RPiGuard; g = RPiGuard(); st = g.check_status(); print('RPi Status:', st); exit(1 if st['busy'] else 0)"
+    # Check RPi Guard status with sustained CPU sampling
+    run_step "RPi Hardware & Playback Guard Check" python3 -c "from rpi_dashboard.ci.rpi_guard import RPiGuard; g = RPiGuard(); st = g.check_status(sustained_cpu_samples=3); print('RPi Status:', st); exit(1 if st['busy'] else 0)"
 
     # Execute focused safe tests on RPi candidate
     if [[ -f "$HOME/.local/bin/uv" ]]; then
@@ -239,9 +293,35 @@ case "$PROFILE" in
     elif command -v uv >/dev/null 2>&1; then
       run_step "Run focused RPi safe CI tests" uv run --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -v
     elif [[ -x .venv/bin/pytest ]]; then
-      run_step "Run focused RPi safe CI tests" .venv/bin/pytest tests/test_rpi_safe_ci_pipeline.py -v
+      run_step "Run focused RPi safe CI tests" env PYTHONPATH=".:${PYTHONPATH:-}" .venv/bin/pytest tests/test_rpi_safe_ci_pipeline.py -v
     else
-      run_step "Run focused RPi safe CI tests" python3 -m pytest tests/test_rpi_safe_ci_pipeline.py -v
+      run_step "Run focused RPi safe CI tests" env PYTHONPATH=".:${PYTHONPATH:-}" python3 -m pytest tests/test_rpi_safe_ci_pipeline.py -v
+    fi
+
+    # Emit atomic exact-SHA RPi candidate evidence receipt if all tests pass
+    if [[ $FAILURES -eq 0 ]]; then
+      CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+      CURRENT_TREE="$(git write-tree 2>/dev/null || echo unknown)"
+      RECEIPT_DIR="conductor/ci/receipts"
+      RECEIPT_FILE="$RECEIPT_DIR/${CURRENT_SHA}-receipt.json"
+      mkdir -p "$RECEIPT_DIR"
+      python3 -c "
+import json, datetime
+receipt = {
+  'commit_sha': '$CURRENT_SHA',
+  'tree_hash': '$CURRENT_TREE',
+  'profile': 'rpi-candidate',
+  'host': '$(hostname)',
+  'status': 'done',
+  'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+  'ci_report': '$REPORT',
+  'actions_url': '',
+  'evidence': {'rpi_gate': {'status': 'PASS', 'busy': False}}
+}
+with open('$RECEIPT_FILE', 'w') as f:
+  json.dump(receipt, f, indent=2)
+print('Emitted RPi candidate receipt: $RECEIPT_FILE')
+" 2>/dev/null || echo "WARN: Failed to emit RPi receipt"
     fi
     ;;
 

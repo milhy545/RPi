@@ -229,6 +229,8 @@ def _audio_multi_output(action: str = "status", sinks: Optional[List[str]] = Non
                 f"sink_name={MULTI_OUTPUT_SINK}",
                 f"slaves={','.join(requested)}",
                 "adjust_time=1",
+                "format=s16le",
+                "rate=44100",
             ],
             t=10,
         )

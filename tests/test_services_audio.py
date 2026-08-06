@@ -217,6 +217,8 @@ def test_audio_multi_output_creates_combined_sink_and_selects_it():
         f"sink_name={MULTI_OUTPUT_SINK}",
         f"slaves={','.join(sinks)}",
         "adjust_time=1",
+        "format=s16le",
+        "rate=44100",
     ] in commands
     assert ["pactl", "set-default-sink", MULTI_OUTPUT_SINK] in commands
 
@@ -319,6 +321,8 @@ def test_audio_multi_output_reconcile_restores_route_when_both_outputs_return():
         "sink_name=rpi_bt_multi_output",
         f"slaves={','.join(sinks)}",
         "adjust_time=1",
+        "format=s16le",
+        "rate=44100",
     ] in commands
 
 
@@ -415,7 +419,9 @@ def test_set_global_master_volume():
         ]
     }
     with patch("rpi_dashboard.services.audio.state.audio_state", return_value=mock_state), \
-         patch("rpi_dashboard.services.audio.mixer._run", return_value=MagicMock(returncode=0)):
+         patch("rpi_dashboard.services.audio.mixer._run", return_value=MagicMock(returncode=0)), \
+         patch("rpi_dashboard.services.bluetooth.service.bluetooth_state", return_value={}), \
+         patch("rpi_dashboard.services.bluetooth.service.media_action"):
         res = set_global_master_volume(75)
         assert res["ok"] is True
         assert res["volume"] == 75
@@ -428,15 +434,20 @@ def test_bt_sink_volume_sets_pactl_and_propagates_input():
 
     bt_sink = "bluez_output.00_11_22_33_44_55.a2dp_sink"
 
-    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run:
+    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run, \
+         patch("rpi_dashboard.services.bluetooth.service.bluetooth_state", return_value={"devices": [{"address": "00:11:22:33:44:55", "adapter_id": "adapter-0", "key": "adapter-0/00:11:22:33:44:55"}]}), \
+         patch("rpi_dashboard.services.bluetooth.service.media_action") as mock_media_action:
         mock_run.return_value = MagicMock(returncode=0)
         result = audio_set_volume("sink", bt_sink, 80)
         assert result["ok"] is True
         assert result["volume"] == 80
         all_calls = [call.args[0] for call in mock_run.call_args_list]
         assert ["pactl", "set-sink-volume", bt_sink, "80%"] in all_calls
+        mock_media_action.assert_called_once_with("volume", value=int((80 / 100.0) * 127), adapter_id="adapter-0", device_key="adapter-0/00:11:22:33:44:55")
 
-    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run:
+    with patch("rpi_dashboard.services.audio.mixer._run") as mock_run, \
+         patch("rpi_dashboard.services.bluetooth.service.bluetooth_state", return_value={}), \
+         patch("rpi_dashboard.services.bluetooth.service.media_action") as mock_media_action:
         mock_run.return_value = MagicMock(returncode=0)
         result = audio_set_volume("sink", bt_sink, 200)
         assert result["volume"] == 150

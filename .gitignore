@@ -76,3 +76,8 @@ conductor/ci/receipts/*.json
 core
 gitleaks_report.json
 rpi_dashboard.egg-info/
+tests/e2e/node_modules/
+tests/e2e/package-lock.json
+tests/e2e/test-results/
+tests/e2e/results/*.json
+tests/e2e/artifacts/

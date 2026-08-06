@@ -488,13 +488,30 @@ def handle_bt_media(q: Dict[str, Any]) -> Dict[str, Any]:
         value = int(value_text) if value_text else None
     except ValueError:
         return {"ok": False, "code": "unsupported", "error": "value must be an integer"}
-    return bluetooth_service.media_action(
-        _get(q, "action"),
+
+    action = _get(q, "action")
+    result = bluetooth_service.media_action(
+        action,
         value=value,
         adapter_id=_get(q, "adapter_id") or None,
         device_key=_get(q, "device_key") or None,
         mac=_get(q, "mac") or None,
     )
+
+    # Sync PipeWire volume if AVRCP volume changes
+    if action == "volume" and value is not None and result.get("ok"):
+        mac = _get(q, "mac")
+        if not mac:
+            device_key = _get(q, "device_key")
+            if device_key and "/" in device_key:
+                mac = device_key.split("/")[1]
+        if mac:
+            sink_name = f"bluez_output.{mac.replace(':', '_')}.a2dp_sink"
+            pw_vol = int((value / 127.0) * 100)
+            pw_vol = max(0, min(150, pw_vol))
+            audio.audio_set_volume("sink", sink_name, pw_vol)
+
+    return result
 
 
 def handle_bt_pairing(q: Dict[str, Any]) -> Dict[str, Any]:

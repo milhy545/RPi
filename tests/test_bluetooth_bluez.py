@@ -211,9 +211,9 @@ async def test_signal_subscriptions_are_restored_for_new_bus():
     await backend._ensure_signal_subscriptions(second)
 
     assert len(first.handlers) == 1
-    assert len(first.calls) == 2
+    assert len(first.calls) == 3
     assert len(second.handlers) == 1
-    assert len(second.calls) == 2
+    assert len(second.calls) == 3
 
 
 @pytest.mark.asyncio

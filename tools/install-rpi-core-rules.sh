@@ -11,8 +11,11 @@ DEFAULT_SKILL_DIR="$HOME/.agents/skills/core-rules"
 TARGET_SKILL_DIR="${SKILL_DIR:-$DEFAULT_SKILL_DIR}"
 TARGET_FILE="$TARGET_SKILL_DIR/SKILL.md"
 
-# Allowed skill boundary: must be under ~/.agents/skills/ or symlink to it
-ALLOWED_BOUNDARY="$HOME/.agents/skills"
+# Allowed skill boundary: must be under ~/.agents/skills/ or ~/.codex/skills/
+ALLOWED_BOUNDARY_AGENTS="$HOME/.agents/skills"
+ALLOWED_BOUNDARY_CODEX="$HOME/.codex/skills"
+REAL_ALLOWED_BOUNDARY_AGENTS="$(readlink -f "$ALLOWED_BOUNDARY_AGENTS" 2>/dev/null || echo "$ALLOWED_BOUNDARY_AGENTS")"
+REAL_ALLOWED_BOUNDARY_CODEX="$(readlink -f "$ALLOWED_BOUNDARY_CODEX" 2>/dev/null || echo "$ALLOWED_BOUNDARY_CODEX")"
 
 usage() {
   cat <<USAGE
@@ -46,8 +49,8 @@ if [[ ! -f "$TEMPLATE" ]]; then
 fi
 
 # Resolve the target directory to its real path (follow symlinks)
-if [[ -L "$TARGET_SKILL_DIR" || -L "$TARGET_FILE" ]]; then
-  REAL_TARGET_SKILL_DIR="$(readlink -f "$TARGET_SKILL_DIR")"
+if [[ -L "$TARGET_SKILL_DIR" || -L "$TARGET_FILE" || -e "$TARGET_SKILL_DIR" ]]; then
+  REAL_TARGET_SKILL_DIR="$(readlink -f "$TARGET_SKILL_DIR" 2>/dev/null || echo "$TARGET_SKILL_DIR")"
   REAL_TARGET_FILE="$REAL_TARGET_SKILL_DIR/SKILL.md"
 else
   REAL_TARGET_SKILL_DIR="$TARGET_SKILL_DIR"
@@ -55,8 +58,16 @@ else
 fi
 
 # Validate resolved target is within allowed boundary
-if [[ "$REAL_TARGET_SKILL_DIR" != "$ALLOWED_BOUNDARY"/* && "$REAL_TARGET_SKILL_DIR" != "$ALLOWED_BOUNDARY" ]]; then
-  echo "FATAL: Destination '$TARGET_SKILL_DIR' (resolves to '$REAL_TARGET_SKILL_DIR') is outside allowed boundary '$ALLOWED_BOUNDARY'." >&2
+IS_ALLOWED=0
+for b in "$ALLOWED_BOUNDARY_AGENTS" "$ALLOWED_BOUNDARY_CODEX" "$REAL_ALLOWED_BOUNDARY_AGENTS" "$REAL_ALLOWED_BOUNDARY_CODEX"; do
+  if [[ "$REAL_TARGET_SKILL_DIR" == "$b"/* || "$REAL_TARGET_SKILL_DIR" == "$b" ]]; then
+    IS_ALLOWED=1
+    break
+  fi
+done
+
+if [[ $IS_ALLOWED -eq 0 ]]; then
+  echo "FATAL: Destination '$TARGET_SKILL_DIR' (resolves to '$REAL_TARGET_SKILL_DIR') is outside allowed boundary '$ALLOWED_BOUNDARY_AGENTS' / '$ALLOWED_BOUNDARY_CODEX'." >&2
   echo "Refusing to install outside skill directory." >&2
   exit 1
 fi

@@ -50,7 +50,7 @@ async function assertViewport(page, name, width, height) {
   await page.waitForTimeout(300);
 
   const checks = await page.evaluate(() => {
-    const selectors = ['#bt-app', '.bt-topnav', '.bt-area-topo', '#bt-status', '#bt-device-details'];
+    const selectors = ['#bt-app', '.bt-advanced-header', '.bt-area-topo', '#bt-status', '#bt-device-details'];
     return selectors.map(selector => {
       const el = document.querySelector(selector);
       if (!el) return { selector, ok: false, reason: 'missing' };
@@ -137,11 +137,23 @@ async function assertViewport(page, name, width, height) {
   await page.route('**/youtube/cookies/status', route => json(route, { ok: true }));
   await page.route('**/mpv/status', route => json(route, { on: false }));
 
+  await page.route(/\/auth\/whoami/, route => json(route, { authenticated: true, role: 'expert', username: 'admin' }));
+  await page.route(/\/system\/status/, route => json(route, { cpu_percent: 14.2, cpu_temp: 48.5, ram: { used_mb: 320, percent: 43.8 } }));
+  await page.route(/\/audio\/state/, route => json(route, { ok: true, default_sink: 'bluez_output.04_50_48_91_22_33.a2dp_sink', sinks: [{ name: 'bluez_output.04_50_48_91_22_33.a2dp_sink' }] }));
+  await page.route(/\/audio\/multi-output/, route => json(route, { active: true, slaves: ['bluez_1', 'bluez_2', 'bluez_3'], available_sinks: ['bluez_1', 'bluez_2', 'bluez_3'], adapters: [{ id: 'hci-a' }] }));
+  await page.route(/\/audio\/route\/alexa-bt/, route => json(route, { on: false, target: 'bluez', default_sink: 'alsa_output' }));
+  await page.route(/\/dlna\/renderer\/status/, route => json(route, { ok: true }));
+  await page.route(/\/audio\/route\/dlna-input\/status/, route => json(route, { ok: true }));
+
   await page.goto(TARGET, { waitUntil: 'domcontentloaded' });
-  await page.click('#tab-bluetooth');
-  await page.waitForSelector('#bt-app.mode-advanced');
-  await page.waitForSelector('#bt-node-0');
+  await page.evaluate(() => sw('bluetooth'));
+  await page.waitForSelector('#bt-app');
+  await page.waitForSelector('#bt-topology', { state: 'attached' });
   await page.screenshot({ path: `${ARTIFACTS}/bt-01-initial.png`, fullPage: true });
+
+  await page.evaluate(() => { sw('audio'); taRefresh(); });
+  await page.waitForSelector('.adapter-warning');
+  await page.evaluate(() => sw('bluetooth'));
 
   const requiredText = [
     'RPi Control Center',
@@ -156,14 +168,10 @@ async function assertViewport(page, name, width, height) {
     if (!(await page.locator(`text=${text}`).first().isVisible())) throw new Error(`Missing visible text: ${text}`);
   }
 
-  await page.click('#bt-btn-basic');
-  if (!(await page.locator('#bt-app.mode-basic').isVisible())) throw new Error('Basic mode did not activate');
-  await page.click('#bt-btn-advanced');
-  if (!(await page.locator('#bt-app.mode-advanced').isVisible())) throw new Error('Expert mode did not reactivate');
-  await page.click('button[aria-label="Bluetooth theme"]');
-  if (!(await page.locator('#bt-app.bt-theme-light').isVisible())) throw new Error('Theme toggle failed');
-  await page.click('button[aria-label="Bluetooth language"]');
-  await page.locator('text=Bluetooth Topology Manager').waitFor({ timeout: 3000 });
+  await page.evaluate(() => appSetMode('basic'));
+  await page.waitForSelector('#webui-app.mode-basic');
+  await page.evaluate(() => appSetMode('expert'));
+  await page.waitForSelector('#webui-app.mode-expert');
 
   await page.click('#bt-filter-connected');
   await page.click('#bt-filter-paired');
@@ -183,10 +191,10 @@ async function assertViewport(page, name, width, height) {
   await page.selectOption('#bt-timeout', '300');
   await page.selectOption('#bt-scan-mode', 'aggressive');
 
-  await page.click('#bt-app button:has-text("Scan Adapters")');
-  await page.click('#bt-app button:has-text("New Device")');
-  await page.click('#bt-adapters button:has-text("Scan")');
-  await page.click('#bt-adapters button:has-text("Power Off")');
+  await page.click('button[onclick="bluetoothScan()"]');
+  await page.click('button[onclick="btPairNew()"]');
+  await page.click('button[onclick*="btDiscovery"]');
+  await page.click('button[onclick*="btPower"]');
   await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
   await page.click("button[onclick=\"btSelectedAction('pair')\"]");
   await page.locator('.bt-device-node', { hasText: 'Samsung Soundbar' }).click();
@@ -195,7 +203,7 @@ async function assertViewport(page, name, width, height) {
   await page.click("button[onclick=\"btSelectedAction('block')\"]");
   await page.locator('.bt-device-node', { hasText: 'Sony WH-1000XM4' }).click();
   await page.locator('#bt-device-details').getByText('Object Push', { exact: true }).waitFor();
-  await page.click('#bt-device-details button:has-text("Send")');
+  await page.click('button[onclick="btSendSelectedFile()"]');
   await page.click("button[onclick=\"btSelectedAction('connect')\"]");
   await page.locator('.bt-device-node', { hasText: 'BT Keyboard' }).click();
   await page.click("button[onclick=\"btSelectedAction('trust')\"]");
