@@ -59,3 +59,53 @@ def test_keys2mpv_keymap_mute():
 
 def test_keys2mpv_sockets():
     assert "/tmp/rpi-mpv.sock" in SOCKETS or os.environ.get("MPV_SOCKET") in SOCKETS
+
+def test_find_socket_first_exists(mocker):
+    """Test when the first socket in the list exists."""
+    import keys2mpv
+    mocker.patch.object(keys2mpv, "SOCKETS", ["/tmp/sock1", "/tmp/sock2"])
+
+    def mock_exists(path):
+        return path == "/tmp/sock1"
+
+    mocker.patch("os.path.exists", side_effect=mock_exists)
+    assert keys2mpv.find_socket() == "/tmp/sock1"
+
+
+def test_find_socket_second_exists(mocker):
+    """Test when the first socket is missing but the second exists."""
+    import keys2mpv
+    mocker.patch.object(keys2mpv, "SOCKETS", ["/tmp/sock1", "/tmp/sock2"])
+
+    def mock_exists(path):
+        return path == "/tmp/sock2"
+
+    mocker.patch("os.path.exists", side_effect=mock_exists)
+    assert keys2mpv.find_socket() == "/tmp/sock2"
+
+
+def test_find_socket_none_exist(mocker):
+    """Test when no sockets exist."""
+    import keys2mpv
+    mocker.patch.object(keys2mpv, "SOCKETS", ["/tmp/sock1", "/tmp/sock2"])
+    mocker.patch("os.path.exists", return_value=False)
+    assert keys2mpv.find_socket() is None
+
+
+def test_find_socket_empty_list(mocker):
+    """Test when the SOCKETS list is empty."""
+    import keys2mpv
+    mocker.patch.object(keys2mpv, "SOCKETS", [])
+    mocker.patch("os.path.exists", return_value=True)  # Should never be called
+    assert keys2mpv.find_socket() is None
+
+
+def test_find_socket_oserror(mocker):
+    """Test that OSError from os.path.exists bubbles up."""
+    import keys2mpv
+    mocker.patch.object(keys2mpv, "SOCKETS", ["/tmp/sock1"])
+    mocker.patch("os.path.exists", side_effect=OSError("Permission denied"))
+
+    import pytest
+    with pytest.raises(OSError, match="Permission denied"):
+        keys2mpv.find_socket()
