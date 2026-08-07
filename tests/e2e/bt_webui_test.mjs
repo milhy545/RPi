@@ -135,6 +135,27 @@ async function assertViewport(page, name, width, height) {
     return json(route, { ok: true, settings: mockState.settings });
   });
   await page.route('**/youtube/cookies/status', route => json(route, { ok: true }));
+  await page.route('**/system/hw-stats', route => {
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        footer: {
+          service: '● Service Running', service_ok: true,
+          bt: '📶 Bluetooth Ready', bt_ok: true,
+          audio: '🔊 Audio HDMI', audio_ok: true
+        }
+      })
+    });
+  });
+  await page.route('**/system/status', route => {
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true })
+    });
+  });
   await page.route('**/mpv/status', route => json(route, { on: false }));
 
   await page.goto(TARGET, { waitUntil: 'domcontentloaded' });
