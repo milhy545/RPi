@@ -3,7 +3,7 @@
 
 <!-- Register new tracks below. Format: - [ ] **Track: <id>** — <description> | [Plan](./tracks/<id>/plan.md) -->
 
-- [ ] **Track: rpi-safe-ci-workflow_20260805** — Safe RPi / Milhy-PC / Jules Validation Pipeline & Execution Profiles | [Plan](./tracks/rpi-safe-ci-workflow_20260805/plan.md)
+- [x] **Track: rpi-safe-ci-workflow_20260805** — Safe RPi / Milhy-PC / Jules Validation Pipeline & Execution Profiles | [Plan](./tracks/rpi-safe-ci-workflow_20260805/plan.md)
 
 - [x] **Track: network-cast-api** — Network Cast API (Port 8099) — merged into WebUI / mode-switcher | [Plan](./tracks/network-cast-api_20260602/plan.md)
 - [x] **Track: automated-provisioning** — Automated Provisioning (Ansible/Shell) — done; superseded by live stack baseline | [Plan](./tracks/automated-provisioning_20260602/plan.md)
@@ -84,4 +84,3 @@
 
 - [x] **Track: modular_test_ci_config_audio_fix_20260626** — Archived umbrella; remaining modularization, CI, coverage, and audio work is tracked by focused successor tracks | [Plan](./tracks/modular_test_ci_config_audio_fix_20260626/plan.md)
 - [ ] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
-- [ ] **Track: rpi-safe-ci-workflow_20260805** — Safe RPi / Milhy-PC / Jules Validation Pipeline: isolated candidate staging, execution profiles, RPi guard, core-rules installer, SHA-bound evidence gates (pending live rollout evidence) | [Plan](./tracks/rpi-safe-ci-workflow_20260805/plan.md)
