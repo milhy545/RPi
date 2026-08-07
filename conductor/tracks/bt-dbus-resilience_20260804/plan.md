@@ -13,46 +13,46 @@ Na základě rešerše a specifikací RPi projektů jsme identifikovali 4 hlavn�
 
 ### Fáze 1: Backend — Odolnost D-Busu (Bluetooth Core)
 
-- [ ] Přepsat `rpi_dashboard/services/bluetooth/bluez.py` na asynchronní D-Bus volání.
-- [ ] Přidat watcher pro události odpojování (`NameOwnerChanged`) a zapouzdřit všechny D-Bus call metody do `try...except` s exponenciálním backoffem (3 pokusy).
-- [ ] Vytvořit custom výjimku `BluetoothDBusError`, která nezboří aplikaci — pouze log + status na frontend.
+- [x] Přepsat `rpi_dashboard/services/bluetooth/bluez.py` na asynchronní D-Bus volání.
+- [x] Přidat watcher pro události odpojování (`NameOwnerChanged`) a zapouzdřit všechny D-Bus call metody do `try...except` s exponenciálním backoffem (3 pokusy).
+- [x] Vytvořit custom výjimku `BluetoothDBusError`, která nezboří aplikaci — pouze log + status na frontend.
 
 ### Fáze 2: Backend — BT Volume Sync (AVRCP ↔ PipeWire)
 
-- [ ] V `rpi_dashboard/services/audio/mixer.py` upravit `set_sink_volume(sink_id, volume)` — pokud je `sink_id` BT zařízení, volat BlueZ D-Bus `org.bluez.MediaTransport1.Volume` pro sync.
-- [ ] V `rpi_dashboard/services/bt.py` upravit BT volume setter — importovat a volat `set_sink_volume` z `rpi_dashboard.services.audio`, aby se PipeWire aktualizoval při AVRCP změně.
-- [ ] Přidat unit testy pro bidirezionální sync: `tests/test_services_audio.py`.
+- [x] V `rpi_dashboard/services/audio/mixer.py` upravit `set_sink_volume(sink_id, volume)` — pokud je `sink_id` BT zařízení, volat BlueZ D-Bus `org.bluez.MediaTransport1.Volume` pro sync.
+- [x] V `rpi_dashboard/services/bt.py` upravit BT volume setter — importovat a volat `set_sink_volume` z `rpi_dashboard.services.audio`, aby se PipeWire aktualizoval při AVRCP změně.
+- [x] Přidat unit testy pro bidirezionální sync: `tests/test_services_audio.py`.
 
 ### Fáze 3: Backend — Hardware Adapter Profiling
 
-- [ ] Přidat do služby funkci pro skenování HCI adaptérů přes `hciconfig` a `/sys/class/bluetooth/hciX/device/`.
-- [ ] Obohatit API o datový model adaptéru: `integrated` (Broadcom/Cypress, `recommended_max_streams=2`) vs `usb` (dle sběrnice).
-- [ ] Rozšířit API o telemetrii připojeného BT zařízení: RSSI signál, baterie, aktuální kodek.
+- [x] Přidat do služby funkci pro skenování HCI adaptérů přes `hciconfig` a `/sys/class/bluetooth/hciX/device/`.
+- [x] Obohatit API o datový model adaptéru: `integrated` (Broadcom/Cypress, `recommended_max_streams=2`) vs `usb` (dle sběrnice).
+- [x] Rozšířit API o telemetrii připojeného BT zařízení: RSSI signál, baterie, aktuální kodek.
 
 ### Fáze 4: Backend — Multi-Speaker Engine
 
-- [ ] Vytvořit `rpi_dashboard/services/audio/multi_negotiator.py` — vezme list požadovaných audio výstupů.
-- [ ] Před vytvořením combined sink modul proiteruje capabilities jednotlivých BT reproduktorů.
-- [ ] Pomocí `pactl`/`wpctl` uzamkne výstupní formát na `s16le 44100Hz` (společný formát).
-- [ ] Vytvoří uzamčený spojený sink s pevným bufferováním.
+- [x] Vytvořit `rpi_dashboard/services/audio/multi_negotiator.py` — vezme list požadovaných audio výstupů.
+- [x] Před vytvořením combined sink modul proiteruje capabilities jednotlivých BT reproduktorů.
+- [x] Pomocí `pactl`/`wpctl` uzamkne výstupní formát na `s16le 44100Hz` (společný formát).
+- [x] Vytvoří uzamčený spojený sink s pevným bufferováním.
 
 ### Fáze 5: Real-Status WebUI and BT Audio Diagnostics
 
-- [ ] Inventory every WebUI status pill, badge, summary, quick-action state, and footer value. Remove decorative operational claims and map each retained state to a documented live API field, collection timestamp, and explicit loading/stale/degraded/unavailable behaviour.
-- [ ] Replace the hard-coded footer claims (`Service Running`, `Bluetooth Ready`, `Audio HDMI`) with bounded periodic status aggregation. Do not require the user to open the hardware panel before CPU/RAM/temperature values become truthful.
-- [ ] Collect real RPi samples first (`wpctl status`, `pactl list short sinks`, default sink, active stream links, and relevant WirePlumber metadata), document parser provenance, and prove parsing in a scratch script before production implementation.
-- [ ] Replace the fixed `bt_soundbar`/`alexa_to_bt` readiness assumption with dynamic matching between connected BlueZ audio devices and PipeWire/WirePlumber sinks/routes. Treat a default BT sink, an active stream routed to the BT sink, or an explicitly enabled loopback according to their real semantics; an optional inactive loopback alone is not a blocker.
-- [ ] Represent `pass`, `blocked`, `not applicable`, `unknown`, and `stale` separately. No connected BT audio device must produce `not applicable`, while command/API failure must produce `unknown` or `degraded`, never a fabricated red or green result.
-- [ ] Implement UI for detailed BT information: RSSI, battery, codec, adapter driver, and actionable reason text for every non-passing readiness state.
-- [ ] Update the multi-audio dialog to select explicit outputs and show `.adapter-warning` when adapter limits are exceeded.
+- [x] Inventory every WebUI status pill, badge, summary, quick-action state, and footer value. Remove decorative operational claims and map each retained state to a documented live API field, collection timestamp, and explicit loading/stale/degraded/unavailable behaviour.
+- [x] Replace the hard-coded footer claims (`Service Running`, `Bluetooth Ready`, `Audio HDMI`) with bounded periodic status aggregation. Do not require the user to open the hardware panel before CPU/RAM/temperature values become truthful.
+- [x] Collect real RPi samples first (`wpctl status`, `pactl list short sinks`, default sink, active stream links, and relevant WirePlumber metadata), document parser provenance, and prove parsing in a scratch script before production implementation.
+- [x] Replace the fixed `bt_soundbar`/`alexa_to_bt` readiness assumption with dynamic matching between connected BlueZ audio devices and PipeWire/WirePlumber sinks/routes. Treat a default BT sink, an active stream routed to the BT sink, or an explicitly enabled loopback according to their real semantics; an optional inactive loopback alone is not a blocker.
+- [x] Represent `pass`, `blocked`, `not applicable`, `unknown`, and `stale` separately. No connected BT audio device must produce `not applicable`, while command/API failure must produce `unknown` or `degraded`, never a fabricated red or green result.
+- [x] Implement UI for detailed BT information: RSSI, battery, codec, adapter driver, and actionable reason text for every non-passing readiness state.
+- [x] Update the multi-audio dialog to select explicit outputs and show `.adapter-warning` when adapter limits are exceeded.
 
 ### Fáze 6: Tests and Live Validation
 
-- [ ] Add focused backend tests for dynamic sink identity, default route, active stream, optional loopback, multiple BT sinks, no connected BT audio device, stale evidence, bounded command timeout, and malformed real command output.
-- [ ] Add static regression tests forbidding hard-coded operational success labels/classes in production WebUI markup and payloads.
-- [ ] Extend `tests/e2e/bt_webui_test.mjs` with loading, real-success, blocked, not-applicable, stale, and backend-unavailable states, plus the integrated-adapter third-device warning.
-- [ ] Run Playwright from Milhy-PC against the exact staged RPi candidate. Verify the two reported readiness rows become green only when supported by live audio evidence and preserve screenshots/API evidence for both connected and disconnected cases.
-- [ ] Run the one-hour HDMI + one-BT and two-BT stability checks without disrupting user playback, then complete exact-SHA RPi validation and receipt generation.
+- [x] Add focused backend tests for dynamic sink identity, default route, active stream, optional loopback, multiple BT sinks, no connected BT audio device, stale evidence, bounded command timeout, and malformed real command output.
+- [x] Add static regression tests forbidding hard-coded operational success labels/classes in production WebUI markup and payloads.
+- [x] Extend `tests/e2e/bt_webui_test.mjs` with loading, real-success, blocked, not-applicable, stale, and backend-unavailable states, plus the integrated-adapter third-device warning.
+- [x] Run Playwright from Milhy-PC against the exact staged RPi candidate. Verify the two reported readiness rows become green only when supported by live audio evidence and preserve screenshots/API evidence for both connected and disconnected cases.
+- [x] Run the one-hour HDMI + one-BT and two-BT stability checks without disrupting user playback, then complete exact-SHA RPi validation and receipt generation.
 
 ## 3. Akceptační kritéria
 

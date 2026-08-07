@@ -896,6 +896,7 @@ class BlueZDbusBackend:
         rules = (
             "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.ObjectManager'",
             "type='signal',sender='org.bluez',interface='org.freedesktop.DBus.Properties'",
+            "type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.bluez'",
         )
         for rule in rules:
             reply = await bus.call(
@@ -940,6 +941,16 @@ class BlueZDbusBackend:
                 event_type = "adapter_changed"
             elif changed_interface in {DEVICE1, BATTERY1}:
                 event_type = "device_changed"
+        elif message.interface == DBUS and message.member == "NameOwnerChanged":
+            name = str(message.body[0]) if message.body else ""
+            new_owner = str(message.body[2]) if len(message.body) > 2 else ""
+            if name == BLUEZ:
+                if not new_owner:
+                    event_type = "backend_disconnected"
+                    self._last_state = None
+                else:
+                    event_type = "backend_reconnected"
+
         if not event_type:
             return
 
@@ -1208,23 +1219,28 @@ def _soundbar_readiness(
         (device for device in devices if normalize_address(device.address) == SAMSUNG_SOUNDBAR_MAC),
         None,
     )
+    if not soundbar:
+        soundbar = next(
+            (device for device in devices if device.kind in ("audio", "soundbar", "speaker", "headphones") or any("110b" in u.lower() or "110a" in u.lower() for u in device.uuids)),
+            None,
+        )
     adapter = next(
         (candidate for candidate in adapters if soundbar and candidate.id == soundbar.adapter_id),
-        None,
+        adapters[0] if adapters else None,
     )
     steps = (
         ReadinessStep("adapter", "Adapter present and powered", bool(adapter and adapter.powered), "Adapter usable" if adapter and adapter.powered else "Adapter missing or off"),
-        ReadinessStep("known", "Soundbar known", bool(soundbar), "Soundbar known" if soundbar else "Soundbar not seen"),
-        ReadinessStep("paired", "Paired", bool(soundbar and soundbar.paired), "Paired" if soundbar and soundbar.paired else "Not paired"),
-        ReadinessStep("trusted", "Trusted", bool(soundbar and soundbar.trusted), "Trusted" if soundbar and soundbar.trusted else "Not trusted"),
-        ReadinessStep("connected", "BlueZ connected", bool(soundbar and soundbar.connected), "Connected" if soundbar and soundbar.connected else "Not connected"),
-        ReadinessStep("services", "Services resolved", soundbar.services_resolved if soundbar else False, "Services resolved" if soundbar and soundbar.services_resolved else "Services unresolved"),
+        ReadinessStep("known", "Bluetooth audio device known", bool(soundbar) if soundbar else None, f"Device {soundbar.name or soundbar.address} known" if soundbar else "No Bluetooth audio device connected"),
+        ReadinessStep("paired", "Paired", bool(soundbar and soundbar.paired) if soundbar else None, "Paired" if soundbar and soundbar.paired else ("Not paired" if soundbar else "Not applicable")),
+        ReadinessStep("trusted", "Trusted", bool(soundbar and soundbar.trusted) if soundbar else None, "Trusted" if soundbar and soundbar.trusted else ("Not trusted" if soundbar else "Not applicable")),
+        ReadinessStep("connected", "BlueZ connected", bool(soundbar and soundbar.connected) if soundbar else None, "Connected" if soundbar and soundbar.connected else ("Not connected" if soundbar else "Not applicable")),
+        ReadinessStep("services", "Services resolved", soundbar.services_resolved if soundbar else None, "Services resolved" if soundbar and soundbar.services_resolved else ("Services unresolved" if soundbar else "Not applicable")),
         ReadinessStep("pipewire_sink", "PipeWire sink present", None, "Owned by Audio service"),
         ReadinessStep("route", "Audio route/loopback", None, "Owned by Audio service"),
     )
     return SoundbarReadiness(
         device_key=soundbar.key if soundbar else None,
-        ready=all(step.state is True for step in steps[:6]),
+        ready=all(step.state is not False for step in steps),
         steps=steps,
     )
 

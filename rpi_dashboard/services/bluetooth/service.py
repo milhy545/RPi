@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -20,6 +21,8 @@ from .models import BluetoothError
 from .models import BluetoothState
 from .models import Operation
 from .models import make_device_key
+from .models import normalize_address
+from .fake import SAMSUNG_SOUNDBAR_MAC
 
 _BACKEND: Any | None = None
 _RUNNER: "_AsyncRunner | None" = None
@@ -1144,6 +1147,12 @@ def _enrich_controller_readiness(state: dict[str, Any]) -> None:
     diagnostics["steamlink"] = evidence.get("steamlink", {})
 
 
+def _get_attr(obj: Any, key: str, default: Any = None) -> Any:
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _enrich_soundbar_audio_readiness(state: dict[str, Any]) -> None:
     diagnostics = state.get("diagnostics") or {}
     soundbar = diagnostics.get("soundbar")
@@ -1154,56 +1163,145 @@ def _enrich_soundbar_audio_readiness(state: dict[str, Any]) -> None:
     for step in steps:
         if isinstance(step, dict) and isinstance(step.get("id"), str):
             by_id[step["id"]] = step
-    try:
-        from .. import audio
 
-        audio_state = audio.audio_state()
+    bt_devices = state.get("devices") or []
+    connected_bt_audio = [
+        d for d in bt_devices
+        if _get_attr(d, "connected") and (
+            _get_attr(d, "kind") in ("audio", "soundbar", "speaker", "headphones")
+            or any("110b" in str(u).lower() or "110a" in str(u).lower() or "110d" in str(u).lower() or "110e" in str(u).lower() for u in (_get_attr(d, "uuids") or []))
+            or normalize_address(str(_get_attr(d, "address", ""))) == SAMSUNG_SOUNDBAR_MAC
+        )
+    ]
+
+    try:
+        from ..audio import audio_state as get_audio_state
+
+        audio_state = get_audio_state()
     except Exception as exc:
+        if connected_bt_audio:
+            _set_readiness_step(
+                by_id,
+                "pipewire_sink",
+                None,
+                f"Audio state unavailable: {exc}",
+            )
+            _set_readiness_step(
+                by_id,
+                "route",
+                None,
+                f"Audio state unavailable: {exc}",
+            )
+            soundbar["ready"] = False
+        else:
+            _set_readiness_step(
+                by_id,
+                "pipewire_sink",
+                None,
+                "Not applicable (no connected BT audio device)",
+            )
+            _set_readiness_step(
+                by_id,
+                "route",
+                None,
+                "Not applicable (no connected BT audio device)",
+            )
+            soundbar["ready"] = all(
+                step.get("state") is not False
+                for step in steps
+            )
+        return
+
+    if not connected_bt_audio:
         _set_readiness_step(
             by_id,
             "pipewire_sink",
             None,
-            f"Audio state unavailable: {exc}",
+            "Not applicable (no connected BT audio device)",
         )
         _set_readiness_step(
             by_id,
             "route",
             None,
-            f"Audio state unavailable: {exc}",
+            "Not applicable (no connected BT audio device)",
+        )
+        soundbar["ready"] = all(
+            step.get("state") is not False
+            for step in steps
         )
         return
 
-    devices = audio_state.get("devices") or {}
-    bt_soundbar = devices.get("bt_soundbar") or {}
+    sinks = audio_state.get("sinks")
+    if sinks is None:
+        sinks = []
+        devs = audio_state.get("devices") or {}
+        if isinstance(devs, dict):
+            for dev_info in devs.values():
+                if isinstance(dev_info, dict) and dev_info.get("name"):
+                    sinks.append({"name": dev_info["name"]})
+
     default_sink = audio_state.get("default_sink") or ""
-    sink_name = bt_soundbar.get("name") or ""
+    sink_inputs = audio_state.get("sink_inputs") or []
     routes = audio_state.get("routes") or {}
     alexa_route = routes.get("alexa_to_bt") or {}
-    sink_present = bool(bt_soundbar.get("present"))
-    sink_default = bool(sink_name and default_sink == sink_name)
-    route_active = bool(alexa_route.get("on"))
+    loopback_active = bool(alexa_route.get("on"))
+
+    matched_sinks = []
+    for d in connected_bt_audio:
+        addr = str(_get_attr(d, "address", ""))
+        addr_clean = re.sub(r"[^A-F0-9]", "", addr.upper())
+        for s in sinks:
+            s_name = s.get("name", "")
+            s_clean = re.sub(r"[^A-F0-9]", "", s_name.upper())
+            if addr_clean and (addr_clean in s_clean or "BLUEZ" in s_name.upper()):
+                matched_sinks.append((d, s))
+
+    if not matched_sinks and not any("bluez" in s.get("name", "").lower() for s in sinks):
+        _set_readiness_step(
+            by_id,
+            "pipewire_sink",
+            False,
+            "No PipeWire sink found for connected BT audio device",
+        )
+        _set_readiness_step(
+            by_id,
+            "route",
+            False,
+            "No active route for connected BT audio device",
+        )
+        soundbar["ready"] = False
+        return
+
+    sink_names = [s.get("name", "") for _, s in matched_sinks] or [s.get("name", "") for s in sinks if "bluez" in s.get("name", "").lower()]
     _set_readiness_step(
         by_id,
         "pipewire_sink",
-        sink_present,
-        "PipeWire sink present" if sink_present else "PipeWire sink missing",
+        True,
+        f"PipeWire sink present ({', '.join(sink_names)})",
     )
-    route_reason = "Audio route active" if route_active else (
-        "Soundbar is default sink" if sink_default else "No active/default Audio route"
-    )
-    _set_readiness_step(by_id, "route", route_active or sink_default, route_reason)
+
+    is_default = any(sn and sn == default_sink for sn in sink_names) or "bluez" in default_sink.lower()
+    is_active_stream = any(inp.get("sink") in sink_names for inp in sink_inputs)
+
+    if is_default:
+        route_ok = True
+        is_sb = any("soundbar" in str(_get_attr(d, "kind", "")).lower() or normalize_address(str(_get_attr(d, "address", ""))) == SAMSUNG_SOUNDBAR_MAC for d in connected_bt_audio)
+        route_reason = "Soundbar is default sink" if is_sb else "Bluetooth sink is default route"
+    elif is_active_stream:
+        route_ok = True
+        route_reason = "Active stream routed to BT sink"
+    elif loopback_active:
+        route_ok = True
+        route_reason = "Audio loopback active"
+    else:
+        route_ok = False
+        route_reason = "BT sink present but not default or routed"
+
+    _set_readiness_step(by_id, "route", route_ok, route_reason)
+
     soundbar["ready"] = all(
-        step.get("state") is True
+        step.get("state") is not False
         for step in steps
-        if step.get("id") in {
-            "adapter",
-            "known",
-            "paired",
-            "trusted",
-            "connected",
-            "services",
-            "pipewire_sink",
-        }
     )
 
 

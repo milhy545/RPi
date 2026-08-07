@@ -280,7 +280,7 @@ async function btDisconnect(mac){msg('Disconnecting '+mac+'...','info');let r=aw
 async function btRemove(mac){msg('Removing '+mac+'...','info');let r=await api('/bt/remove?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
 async function btTrust(mac){msg('Trusting '+mac+'...','info');let r=await api('/bt/trust?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
 async function dlnaScan(){msg('Scanning DLNA...','info');let r=await api('/dlna/scan');if(r.devices){let h=r.devices.map(d=>`<div>${d.usn.split('::')[0]} → ${d.location}</div>`).join('');$('#dlna-list').innerHTML=h;$('#dlna-status').textContent=r.count+' renderers';msg('Found '+r.count+' DLNA renderers','ok')}else{msg(r.error||'Scan failed','err')}}
-function badge(on,label){return '<span class="badge '+(on?'ok':'err')+'">'+label+'</span>'}
+function badge(state,label){let cls='muted';if(state===true||state==='ok'||state==='pass'||state==='RUNNING'||state==='ACTIVE'||state==='ON'||state==='CONNECTED'||state==='READY')cls='ok';else if(state===false||state==='err'||state==='blocked'||state==='OFF'||state==='STOPPED'||state==='MISSING'||state==='NOT READY')cls='err';else if(state==='na'||state==='not_applicable'||state==='N/A'||state===null)cls='muted';else if(state==='stale'||state==='degraded'||state==='unknown'||state==='warn')cls='warn';return '<span class="badge '+cls+'">'+esc(label)+'</span>'}
 let taVolTimers={};
 function taSetVolDebounced(kind,name,v){let key=kind+':'+name;clearTimeout(taVolTimers[key]);taVolTimers[key]=setTimeout(()=>taSetVol(kind,name,v),250)}
 function meter(v,kind,name){let n=(v==null?0:v);if(!kind||!name)return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>';let id='vol-'+kind+'-'+esc(name).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);return '<div style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0"><input type="range" id="'+id+'" min="0" max="150" value="'+n+'" step="1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="this.nextElementSibling.textContent=this.value+\'%\'; taSetVolDebounced(\''+kind+'\',\''+jsarg(name)+'\',this.value)" onchange="taSetVol(\''+kind+'\',\''+jsarg(name)+'\',this.value)" ontouchstart="event.stopPropagation()"><span style="min-width:36px;font-size:.8em;text-align:right">'+(v==null?'—':v+'%')+'</span><button onclick="taMute(\''+kind+'\',\''+jsarg(name)+'\')" style="font-size:.75em;padding:2px 6px" title="Mute/unmute">🔇</button></div>'}
@@ -294,6 +294,7 @@ async function taRefresh(){
     if(r.error){msg(r.error,'err');return}
     renderAudioTopology(r);
     taMatrixRefresh();
+    routesRefresh();
     // Update dlna latency input if it exists
     let latInput = $('#ta-lat-dlna-offset');
     if(latInput && r.latency) latInput.value = r.latency.dlna_output_offset_ms || 0;
@@ -425,9 +426,14 @@ h+='<div class="row" style="margin-top:.45rem">';
 if(dlnain.running){h+='<button data-act="dlnain-stop" class="danger">⏹ Stop</button>'}else{h+='<button data-act="dlnain-start">▶ Start</button>'}
 h+='</div></div>';
 let multiOn=!!multi.active;setCookie('multi-output',multiOn?'true':'false');
+let slaves=multi.slaves||multi.available_sinks||[];
+let adapterExceeded=slaves.length>=3||((multi.adapters||[]).length===1&&slaves.length>2);
 h+='<div class="media-card route-card '+(multiOn?'on':'off')+'"><h4>🔀 Multi-Output</h4>';
-h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(multiOn,multiOn?'ACTIVE':'OFF')+' Route one source to all connected Bluetooth outputs.</div>';
-h+='<div class="media-meta">Outputs: '+esc((multi.slaves||multi.available_sinks||[]).map(shortName).join(' + ')||'two Bluetooth outputs required');
+if(adapterExceeded){
+h+='<div class="adapter-warning" style="background:#3d2400;border:1px solid #f0883e;color:#ffdfb6;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:0.85rem;">⚠️ <b>Adapter Warning:</b> Integrated Bluetooth adapter stream limit exceeded (max 2 recommended). Connect a USB adapter for additional speakers.</div>';
+}
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(multiOn,multiOn?'ACTIVE':'OFF')+' Route one source to selected Bluetooth outputs.</div>';
+h+='<div class="media-meta">Outputs: '+esc(slaves.map(shortName).join(' + ')||(multiOn?'multi-speaker active':'two Bluetooth outputs required'));
 if(multi.input_pending)h+=' · Waiting for phone/PC playback';else if((multi.routed_inputs||[]).length)h+=' · BT input routed';
 h+='</div><div class="row" style="margin-top:.45rem"><button data-act="multi-toggle" class="'+(multiOn?'danger':'')+'">'+(multiOn?'Turn OFF Multi-Output':'Turn ON Multi-Output')+'</button>';
 if(multiOn&&(multi.unrouted_inputs||[]).length)h+=' <button data-act="multi-sync">🔄 Route BT Input</button>';
@@ -479,7 +485,7 @@ function btTopoDeviceHtml(d,i,adapters,pos){let side=btSideForDevice(d,adapters)
 function btHubHtml(a,side,i){let devs=BT_UI.state?btAdapterDevices(BT_UI.state.devices,a&&a.id):[],avg=btRssiAvg(devs),conn=devs.filter(d=>d.connected).length,avail=devs.filter(d=>!d.connected).length;return '<div id="bt-adapter-'+side+'" class="bt-node bt-adapter-hub '+side+'" style="left:'+(side==='a'?30:70)+'%;top:50%"><div class="bt-hub-label '+side+'">ADAPTER '+String.fromCharCode(65+i)+'</div><div class="bt-hex">♢</div><div class="bt-hub-role">'+(side==='a'?'AUDIO HUB':'IOT & INPUT')+'</div><div class="bt-card-meta">'+(a&&a.powered?'Powered On':'Powered Off')+' · Avg '+avg+' dBm</div><div class="'+(side==='a'?'bt-blue':'bt-ok')+'">'+conn+' Connected · '+avail+' Available</div></div>'}
 function renderBtTopology(bt,devs,adapters){let shown=btFilteredDevices(devs).slice(0,12),a0=adapters[0]||null,a1=adapters[1]||null,counts={a:0,b:0};if(!shown.length)shown=[{name:'No Bluetooth devices',rssi:null,adapter_id:a0&&a0.id,present:false,kind:'unknown',key:'empty'}];return btHubHtml(a0,'a',0)+btHubHtml(a1,'b',1)+shown.map((d,i)=>{let side=btSideForDevice(d,adapters),n=counts[side]++,pool=side==='b'?BT_TOPO_POS_B:BT_TOPO_POS_A;return btTopoDeviceHtml(d,i,adapters,pool[n%pool.length])}).join('')}
 function renderBtAdapters(bt,devs){let adapters=(bt&&bt.adapters)||[];if(!adapters.length)return '<div class="bt-muted">No Bluetooth adapters present.</div>';return adapters.slice(0,2).map((a,i)=>{let side=i===1?'b':'a',list=btAdapterDevices(devs,a.id),avg=btRssiAvg(list);return '<div class="bt-adapter-card '+side+'"><h4>Adapter '+String.fromCharCode(65+i)+'</h4><div class="'+(a.powered?'bt-ok':'bt-warn')+'">'+(a.powered?'● Powered On':'○ Powered Off')+'</div><div class="bt-card-meta">'+esc(a.address||a.id||'Unknown address')+'</div><div class="bt-gauge"><span></span><b>'+avg+'</b></div><div class="bt-card-meta">dBm (Avg)</div><div>Connected: <b>'+list.filter(d=>d.connected).length+'</b> · Paired: <b>'+list.filter(d=>d.paired).length+'</b></div><div class="row" style="justify-content:center;margin-top:10px"><button type="button" onclick="btDiscovery(\''+jsarg(a.id)+'\',\''+(a.discovering?'stop':'start')+'\')">'+(a.discovering?'Stop Scan':'Scan')+'</button><button type="button" onclick="btPower(\''+jsarg(a.id)+'\',\''+(a.powered?'off':'on')+'\')">'+(a.powered?'Power Off':'Power On')+'</button></div></div>'}).join('')}
-function renderReadiness(r){if(!r)return '—';let steps=r.steps||[];if(!steps.length)return '<div>'+badge(!!r.ready,r.ready?L('btReady'):L('btNotReady'))+'</div>';return steps.map(s=>'<div>'+badge(s.state===true,s.state===true?'OK':(s.state===false?'BLOCKED':'UNKNOWN'))+' '+esc(s.label||s.id)+': '+esc(s.reason||'')+'</div>').join('')}
+function renderReadiness(r){if(!r)return '—';let steps=r.steps||[];if(!steps.length)return '<div>'+badge(r.ready?true:null,r.ready?L('btReady'):L('btNotReady'))+'</div>';return steps.map(s=>{let stVal=s.state===true?true:(s.state===false?false:'na');let stLabel=s.state===true?'PASS':(s.state===false?'BLOCKED':'N/A');return '<div class="bt-readiness-row" style="margin:.25rem 0">'+badge(stVal,stLabel)+' <span><b>'+esc(s.label||s.id)+':</b> '+esc(s.reason||'')+'</span></div>'}).join('')}
 function renderBtController(c){if(!c)return '—';let mods=c.modules||{},inputs=c.input_devices||[],steam=c.steamlink||{},blockers=c.blockers||[];let driver=mods.xpadneo?'xpadneo':(mods.uhid?'uhid':(mods.xpad?'xpad':(mods.hid_microsoft?'hid_microsoft':'missing')));let rows=[];rows.push(badge(!!c.ready,c.ready?L('btReady'):L('btNotReady'))+' Controllers: '+((c.controllers||c.connected||[]).length));rows.push(L('btDriver')+': '+esc(driver));rows.push(L('btInput')+': '+esc(inputs.length?inputs.join(', '):'unknown'));rows.push(L('btSteamLink')+': '+(steam.available===true?'available':(steam.available===false?'missing':'unknown')));if(blockers.length)rows.push('<span class="bt-err">Blockers: '+esc(blockers.join(', '))+'</span>');return rows.map(x=>'<div>'+x+'</div>').join('')}
 function renderBtEvents(bt){let ops=(bt&&bt.operations)||[],events=(bt&&bt.events)||[];let rows=[];ops.slice(-4).forEach(o=>rows.push('OP '+o.type+' '+o.state+(o.error?': '+o.error.code:'')));events.slice(-6).forEach(e=>rows.push(e.type+': '+e.message));return rows.length?rows.map(x=>'<div>'+esc(x)+'</div>').join(''):'—'}
 function renderBtSummary(devs,adapters){let connected=devs.filter(d=>d.connected).length,paired=devs.filter(d=>d.paired).length,online=adapters.filter(a=>a.present&&a.powered).length;let avgs=adapters.slice(0,2).map(a=>btRssiAvg(btAdapterDevices(devs,a.id))+' dBm').join(' / ')||'--';return '<div class="bt-summary-card">Total Connected<b>'+connected+'</b></div><div class="bt-summary-card">Total Paired<b>'+paired+'</b></div><div class="bt-summary-card">Adapters Online<b>'+online+' / '+adapters.length+'</b></div><div class="bt-summary-card">Avg RSSI<b>'+esc(avgs)+'</b></div>'}
@@ -496,6 +502,7 @@ function btFailureDetails(){let report=BT_UI.failureDiagnostics;if(!report)retur
 function btHidBoundary(d){let status=((BT_UI.state&&BT_UI.state.diagnostics)||{}).hid_control||{},available=!!status.available,blockers=(status.blockers||[]).join('; ');return '<div class="bt-detail-box"><b>Optional outbound HID control</b><label class="bt-control-row"><span>Trusted device opt-in</span><input type="checkbox" '+(d.hid_control?'checked ':'')+(available?'':'disabled ')+'onchange="btSelectedHid(this.checked)"></label><div class="bt-card-meta">'+esc(available?'Transport ready; disabled by default.':(blockers||'Outbound HID transport unavailable.'))+'</div><div class="bt-card-meta">Media keys use AVRCP when available.</div></div>'}
 function renderBtDeviceDetails(devs,adapters){let d=btSelectedDevice();if(!d)return '<div class="bt-muted">No device selected.</div>';let a=(adapters||[]).find(x=>x.id===d.adapter_id),offline=d.present===false||(!d.connected&&d.paired),disabledPair=d.paired?' disabled title="Device is already paired"':'',disabledDisconnect=!d.connected?' disabled title="Device is not connected"':'',disabledConnect=(!d.paired||d.connected)?' disabled title="Pair the device before connecting"':'',disabledTrust=d.trusted?' disabled title="Device is already trusted"':'';return '<div class="bt-detail-title">'+esc(d.name||d.alias||'Unknown Device')+'</div><div class="bt-status-pill '+(offline?'offline':'')+'">● '+btStatusText(d)+'</div><div class="bt-detail-box"><div class="bt-detail-row"><span>Signal</span><b class="bt-blue">'+esc(btRssi(d))+'</b></div><div class="bt-detail-row"><span>MAC Address</span><code>'+esc(btDeviceMac(d)||'-')+'</code></div><div class="bt-detail-row"><span>Adapter</span><span class="bt-adapter-tag">'+esc(a?btAdapterName(a,adapters.indexOf(a)):'-')+'</span></div><div class="bt-detail-row"><span>Bonded</span><b>'+esc(d.bonded==null?'Unknown':(d.bonded?'Yes':'No'))+'</b></div><div class="bt-detail-row"><span>Battery</span><b>'+esc(d.battery_percentage==null?'N/A':d.battery_percentage+'%')+'</b></div><label class="bt-control-row"><span>Auto connect</span><input type="checkbox" '+(d.auto_connect?'checked ':'')+'onchange="btSelectedAutoConnect(this.checked)"></label></div><div class="bt-detail-box"><b>Negotiated capabilities</b>'+btCapabilityDetails(d)+'</div>'+btPipeWireProfile(d)+btRemoteProfileActions(d)+btMediaDetails(d)+btObexDetails(d)+btHidBoundary(d)+btPairingControl()+btFailureDetails()+'<div class="bt-detail-actions"><button type="button"'+disabledPair+' onclick="btSelectedAction(\'pair\')">Pair</button><button type="button" class="danger"'+disabledDisconnect+' onclick="btSelectedAction(\'disconnect\')">Odpojit Zařízení</button><button type="button"'+disabledConnect+' onclick="btSelectedAction(\'connect\')">Connect</button><button type="button"'+disabledTrust+' onclick="btSelectedAction(\'trust\')">Trust</button><button type="button" onclick="btSelectedAction(\''+(d.blocked?'unblock':'block')+'\')">'+(d.blocked?'Unblock':'Block')+'</button><button type="button" class="danger" onclick="btSelectedAction(\'remove\')">Remove</button></div>'}
 function renderBtControls(s){let backend=s.backend||{},settings=s.settings||{},degraded=backend.degraded?' <span class="bt-warn">degraded</span>':'',powered=s.adapters.filter(a=>a.present&&a.powered),discoverable=powered.length>0&&powered.every(a=>a.discoverable),timeout=Number(settings.discoverable_timeout==null?120:settings.discoverable_timeout),mode=String(settings.scan_mode||'balanced').toLowerCase();return '<label class="bt-control-row"><span>Automatické připojení</span><span class="bt-switch"><input id="bt-auto-connect" type="checkbox" '+(settings.auto_connect?'checked ':'')+'onchange="btToggleAutoConnect(this.checked)"><span class="bt-slider"></span></span></label><label class="bt-control-row"><span>Viditelnost sítě (All)</span><span class="bt-switch"><input id="bt-discoverable-all" type="checkbox" '+(discoverable?'checked ':'')+'onchange="btToggleDiscoverable(this.checked)"><span class="bt-slider"></span></span></label><div class="bt-control-row"><span>Časovač</span><select id="bt-timeout" onchange="btSettingChanged(\'Timeout\',this.value)"><option value="120" '+(timeout===120?'selected':'')+'>2 min</option><option value="300" '+(timeout===300?'selected':'')+'>5 min</option><option value="0" '+(timeout===0?'selected':'')+'>Trvale</option></select></div><div class="bt-control-row"><span>Režim skenování</span><select id="bt-scan-mode" onchange="btSettingChanged(\'Scan mode\',this.value)"><option value="balanced" '+(mode==='balanced'?'selected':'')+'>Balanced</option><option value="aggressive" '+(mode==='aggressive'?'selected':'')+'>Aggressive</option></select></div><div class="bt-control-row"><span>Backend</span><b>'+esc(backend.name||'legacy')+degraded+'</b></div><div class="bt-control-row"><span>Adapters</span><b>'+s.adapters.length+' · Devices '+s.devices.length+'</b></div>'}
+function btApplyLang(){let lang=(typeof LANG!=='undefined'?LANG:'cz');document.querySelectorAll('[data-bt-i18n-cs]').forEach(el=>{let t=el.getAttribute('data-bt-i18n-'+(lang==='cz'?'cs':'en'));if(t)el.textContent=t;});}
 function renderBluetoothState(bt){let s=btNormalizeState(bt);BT_UI.state=s;if(!BT_UI.selected&&s.devices.length)BT_UI.selected=btStableKey(s.devices.find(d=>d.connected)||s.devices[0]);$('#bt-topology').innerHTML=renderBtTopology(s.raw,s.devices,s.adapters);$('#bt-adapters').innerHTML=renderBtAdapters(s.raw,s.devices);$('#bt-controller').innerHTML='<b>Controller</b>'+renderBtController(s.diagnostics.controllers||(bt&&bt.controller));$('#bt-soundbar').innerHTML='<b>Soundbar</b>'+renderReadiness(s.diagnostics.soundbar);$('#bt-events').innerHTML='<b>Recent Events</b>'+renderBtEvents(s.raw);$('#bt-summary').innerHTML=renderBtSummary(s.devices,s.adapters);$('#bt-quick').innerHTML=renderBtQuick();$('#bt-device-details').innerHTML=renderBtDeviceDetails(s.devices,s.adapters);$('#bt-status').innerHTML=renderBtControls(s);let online=s.adapters.filter(a=>a.present&&a.powered).length;let hci=$('#bt-hci-state');if(hci)hci.textContent='HCI Online '+online+' / '+s.adapters.length;let service=$('#bt-service-state');if(service)service.textContent=s.backend.degraded?'Degraded':'Running';let paired=$('#bt-total-paired');if(paired)paired.textContent='Total Paired: '+s.devices.filter(d=>d.paired).length;let connected=$('#bt-total-connected');if(connected)connected.textContent='Total Connected: '+s.devices.filter(d=>d.connected).length;btApplyLang();setTimeout(()=>{btCenterCanvas(false);btDrawTopologyLines()},30)}
 function btRenderCurrent(){if(BT_UI.state)renderBluetoothState(BT_UI.state.raw)}
 async function bluetoothRefresh(){let results=await Promise.all([api('/bt/state'),api('/audio/bluetooth-profiles'),api('/bt/transfers'),api('/bt/files')]),r=results[0],audio=results[1],obex=results[2],files=results[3];if(r.error&&!r.backend){msg(r.error,'err');return}BT_UI.audioProfiles=audio.cards||[];BT_UI.obex=obex||{};BT_UI.transfers=obex.transfers||[];BT_UI.files=files.files||[];renderBluetoothState(r);applyLang()}
@@ -1006,4 +1013,74 @@ async function logsRefresh() {
     } else {
         el.textContent = 'No logs returned';
     }
+}
+
+async function updateFooterStatus(){
+    try{
+        let[sys,bt,audioState]=await Promise.all([
+            api('/system/status').catch(()=>null),
+            api('/bt/state').catch(()=>null),
+            api('/audio/state').catch(()=>null)
+        ]);
+        let sbService=$('#sb-service');
+        if(sbService){
+            if(sys&&!sys.error){
+                sbService.className='app-status-pill ok';
+                sbService.textContent='● Service Online';
+            }else{
+                sbService.className='app-status-pill err';
+                sbService.textContent='● Service Offline';
+            }
+        }
+        let sbBt=$('#sb-bt');
+        if(sbBt){
+            if(bt&&!bt.error){
+                let st=btNormalizeState(bt);
+                let connected=(st.devices||[]).filter(d=>d.connected).length;
+                let isDegraded=st.backend&&st.backend.degraded;
+                if(isDegraded){
+                    sbBt.className='app-status-pill warn';
+                    sbBt.textContent='📶 BT Degraded';
+                }else if(connected>0){
+                    sbBt.className='app-status-pill ok';
+                    sbBt.textContent='📶 BT ('+connected+' connected)';
+                }else{
+                    sbBt.className='app-status-pill';
+                    sbBt.textContent='📶 BT Ready';
+                }
+            }else{
+                sbBt.className='app-status-pill warn';
+                sbBt.textContent='📶 BT Offline';
+            }
+        }
+        let sbAudio=$('#sb-audio');
+        if(sbAudio){
+            if(audioState&&!audioState.error){
+                let defSink=(audioState.default_sink||'').toLowerCase();
+                sbAudio.className='app-status-pill ok';
+                if(defSink.includes('bluez'))sbAudio.textContent='🔊 Audio: Bluetooth';
+                else if(defSink.includes('hdmi')||defSink.includes('bcm2835'))sbAudio.textContent='🔊 Audio: HDMI';
+                else if(defSink.includes('dlna'))sbAudio.textContent='🔊 Audio: DLNA';
+                else if(defSink)sbAudio.textContent='🔊 Audio: '+shortName(audioState.default_sink);
+                else sbAudio.textContent='🔊 Audio: N/A';
+            }else{
+                sbAudio.className='app-status-pill warn';
+                sbAudio.textContent='🔊 Audio: Error';
+            }
+        }
+        if(sys&&!sys.error){
+            let cpuEl=$('#status-cpu'),ramEl=$('#status-ram'),tempEl=$('#status-temp');
+            if(cpuEl&&sys.cpu_percent!=null)cpuEl.textContent='CPU: '+Number(sys.cpu_percent).toFixed(1)+'%';
+            if(ramEl&&sys.ram)ramEl.textContent='RAM: '+Number(sys.ram.used_mb||0).toFixed(0)+'MB ('+Number(sys.ram.percent||0).toFixed(0)+'%)';
+            if(tempEl)tempEl.textContent='Temp: '+(sys.cpu_temp!=null?Number(sys.cpu_temp).toFixed(1)+'°C':'N/A');
+        }
+    }catch(e){
+        console.warn('Footer status error:',e);
+    }
+}
+setInterval(updateFooterStatus,5000);
+if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',()=>setTimeout(updateFooterStatus,300));
+}else{
+    setTimeout(updateFooterStatus,300);
 }
