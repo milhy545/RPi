@@ -154,8 +154,6 @@ class SystemMetricsMixin:
     _prev_cpu_idle: int = 0
     _prev_cpu_total: int = 0
 
-    _prev_cpu_idle: int
-    _prev_cpu_total: int
 
     def get_cpu_usage(self) -> float:
         try:
