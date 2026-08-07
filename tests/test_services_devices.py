@@ -33,6 +33,15 @@ def test_bt_device_type_input():
     assert _bt_device_type("Mouse Wireless") == "input"
 
 
+
+def test_bt_device_type_mobile():
+    """Test Bluetooth device type detection for mobile."""
+    from rpi_dashboard.services.devices import _bt_device_type
+    assert _bt_device_type("iPhone 15") == "mobile"
+    assert _bt_device_type("Galaxy Tablet") == "mobile"
+    assert _bt_device_type("pixel phone") == "mobile"
+
+
 def test_bt_device_type_unknown():
     """Test Bluetooth device type detection for unknown."""
     from rpi_dashboard.services.devices import _bt_device_type
