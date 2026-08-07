@@ -217,6 +217,8 @@ class SystemMetricsMixin:
         return ip
 
 class SystemStats(Static, SystemMetricsMixin):
+    _prev_cpu_idle: int = 0
+    _prev_cpu_total: int = 0
     """Show live system load from /proc and /sys."""
     def on_mount(self) -> None:
         from rpi_dashboard.services.bluetooth import service as bluetooth_service
@@ -254,6 +256,8 @@ class SystemStats(Static, SystemMetricsMixin):
             f"IP: {ip}"
         )
 
+    _prev_cpu_idle: int = 0
+    _prev_cpu_total: int = 0
 
 class TopStatus(Static, SystemMetricsMixin):
     """Compact ASCII-safe status line for the physical TV console."""
