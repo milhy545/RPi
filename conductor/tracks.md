@@ -83,4 +83,4 @@
 - [x] **Track: report_1785203244_bug** — BT volume sync — absorbed into audio-fullstack-refactor_20260725 | [Plan](./tracks/report_1785203244_bug/plan.md)
 
 - [x] **Track: modular_test_ci_config_audio_fix_20260626** — Archived umbrella; remaining modularization, CI, coverage, and audio work is tracked by focused successor tracks | [Plan](./tracks/modular_test_ci_config_audio_fix_20260626/plan.md)
-- [ ] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
+- [x] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
