@@ -161,8 +161,8 @@ class SystemMetricsMixin:
                 idle = parts[3] + parts[4]
                 total = sum(parts)
                 
-                if getattr(self, '_prev_cpu_total', 0) > 0:
-                    diff_idle = idle - getattr(self, '_prev_cpu_idle', 0)
+                if self._prev_cpu_total > 0:
+                    diff_idle = idle - self._prev_cpu_idle
                     diff_total = total - self._prev_cpu_total
                     if diff_total > 0:
                         cpu_pct = 100.0 * (1.0 - diff_idle / diff_total)
@@ -233,8 +233,6 @@ class SystemStats(Static, SystemMetricsMixin):
         self._settings_cache_ttl = 10.0
 
         # State used to compute CPU deltas.
-        self._prev_cpu_idle = 0
-        self._prev_cpu_total = 0
         self.update_stats()
         self.set_interval(TUI_STATS_INTERVAL, self.update_stats)
 
@@ -263,8 +261,6 @@ class TopStatus(Static, SystemMetricsMixin):
     """Compact ASCII-safe status line for the physical TV console."""
 
     def on_mount(self) -> None:
-        self._prev_cpu_idle = 0
-        self._prev_cpu_total = 0
         self.update_status()
         self.set_interval(TUI_STATS_INTERVAL, self.update_status)
 
