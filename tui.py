@@ -148,26 +148,10 @@ def t(lang: str, key: str) -> str:
     lang = normalize_lang(lang)
     return I18N[lang].get(key, I18N["cz"].get(key, key))
 
-class SystemStats(Static):
-    """Show live system load from /proc and /sys."""
-    def on_mount(self) -> None:
-        from rpi_dashboard.services.bluetooth import service as bluetooth_service
 
-        bluetooth_service.start_startup_recovery()
-        self._settings_cache = {
-            "network": 0.0,
-            "audio": 0.0,
-            "bluetooth": 0.0,
-            "wifi": 0.0
-        }
-        self._settings_cache_ttl = 10.0
+class SystemMetricsMixin:
+    """Mixin for collecting system metrics (CPU, RAM, Temp, IP)."""
 
-        # State used to compute CPU deltas.
-        self._prev_cpu_idle = 0
-        self._prev_cpu_total = 0
-        self.update_stats()
-        self.set_interval(TUI_STATS_INTERVAL, self.update_stats)
-        
     def get_cpu_usage(self) -> float:
         try:
             with open("/proc/stat", "r") as f:
@@ -177,8 +161,8 @@ class SystemStats(Static):
                 idle = parts[3] + parts[4]
                 total = sum(parts)
                 
-                if self._prev_cpu_total > 0:
-                    diff_idle = idle - self._prev_cpu_idle
+                if getattr(self, '_prev_cpu_total', 0) > 0:
+                    diff_idle = idle - getattr(self, '_prev_cpu_idle', 0)
                     diff_total = total - self._prev_cpu_total
                     if diff_total > 0:
                         cpu_pct = 100.0 * (1.0 - diff_idle / diff_total)
@@ -232,6 +216,26 @@ class SystemStats(Static):
             ip = '127.0.0.1'
         return ip
 
+class SystemStats(Static, SystemMetricsMixin):
+    """Show live system load from /proc and /sys."""
+    def on_mount(self) -> None:
+        from rpi_dashboard.services.bluetooth import service as bluetooth_service
+
+        bluetooth_service.start_startup_recovery()
+        self._settings_cache = {
+            "network": 0.0,
+            "audio": 0.0,
+            "bluetooth": 0.0,
+            "wifi": 0.0
+        }
+        self._settings_cache_ttl = 10.0
+
+        # State used to compute CPU deltas.
+        self._prev_cpu_idle = 0
+        self._prev_cpu_total = 0
+        self.update_stats()
+        self.set_interval(TUI_STATS_INTERVAL, self.update_stats)
+
     def update_stats(self) -> None:
         cpu = self.get_cpu_usage()
         ram_used, ram_total = self.get_ram_usage()
@@ -251,7 +255,7 @@ class SystemStats(Static):
         )
 
 
-class TopStatus(Static):
+class TopStatus(Static, SystemMetricsMixin):
     """Compact ASCII-safe status line for the physical TV console."""
 
     def on_mount(self) -> None:
@@ -259,61 +263,6 @@ class TopStatus(Static):
         self._prev_cpu_total = 0
         self.update_status()
         self.set_interval(TUI_STATS_INTERVAL, self.update_status)
-
-    def get_cpu_usage(self) -> float:
-        try:
-            with open("/proc/stat", "r") as f:
-                line = f.readline()
-            if line.startswith("cpu "):
-                parts = list(map(int, line.split()[1:8]))
-                idle = parts[3] + parts[4]
-                total = sum(parts)
-                if self._prev_cpu_total > 0:
-                    diff_idle = idle - self._prev_cpu_idle
-                    diff_total = total - self._prev_cpu_total
-                    cpu_pct = 100.0 * (1.0 - diff_idle / diff_total) if diff_total > 0 else 0.0
-                else:
-                    cpu_pct = 0.0
-                self._prev_cpu_idle = idle
-                self._prev_cpu_total = total
-                return cpu_pct
-        except Exception:
-            return 0.0
-        return 0.0
-
-    def get_ram_usage(self) -> tuple[float, float]:
-        try:
-            mem_total = 0
-            mem_available = 0
-            with open("/proc/meminfo", "r") as f:
-                for line in f:
-                    if line.startswith("MemTotal:"):
-                        mem_total = int(line.split()[1])
-                    elif line.startswith("MemAvailable:"):
-                        mem_available = int(line.split()[1])
-            if mem_total > 0:
-                used = mem_total - mem_available
-                return used / 1024 / 1024, mem_total / 1024 / 1024
-        except Exception:
-            pass
-        return 0.45, 1.0
-
-    def get_cpu_temp(self) -> float:
-        try:
-            with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                return int(f.read().strip()) / 1000.0
-        except Exception:
-            return 45.0
-
-    def get_local_ip(self) -> str:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(('10.254.254.254', 1))
-            ip = s.getsockname()[0]
-            s.close()
-        except Exception:
-            ip = '127.0.0.1'
-        return ip
 
     def update_status(self) -> None:
         cpu = self.get_cpu_usage()
