@@ -151,6 +151,8 @@ def t(lang: str, key: str) -> str:
 
 class SystemMetricsMixin:
     """Mixin for collecting system metrics (CPU, RAM, Temp, IP)."""
+    _prev_cpu_idle: int = 0
+    _prev_cpu_total: int = 0
 
     def get_cpu_usage(self) -> float:
         try:
@@ -217,8 +219,6 @@ class SystemMetricsMixin:
         return ip
 
 class SystemStats(Static, SystemMetricsMixin):
-    _prev_cpu_idle: int = 0
-    _prev_cpu_total: int = 0
     """Show live system load from /proc and /sys."""
     def on_mount(self) -> None:
         from rpi_dashboard.services.bluetooth import service as bluetooth_service
