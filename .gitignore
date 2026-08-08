@@ -73,6 +73,7 @@ playback-memory.json
 # Local CI generated reports
 conductor/ci/reports/
 conductor/ci/receipts/*.json
+reports/*.json
 core
 gitleaks_report.json
 rpi_dashboard.egg-info/
