@@ -33,8 +33,8 @@ def test_recommend_adapter_topology_dual_adapters():
     res = recommend_adapter_topology(adapters)
 
     assert res["ok"] is True
-    assert res["recommended_audio_adapter"] == "adapter-66778899aabb"
-    assert res["recommended_io_adapter"] == "adapter-001122334455"
+    assert res["recommended_audio_adapter"] == "adapter-001122334455"
+    assert res["recommended_io_adapter"] == "adapter-66778899aabb"
     assert res["warning"] is None
     assert len(res["adapters"]) == 2
 

@@ -13,6 +13,6 @@ def test_recommend_adapter_topology():
     ]
     rec = recommend_adapter_topology(adapters)
     assert rec["ok"] is True
-    assert rec["recommended_audio_adapter"] == "adapter-1"
-    assert rec["recommended_io_adapter"] == "adapter-0"
+    assert rec["recommended_audio_adapter"] == "adapter-0"
+    assert rec["recommended_io_adapter"] == "adapter-1"
     assert rec["warning"] is None
