@@ -1595,8 +1595,8 @@ function toggleHwLive(){
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
     if(r.error){$('#hw-stats').textContent='Chyba: '+r.error;return}
-    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
-    let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
+    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+(typeof v==='number'?v.toFixed(0):'?')+'%').join('  ');
+    let temp=(typeof r.temp_c==='number')?r.temp_c.toFixed(1)+'°C':'?';
     let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
     let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
     let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
