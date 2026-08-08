@@ -220,8 +220,10 @@ class SystemMetricsMixin:
 
     def get_local_ip(self) -> str:
         now = time.time()
-        if type(self)._cached_ip and (now - type(self)._cached_ip_time) < 60.0:
-            return type(self)._cached_ip
+        # _cached_ip might be None initially. Mypy wants to make sure we return a str.
+        cached = type(self)._cached_ip
+        if cached is not None and (now - type(self)._cached_ip_time) < 60.0:
+            return cached
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(('10.254.254.254', 1))
