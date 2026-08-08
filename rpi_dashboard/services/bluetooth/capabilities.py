@@ -192,8 +192,8 @@ def recommend_adapter_topology(adapters: list[dict[str, Any]]) -> dict[str, Any]
     uart_adapter = next((a for a in detected if a["bus_type"] == "uart"), None)
 
     if len(detected) >= 2 and usb_adapter and uart_adapter:
-        recommended_audio = usb_adapter["id"]
-        recommended_io = uart_adapter["id"]
+        recommended_audio = uart_adapter["id"]
+        recommended_io = usb_adapter["id"]
         warning = None
     elif usb_adapter:
         recommended_audio = usb_adapter["id"]
