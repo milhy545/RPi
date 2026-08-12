@@ -1321,13 +1321,32 @@ class RPiDashboard(App):
     async def update_wifi_hotspot_info(self) -> None:
         """Read hotspot and raspotify settings and status."""
         try:
-            ssid_out = await self.run_sys_cmd("grep -m1 '^ssid=' /etc/hostapd/rpi-service.conf | cut -d'=' -f2")
-            ssid = ssid_out if ssid_out else "RPi-service"
+            # ⚡ Bolt Optimization: Replaced heavy subprocess "grep" with native Python file reading
+            # Reduces execution time and avoids asyncio.create_subprocess_shell overhead on RPi
+            ssid = "RPi-service"
+            try:
+                with open("/etc/hostapd/rpi-service.conf", "r") as f:
+                    for line in f:
+                        if line.startswith("ssid="):
+                            ssid = line.strip().split("=", 1)[1]
+                            break
+            except OSError:
+                pass
+
             hidden = "skryta" if self.language == "cz" else "hidden"
             self.query_one("#txt_hotspot_ssid", Static).update(f"Hotspot SSID: [bold]{ssid}[/] ({hidden})")
             
-            leases = await self.run_sys_cmd("cat /var/lib/misc/dnsmasq.leases 2>/dev/null | wc -l")
-            client_count = leases if leases else "0"
+            # ⚡ Bolt Optimization: Replaced heavy subprocess "cat | wc -l" with native Python line counting
+            client_count = "0"
+            try:
+                count = 0
+                with open("/var/lib/misc/dnsmasq.leases", "r") as f:
+                    for _ in f:
+                        count += 1
+                client_count = str(count)
+            except OSError:
+                pass
+
             clients = "Pripojeni klienti" if self.language == "cz" else "Connected clients"
             self.query_one("#txt_hotspot_clients", Static).update(f"{clients}: [bold]{client_count}[/]")
             
