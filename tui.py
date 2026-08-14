@@ -9,6 +9,8 @@ import time
 import os
 import sys
 import socket
+import fcntl
+import struct
 import asyncio
 import shlex
 import ssl
@@ -906,9 +908,29 @@ class RPiDashboard(App):
         try:
             # 1. Local IP
             local_ip = self.get_local_ip() if hasattr(self, "get_local_ip") else "127.0.0.1"
-            # Get other interfaces via ip -br addr
-            ip_info = await self.run_sys_cmd("ip -br addr | grep -v 'lo' | awk '{print $1 \": \" $3}'")
-            ip_str = ip_info.replace("\n", " | ") if ip_info else f"eth0/wlan0: {local_ip}"
+            # ⚡ Bolt Optimization: Replaced heavy subprocess "ip -br addr" with native socket/fcntl calls
+            # Reduces execution time and avoids asyncio.create_subprocess_shell overhead on RPi
+            ip_res = []
+            try:
+                # Use architecture-agnostic /sys/class/net and SIOCGIFADDR
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                for iface in os.listdir("/sys/class/net"):
+                    if iface == "lo":
+                        continue
+                    try:
+                        ip = socket.inet_ntoa(fcntl.ioctl(
+                            s.fileno(),
+                            0x8915,  # SIOCGIFADDR
+                            struct.pack("256s", iface[:15].encode("utf-8"))
+                        )[20:24])
+                        ip_res.append(f"{iface}: {ip}")
+                    except Exception:
+                        pass
+                s.close()
+            except Exception:
+                pass
+
+            ip_str = " | ".join(ip_res) if ip_res else f"eth0/wlan0: {local_ip}"
             self.query_one("#txt_network_info", Static).update(f"IPs: {ip_str}")
             
             # 2. Tailscale Status

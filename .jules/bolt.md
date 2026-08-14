@@ -4,3 +4,6 @@
 ## 2024-11-20 - [File I/O vs Subprocess Overhead]
 **Learning:** Calling `asyncio.create_subprocess_shell` repeatedly for trivial commands like `grep` or `cat | wc -l` (e.g. inside periodic polling functions like `update_wifi_hotspot_info`) incurs a significant CPU and memory overhead on resource-constrained hardware like the Raspberry Pi. The event loop can get bogged down scheduling these subprocesses.
 **Action:** Replace shell subprocess calls for reading files or counting lines with native Python `open()` and iteration. This eliminates subprocess overhead and avoids blocking or timeout issues with hanging shells, especially on slow SD cards or restricted CPUs.
+## 2024-11-21 - [File I/O vs Subprocess Overhead II]
+**Learning:** Similarly to file reading, using shell subprocesses for network interface parsing (`ip -br addr | grep | awk`) introduces high latency and unnecessary shell and command startup overhead on low-end hardware.
+**Action:** Replace shell-based interface querying with native Python standard library methods like `socket` and `fcntl.ioctl(..., SIOCGIFCONF, ...)`. This approach avoids starting a new process, dramatically cuts down latency, and prevents event loop blocking.
