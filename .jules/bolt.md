@@ -4,3 +4,6 @@
 ## 2024-11-20 - [File I/O vs Subprocess Overhead]
 **Learning:** Calling `asyncio.create_subprocess_shell` repeatedly for trivial commands like `grep` or `cat | wc -l` (e.g. inside periodic polling functions like `update_wifi_hotspot_info`) incurs a significant CPU and memory overhead on resource-constrained hardware like the Raspberry Pi. The event loop can get bogged down scheduling these subprocesses.
 **Action:** Replace shell subprocess calls for reading files or counting lines with native Python `open()` and iteration. This eliminates subprocess overhead and avoids blocking or timeout issues with hanging shells, especially on slow SD cards or restricted CPUs.
+## 2026-08-17 - [Native socket IP parsing over subprocess]
+**Learning:** Found a performance bottleneck in `tui.py` during periodic network checks (`update_network_info`). Calling `asyncio.create_subprocess_shell` repeatedly for `ip -br addr` and `tailscale ip -4` incurs a significant CPU and memory overhead on resource-constrained hardware like the Raspberry Pi.
+**Action:** Replaced shell subprocess network interface checks with native Python `socket` and `fcntl.ioctl` SIOCGIFADDR syscalls. This eliminates process creation overhead entirely and resolves IPs instantly via the kernel, providing a smoother TUI experience without blocking the event loop or bogging down the task scheduler.
