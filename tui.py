@@ -11,6 +11,8 @@ import sys
 import socket
 import asyncio
 import shlex
+import fcntl
+import struct
 import ssl
 import threading
 import urllib.error
@@ -904,15 +906,40 @@ class RPiDashboard(App):
     async def update_network_info(self) -> None:
         """Fetch and display active network interface IPs and Tailscale status."""
         try:
-            # 1. Local IP
-            local_ip = self.get_local_ip() if hasattr(self, "get_local_ip") else "127.0.0.1"
-            # Get other interfaces via ip -br addr
-            ip_info = await self.run_sys_cmd("ip -br addr | grep -v 'lo' | awk '{print $1 \": \" $3}'")
-            ip_str = ip_info.replace("\n", " | ") if ip_info else f"eth0/wlan0: {local_ip}"
+            # ⚡ Bolt Optimization: Replaced heavy subprocess "ip -br addr" and "tailscale ip" with native socket parsing
+            ips = []
+            ts_ip = None
+
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                for iface in os.listdir('/sys/class/net/'):
+                    if iface != 'lo':
+                        try:
+                            # Use fcntl to get interface IP
+                            ip = socket.inet_ntoa(fcntl.ioctl(
+                                s.fileno(),
+                                0x8915,  # SIOCGIFADDR
+                                struct.pack('256s', iface[:15].encode('utf-8'))
+                            )[20:24])
+                            if iface.startswith('tailscale'):
+                                ts_ip = ip
+                            else:
+                                ips.append(f"{iface}: {ip}")
+                        except IOError:
+                            pass
+            except FileNotFoundError:
+                pass
+            finally:
+                s.close()
+
+            ip_str = " | ".join(ips)
+            if not ip_str:
+                local_ip = self.get_local_ip() if hasattr(self, "get_local_ip") else "127.0.0.1"
+                ip_str = f"eth0/wlan0: {local_ip}"
+
             self.query_one("#txt_network_info", Static).update(f"IPs: {ip_str}")
             
             # 2. Tailscale Status
-            ts_ip = await self.run_sys_cmd("tailscale ip -4")
             if ts_ip:
                 self.query_one("#txt_tailscale_info", Static).update(f"Tailscale IP: [bold green]{ts_ip}[/]")
             else:
