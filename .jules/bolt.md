@@ -4,3 +4,6 @@
 ## 2024-11-20 - [File I/O vs Subprocess Overhead]
 **Learning:** Calling `asyncio.create_subprocess_shell` repeatedly for trivial commands like `grep` or `cat | wc -l` (e.g. inside periodic polling functions like `update_wifi_hotspot_info`) incurs a significant CPU and memory overhead on resource-constrained hardware like the Raspberry Pi. The event loop can get bogged down scheduling these subprocesses.
 **Action:** Replace shell subprocess calls for reading files or counting lines with native Python `open()` and iteration. This eliminates subprocess overhead and avoids blocking or timeout issues with hanging shells, especially on slow SD cards or restricted CPUs.
+## 2024-11-21 - [Native I/O Socket Leak Risk]
+**Learning:** Replacing shell subprocess calls (like `ip -br addr`) with native Python socket and `fcntl.ioctl` calls is an excellent optimization for reducing asyncio event loop overhead on low-end hardware. However, doing this inside a periodic polling function creates a severe risk of file descriptor leaks if the socket isn't closed.
+**Action:** Always explicitly close sockets (e.g., using `with contextlib.closing(socket.socket(...)) as s:`) when using them for low-level system operations to avoid crashing the application via file descriptor exhaustion.

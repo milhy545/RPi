@@ -235,6 +235,8 @@ class SystemMetricsMixin:
         type(self)._cached_ip_time = now
         return ip
 
+
+
 class SystemStats(Static, SystemMetricsMixin):
     """Show live system load from /proc and /sys."""
     def on_mount(self) -> None:
@@ -871,6 +873,35 @@ class RPiDashboard(App):
             self.write_log(f"[ERROR] run_sys_cmd failed: {e}")
         return ""
 
+    def get_interfaces_info(self) -> tuple[str, str | None]:
+        """
+        ⚡ Bolt Optimization: Uses native socket and fcntl.ioctl to get network interfaces.
+        Replaces heavy shell subprocess calls like 'ip -br addr' and 'tailscale ip -4'
+        which cause severe asyncio event loop overhead on low-end hardware.
+        """
+        interfaces = []
+        ts_ip = None
+        try:
+            import socket, fcntl, struct
+            import contextlib
+            for if_index, if_name in socket.if_nameindex():
+                if if_name != "lo":
+                    try:
+                        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+                            ip = socket.inet_ntoa(fcntl.ioctl(
+                                s.fileno(),
+                                0x8915,  # SIOCGIFADDR
+                                struct.pack('256s', if_name[:15].encode('utf-8'))
+                            )[20:24])
+                            interfaces.append(f"{if_name}: {ip}")
+                            if if_name.startswith("tailscale") or if_name.startswith("tail0"):
+                                ts_ip = ip
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return " | ".join(interfaces), ts_ip
+
     async def update_settings_data(self) -> None:
         """Refresh all settings panel widgets with system configuration data (with TTL and tab check)."""
         try:
@@ -906,13 +937,14 @@ class RPiDashboard(App):
         try:
             # 1. Local IP
             local_ip = self.get_local_ip() if hasattr(self, "get_local_ip") else "127.0.0.1"
-            # Get other interfaces via ip -br addr
-            ip_info = await self.run_sys_cmd("ip -br addr | grep -v 'lo' | awk '{print $1 \": \" $3}'")
-            ip_str = ip_info.replace("\n", " | ") if ip_info else f"eth0/wlan0: {local_ip}"
+
+            # ⚡ Bolt Optimization: Use native Python to get IP info without creating subprocesses
+            ip_info, ts_ip = self.get_interfaces_info() if hasattr(self, "get_interfaces_info") else ("", None)
+
+            ip_str = ip_info if ip_info else f"eth0/wlan0: {local_ip}"
             self.query_one("#txt_network_info", Static).update(f"IPs: {ip_str}")
             
             # 2. Tailscale Status
-            ts_ip = await self.run_sys_cmd("tailscale ip -4")
             if ts_ip:
                 self.query_one("#txt_tailscale_info", Static).update(f"Tailscale IP: [bold green]{ts_ip}[/]")
             else:
