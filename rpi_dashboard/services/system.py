@@ -5,6 +5,8 @@ Handles system stats, restart, and hardware monitoring.
 
 import json
 import os
+import math
+import shutil
 import socket
 import subprocess
 import time
@@ -67,20 +69,35 @@ def get_cpu_temp() -> float:
         return 0.0
 
 
+def _format_size(size_bytes: int) -> str:
+    if size_bytes == 0:
+        return "0"
+    size_name = ("B", "K", "M", "G", "T", "P", "E", "Z", "Y")
+    i = int(math.floor(math.log(size_bytes, 1024)))
+    p = math.pow(1024, i)
+    s = round(size_bytes / p, 1)
+    if s.is_integer():
+        return f"{int(s)}{size_name[i]}"
+    return f"{s:.1f}{size_name[i]}"
+
+
 def get_disk_usage() -> Dict[str, Any]:
     """Get disk usage for root partition."""
     try:
-        r = _run(["df", "-h", "/"], t=3)
-        lines = r.stdout.strip().split("\n")
-        if len(lines) >= 2:
-            parts = lines[1].split()
-            if len(parts) >= 5:
-                return {
-                    "total": parts[1],
-                    "used": parts[2],
-                    "available": parts[3],
-                    "percent": parts[4],
-                }
+        # Bolt Performance Optimization:
+        # Replaced expensive subprocess shell call (`df -h`) with native
+        # Python shutil.disk_usage to avoid process creation overhead.
+        usage = shutil.disk_usage("/")
+        total_b = usage.total
+        used_b = usage.used
+        avail_b = usage.free
+        percent = math.ceil((used_b / total_b) * 100) if total_b > 0 else 0
+        return {
+            "total": _format_size(total_b),
+            "used": _format_size(used_b),
+            "available": _format_size(avail_b),
+            "percent": f"{percent}%",
+        }
     except Exception:
         pass
     return {"total": "0", "used": "0", "available": "0", "percent": "0%"}

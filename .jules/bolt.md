@@ -7,3 +7,7 @@
 ## 2024-11-21 - [Native I/O Socket Leak Risk]
 **Learning:** Replacing shell subprocess calls (like `ip -br addr`) with native Python socket and `fcntl.ioctl` calls is an excellent optimization for reducing asyncio event loop overhead on low-end hardware. However, doing this inside a periodic polling function creates a severe risk of file descriptor leaks if the socket isn't closed.
 **Action:** Always explicitly close sockets (e.g., using `with contextlib.closing(socket.socket(...)) as s:`) when using them for low-level system operations to avoid crashing the application via file descriptor exhaustion.
+
+## 2024-11-23 - [Subprocess vs Native Python shutil]
+**Learning:** Found a performance bottleneck in `rpi_dashboard/services/system.py` where `subprocess.run(["df", "-h", "/"])` was used to calculate disk usage. Subprocess calls are computationally expensive, especially on a resource-constrained hardware like the Raspberry Pi, taking ~3ms per call compared to <0.1ms using native Python calls (e.g. `shutil.disk_usage`).
+**Action:** Replaced the `df` subprocess call with native Python `shutil.disk_usage("/")`. Added a `_format_size` helper function to keep the API response human-readable formatting compatible with `df -h`. Always favor native Python I/O over subprocess calls where possible to avoid the CPU cost of process creation on low-end hardware.
