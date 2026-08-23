@@ -226,8 +226,15 @@ def _taskset_mask(pid: str) -> str:
     if not pid or pid == "0":
         return "N/A"
     try:
-        r = subprocess.check_output(["taskset", "-p", pid], text=True).strip()
-        return r.split(":")[-1].strip()
+        # ⚡ Bolt Optimization: Use native Python to read CPU affinity
+        # Replaced expensive `subprocess.check_output(["taskset", ...])` with
+        # native file I/O to avoid process creation overhead on Raspberry Pi.
+        # This makes the `/system/status` API much faster.
+        with open(f"/proc/{pid}/status", "r") as f:
+            for line in f:
+                if line.startswith("Cpus_allowed:"):
+                    return line.split(":")[1].strip()
+        return "N/A"
     except Exception:
         return "N/A"
 
