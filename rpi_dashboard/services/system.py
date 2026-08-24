@@ -248,12 +248,29 @@ def _mask_to_cores(mask: str) -> str:
         return "?"
 
 
+def _get_pid_by_name(name: str) -> str:
+    """Find process ID by name natively to avoid expensive subprocess calls."""
+    try:
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/comm", "r") as f:
+                        if f.read().strip() == name:
+                            return pid
+                except (IOError, OSError):
+                    pass
+    except OSError:
+        pass
+    return ""
+
+
 def get_system_status() -> Dict[str, Any]:
     """Return CPU affinity/status info used by the legacy WebUI."""
-    try:
-        mpv_pid = subprocess.check_output(["pgrep", "-x", "mpv"], text=True).strip().splitlines()[0]
-    except Exception:
-        mpv_pid = ""
+    # ⚡ Bolt Optimization: Use native Python procfs reading instead of `pgrep`
+    # Replaced expensive `subprocess.check_output(["pgrep", "-x", "mpv"])` with
+    # native file I/O to avoid process creation overhead on Raspberry Pi.
+    # This makes the API faster and reduces system load.
+    mpv_pid = _get_pid_by_name("mpv")
     dash_pid = _unit_main_pid("dashboard@milhy777")
     keys_pid = _unit_main_pid("keys2mpv")
     ws_pid = _unit_main_pid("webserver")
