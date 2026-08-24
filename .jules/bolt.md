@@ -14,3 +14,7 @@
 ## 2026-07-26 - Native CPU Affinity Reading
 **Learning:** Querying CPU affinity can be done significantly faster (~1000x) by directly reading the `Cpus_allowed:` field in `/proc/[pid]/status` with native Python file I/O instead of spawning an expensive `taskset` subprocess, avoiding process creation overhead on resource-constrained hardware like the Raspberry Pi.
 **Action:** When querying basic system or process states on low-end hardware, look for a corresponding `/proc` or `/sys` file (like `/proc/[pid]/status`) and use Python's native file I/O rather than shelling out to GNU coreutils or system binaries like `taskset`.
+
+## 2024-05-18 - [Replacing Subprocess pgrep with Native procfs]
+**Learning:** Checking for process existence using `subprocess.check_output(["pgrep", ...])` is extremely slow on resource-constrained hardware like the Raspberry Pi because it spins up a full child process. In benchmark tests, traversing `/proc/<pid>/comm` natively was ~4x faster than executing `pgrep`.
+**Action:** When you need to check if a process is running (e.g. mpv, gmediarender), iterate over `/proc` directories and read `/comm` or `/cmdline` natively in Python, handling `OSError`/`IOError` safely, rather than invoking shell commands.

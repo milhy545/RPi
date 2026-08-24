@@ -142,8 +142,7 @@ def test_get_system_status_tolerates_all_command_failures():
     from rpi_dashboard.services.system import get_system_status
 
     with patch(
-        "rpi_dashboard.services.system.subprocess.check_output",
-        side_effect=subprocess.CalledProcessError(1, ["pgrep", "-x", "mpv"]),
+        "rpi_dashboard.services.system._get_pid_by_name", return_value=""
     ), patch(
         "rpi_dashboard.services.system._run",
         side_effect=FileNotFoundError("systemctl not found"),
@@ -166,14 +165,11 @@ def test_get_system_status_partial_failure():
         unit = cmd[cmd.index("show") + 1] if "show" in cmd else ""
         if unit == "dashboard@milhy777":
             return MagicMock(returncode=0, stdout="1234")
-        if cmd[0] == "pgrep":
-            return MagicMock(returncode=1, stdout="", stderr="no mpv")
         # Every other systemctl call fails
         raise FileNotFoundError("no such binary")
 
     with patch(
-        "rpi_dashboard.services.system.subprocess.check_output",
-        side_effect=subprocess.CalledProcessError(1, ["pgrep", "-x", "mpv"]),
+        "rpi_dashboard.services.system._get_pid_by_name", return_value=""
     ), patch("rpi_dashboard.services.system._run", side_effect=_run_side_effect):
         result = get_system_status()
 
