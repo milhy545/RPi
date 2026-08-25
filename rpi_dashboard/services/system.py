@@ -7,8 +7,13 @@ import json
 import os
 import math
 import shutil
+import array
+import contextlib
+import fcntl
 import socket
+import struct
 import subprocess
+import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,6 +23,53 @@ from config import HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, PORT
 def _run(cmd, t=5):
     """Run a command with timeout."""
     return subprocess.run(cmd, capture_output=True, text=True, timeout=t)
+
+
+def _get_ips_native() -> List[str]:
+    """Retrieve active IPv4 addresses natively via socket ioctl (SIOCGIFCONF)."""
+    try:
+        # Determine architecture struct size and pack format (32-bit vs 64-bit)
+        # 64-bit systems usually use 40 bytes and 'iP' format.
+        # 32-bit systems (like standard Raspberry Pi OS) use 32 bytes and 'iI' format.
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        pack_format = 'iP' if is_64bits else 'iI'
+
+        max_possible = 128
+        bytes_num = max_possible * struct_size
+
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+            names = array.array('B', b'\0' * bytes_num)
+            outbytes = struct.unpack(pack_format, fcntl.ioctl(
+                s.fileno(),
+                0x8912,  # SIOCGIFCONF
+                struct.pack(pack_format, bytes_num, names.buffer_info()[0])
+            ))[0]
+            namestr = names.tobytes()
+            ips = []
+            for i in range(0, outbytes, struct_size):
+                name = namestr[i:i+16].split(b'\0', 1)[0]
+                ip = socket.inet_ntoa(namestr[i+20:i+24])
+                if name != b'lo':
+                    ips.append(ip)
+            return ips
+    except Exception:
+        return []
+
+
+def _get_gateway_native() -> Optional[str]:
+    """Retrieve default gateway natively by reading /proc/net/route."""
+    try:
+        with open("/proc/net/route", "r") as f:
+            for line in f:
+                fields = line.strip().split()
+                # field 1: Destination (00000000 is default route)
+                if len(fields) > 7 and fields[1] == '00000000':
+                    hex_ip = fields[2]
+                    return socket.inet_ntoa(struct.pack('<L', int(hex_ip, 16)))
+    except Exception:
+        pass
+    return None
 
 
 def get_cpu_usage() -> float:
@@ -395,20 +447,27 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+        # ⚡ Bolt Optimization: Use native Python socket/file I/O
+        # Replaced expensive subprocess calls for `hostname -I` and `ip route`
+        # with native C-struct unpacking via ioctl and parsing /proc/net/route.
+        # This dramatically reduces overhead on resource-constrained hardware.
+        ips = _get_ips_native()
+        if not ips:
+            # Fallback to subprocess if native method fails
+            r = _run(["hostname", "-I"], t=3)
+            ips = r.stdout.strip().split()
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        gateway = _get_gateway_native()
+        if gateway is None:
+            # Fallback to subprocess if native method fails
+            r2 = _run(["ip", "route", "show", "default"], t=3)
+            for line in r2.stdout.split("\n"):
+                if "default via" in line:
+                    parts = line.split()
+                    idx = parts.index("via")
+                    if idx + 1 < len(parts):
+                        gateway = parts[idx + 1]
+                    break
 
         return {
             "ips": ips,

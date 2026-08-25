@@ -18,3 +18,7 @@
 ## 2024-05-18 - [Replacing Subprocess pgrep with Native procfs]
 **Learning:** Checking for process existence using `subprocess.check_output(["pgrep", ...])` is extremely slow on resource-constrained hardware like the Raspberry Pi because it spins up a full child process. In benchmark tests, traversing `/proc/<pid>/comm` natively was ~4x faster than executing `pgrep`.
 **Action:** When you need to check if a process is running (e.g. mpv, gmediarender), iterate over `/proc` directories and read `/comm` or `/cmdline` natively in Python, handling `OSError`/`IOError` safely, rather than invoking shell commands.
+
+## 2026-08-25 - Native Network Interface Discovery
+**Learning:** Querying basic network states (like IP addresses and the default gateway) using `subprocess.run(["hostname", "-I"])` and `subprocess.run(["ip", "route", "show", "default"])` is computationally expensive and slow due to process creation overhead. On low-end hardware like the Raspberry Pi, it's significantly faster (~70x) to extract IP addresses natively via `socket` and `fcntl.ioctl` (using `SIOCGIFCONF`) and the gateway by directly parsing `/proc/net/route`.
+**Action:** When gathering network interface data, favor using Python's native socket IOCTL functionality and parsing `/proc/net` files before shelling out to system utilities. Always wrap raw sockets in a context manager (`contextlib.closing`) to prevent file descriptor leaks.
