@@ -238,3 +238,15 @@ def test_unit_main_pid_handles_expected_command_failures():
         side_effect=subprocess.TimeoutExpired(["systemctl"], timeout=5),
     ):
         assert _unit_main_pid("slow") == ""
+
+def test_get_ips_native_exception():
+    """Test _get_ips_native exception handling."""
+    from rpi_dashboard.services.system import _get_ips_native
+    with patch("rpi_dashboard.services.system.socket.socket", side_effect=Exception("mocked error")):
+        assert _get_ips_native() == []
+
+def test_get_gateway_native_exception():
+    """Test _get_gateway_native exception handling."""
+    from rpi_dashboard.services.system import _get_gateway_native
+    with patch("builtins.open", side_effect=Exception("mocked error")):
+        assert _get_gateway_native() is None
