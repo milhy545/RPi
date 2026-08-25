@@ -85,15 +85,37 @@ def test_restart_dashboard():
 
 
 def test_get_network_info():
-    """Test network info collection."""
+    """Test network info collection fallback to subprocess."""
     from rpi_dashboard.services.system import get_network_info
-    with patch("rpi_dashboard.services.system._run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="192.168.0.100\n"
-        )
+
+    # Test fallback path when native methods fail
+    with patch("rpi_dashboard.services.system._get_ips_native", return_value=[]), \
+         patch("rpi_dashboard.services.system._get_gateway_native", return_value=None), \
+         patch("rpi_dashboard.services.system._run") as mock_run:
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="192.168.0.100\n"),
+            MagicMock(returncode=0, stdout="default via 192.168.0.1 dev wlan0 proto dhcp src 192.168.0.100 metric 303\n")
+        ]
+
         result = get_network_info()
-        assert "ips" in result
+        assert result["ips"] == ["192.168.0.100"]
+        assert result["gateway"] == "192.168.0.1"
+
+
+def test_get_network_info_native():
+    """Test network info collection using native methods."""
+    from rpi_dashboard.services.system import get_network_info
+
+    with patch("rpi_dashboard.services.system._get_ips_native", return_value=["10.0.0.5"]), \
+         patch("rpi_dashboard.services.system._get_gateway_native", return_value="10.0.0.1"), \
+         patch("rpi_dashboard.services.system._run") as mock_run:
+
+        result = get_network_info()
+        assert result["ips"] == ["10.0.0.5"]
+        assert result["gateway"] == "10.0.0.1"
+        # Subprocess should not be called if native methods succeed
+        mock_run.assert_not_called()
 
 
 def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
@@ -216,3 +238,15 @@ def test_unit_main_pid_handles_expected_command_failures():
         side_effect=subprocess.TimeoutExpired(["systemctl"], timeout=5),
     ):
         assert _unit_main_pid("slow") == ""
+
+def test_get_ips_native_exception():
+    """Test _get_ips_native exception handling."""
+    from rpi_dashboard.services.system import _get_ips_native
+    with patch("rpi_dashboard.services.system.socket.socket", side_effect=Exception("mocked error")):
+        assert _get_ips_native() == []
+
+def test_get_gateway_native_exception():
+    """Test _get_gateway_native exception handling."""
+    from rpi_dashboard.services.system import _get_gateway_native
+    with patch("builtins.open", side_effect=Exception("mocked error")):
+        assert _get_gateway_native() is None
