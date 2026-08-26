@@ -18,3 +18,7 @@
 ## 2024-05-18 - [Replacing Subprocess pgrep with Native procfs]
 **Learning:** Checking for process existence using `subprocess.check_output(["pgrep", ...])` is extremely slow on resource-constrained hardware like the Raspberry Pi because it spins up a full child process. In benchmark tests, traversing `/proc/<pid>/comm` natively was ~4x faster than executing `pgrep`.
 **Action:** When you need to check if a process is running (e.g. mpv, gmediarender), iterate over `/proc` directories and read `/comm` or `/cmdline` natively in Python, handling `OSError`/`IOError` safely, rather than invoking shell commands.
+
+## 2026-08-26 - [Network Status Subprocess Overhead Elimination]
+**Learning:** Na zařízeních s omezeným výkonem CPU (jako je Raspberry Pi v tomto projektu) je volání externích commandů (`subprocess.run(["hostname", "-I"])` nebo `ip route`) extrémně nákladné z důvodu process creation overheadu a context switchingu. Navíc `sys.maxsize > 2**32` ovlivňuje velikost structu v ioctl (`SIOCGIFCONF`).
+**Action:** Přistupovat k systémovým síťovým informacím výhradně přes nativní rozhraní `/proc/net/route` pro defaultní brány a pomocí `socket` a `fcntl.ioctl(..., SIOCGIFCONF)` pro parsování lokálních IPs (spolu s `contextlib.closing` pro ochranu před file descriptor leakiem), kdykoliv je zapotřebí snížit odezvu WebUI API endpointů volajících na pozadí síťové sondy.

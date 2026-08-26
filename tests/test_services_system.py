@@ -87,13 +87,12 @@ def test_restart_dashboard():
 def test_get_network_info():
     """Test network info collection."""
     from rpi_dashboard.services.system import get_network_info
-    with patch("rpi_dashboard.services.system._run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="192.168.0.100\n"
-        )
+    with patch("rpi_dashboard.services.system._get_local_ips", return_value=["192.168.0.100"]), \
+         patch("rpi_dashboard.services.system._get_default_gateway", return_value="192.168.0.1"):
         result = get_network_info()
         assert "ips" in result
+        assert "192.168.0.100" in result["ips"]
+        assert result["gateway"] == "192.168.0.1"
 
 
 def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
@@ -101,7 +100,7 @@ def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
     from rpi_dashboard.services.system import dashboard_hostnames_and_ips
 
     with patch("rpi_dashboard.services.system.socket.gethostname", return_value="rpi-tv"):
-        with patch("rpi_dashboard.services.system.subprocess.check_output", return_value="192.168.0.100\n"):
+        with patch("rpi_dashboard.services.system._get_local_ips", return_value=["192.168.0.100"]):
             with patch(
                 "rpi_dashboard.services.system.subprocess.run",
                 side_effect=[

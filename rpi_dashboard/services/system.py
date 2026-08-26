@@ -6,6 +6,11 @@ Handles system stats, restart, and hardware monitoring.
 import json
 import os
 import math
+import fcntl
+import struct
+import sys
+import array
+from contextlib import closing
 import shutil
 import socket
 import subprocess
@@ -156,6 +161,45 @@ def _vcgencmd_core_mhz() -> Optional[int]:
         return None
 
 
+
+def _get_local_ips() -> List[str]:
+    """Get local IP addresses natively using SIOCGIFCONF."""
+    ips = set()
+    is_64bits = sys.maxsize > 2**32
+    struct_size = 40 if is_64bits else 32
+    pack_fmt = 'iP' if is_64bits else 'iI'
+
+    try:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+            max_possible = 128
+            bytes_len = max_possible * struct_size
+            names = array.array('B', b'\0' * bytes_len)
+            outbytes = struct.unpack(pack_fmt, fcntl.ioctl(
+                s.fileno(),
+                0x8912,  # SIOCGIFCONF
+                struct.pack(pack_fmt, bytes_len, names.buffer_info()[0])
+            ))[0]
+            namestr = names.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip = socket.inet_ntoa(namestr[i+20:i+24])
+                if ip != "127.0.0.1":
+                    ips.add(ip)
+    except Exception:
+        pass
+    return list(ips)
+
+def _get_default_gateway() -> Optional[str]:
+    """Get default gateway natively from /proc/net/route."""
+    try:
+        with open("/proc/net/route") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) > 2 and parts[1] == '00000000':
+                    return socket.inet_ntoa(struct.pack("<L", int(parts[2], 16)))
+    except Exception:
+        pass
+    return None
+
 def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     names = {"rpi-tv", "rpi-tv.local", "localhost"}
     ips = {"127.0.0.1"}
@@ -167,7 +211,8 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     except Exception:
         pass
     try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
+        # ⚡ Bolt Optimization: Use native SIOCGIFCONF instead of `hostname -I`
+        for ip in _get_local_ips():
             if ip:
                 ips.add(ip)
     except Exception:
@@ -395,20 +440,10 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
-
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        # ⚡ Bolt Optimization: Use native python network checks
+        # Replaced expensive `hostname -I` and `ip route` subprocesses
+        ips = _get_local_ips()
+        gateway = _get_default_gateway()
 
         return {
             "ips": ips,
