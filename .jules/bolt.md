@@ -18,3 +18,7 @@
 ## 2024-05-18 - [Replacing Subprocess pgrep with Native procfs]
 **Learning:** Checking for process existence using `subprocess.check_output(["pgrep", ...])` is extremely slow on resource-constrained hardware like the Raspberry Pi because it spins up a full child process. In benchmark tests, traversing `/proc/<pid>/comm` natively was ~4x faster than executing `pgrep`.
 **Action:** When you need to check if a process is running (e.g. mpv, gmediarender), iterate over `/proc` directories and read `/comm` or `/cmdline` natively in Python, handling `OSError`/`IOError` safely, rather than invoking shell commands.
+
+## 2024-11-23 - [Subprocess systemctl is-active Elimination]
+**Learning:** To efficiently check if a systemd service is active natively in Python without the heavy overhead of spawning a `systemctl is-active` subprocess, check for the existence of its invocation symlink.
+**Action:** Use `os.path.lexists(f'/run/systemd/units/invocation:{service_name}.service')` to avoid process creation overhead on low-end hardware.
