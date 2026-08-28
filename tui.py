@@ -1382,11 +1382,12 @@ class RPiDashboard(App):
             clients = "Pripojeni klienti" if self.language == "cz" else "Connected clients"
             self.query_one("#txt_hotspot_clients", Static).update(f"{clients}: [bold]{client_count}[/]")
             
-            hotspot_active = await self.run_sys_cmd("systemctl is-active hostapd")
-            self.query_one("#switch_hotspot", Switch).value = (hotspot_active == "active")
+            # ⚡ Bolt Optimization: Replace systemctl is-active subprocesses with native os.path.lexists to avoid subprocess overhead on RPi
+            hotspot_active = os.path.lexists('/run/systemd/units/invocation:hostapd.service')
+            self.query_one("#switch_hotspot", Switch).value = hotspot_active
             
-            raspotify_active = await self.run_sys_cmd("systemctl is-active raspotify")
-            self.query_one("#switch_raspotify", Switch).value = (raspotify_active == "active")
+            raspotify_active = os.path.lexists('/run/systemd/units/invocation:raspotify.service')
+            self.query_one("#switch_raspotify", Switch).value = raspotify_active
         except Exception as e:
             self.write_log(f"[WARN] Exception: {e}")
 
