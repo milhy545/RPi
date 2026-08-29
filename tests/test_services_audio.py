@@ -4,6 +4,51 @@ from unittest.mock import patch, MagicMock
 import json
 
 
+def test_gmrender_procfs_parsing():
+    """Test native procfs parsing for gmediarender pid and status."""
+    from rpi_dashboard.services.audio_dlna import _gmrender_running, _gmrender_pid
+
+    def fake_listdir(path):
+        if path == "/proc":
+            return ["100", "200", "not-a-pid"]
+        return []
+
+    def fake_open(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if path == "/proc/100/cmdline":
+            mock = MagicMock()
+            mock.__enter__.return_value.read.return_value = "systemd\x00"
+            return mock
+        elif path == "/proc/200/cmdline":
+            mock = MagicMock()
+            mock.__enter__.return_value.read.return_value = "/usr/bin/gmediarender\x00-f\x00MyDevice"
+            return mock
+        raise OSError("File not found")
+
+    with patch("os.listdir", side_effect=fake_listdir), patch("builtins.open", side_effect=fake_open):
+        assert _gmrender_running() is True
+        assert _gmrender_pid() == 200
+
+def test_gmrender_procfs_parsing_not_found():
+    """Test native procfs parsing when gmediarender is not running."""
+    from rpi_dashboard.services.audio_dlna import _gmrender_running, _gmrender_pid
+
+    def fake_listdir(path):
+        if path == "/proc":
+            return ["100"]
+        return []
+
+    def fake_open(path, mode="r", buffering=-1, encoding=None, errors=None, newline=None, closefd=True, opener=None):
+        if path == "/proc/100/cmdline":
+            mock = MagicMock()
+            mock.__enter__.return_value.read.return_value = "systemd\x00"
+            return mock
+        raise OSError("File not found")
+
+    with patch("os.listdir", side_effect=fake_listdir), patch("builtins.open", side_effect=fake_open):
+        assert _gmrender_running() is False
+        assert _gmrender_pid() is None
+
+
 def test_classify_sink_hdmi():
     """Test HDMI sink classification."""
     from rpi_dashboard.services.audio import _classify_sink

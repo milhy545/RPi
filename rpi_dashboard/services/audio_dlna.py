@@ -61,22 +61,24 @@ def _stop_pa_dlna() -> None:
     _pa_dlna_proc = None
 
 
-def _gmrender_running() -> bool:
-    try:
-        r = subprocess.run(["pgrep", "-f", "gmediarender"], capture_output=True, text=True, timeout=2)
-        return r.returncode == 0 and bool(r.stdout.strip())
-    except Exception:
-        return False
-
-
 def _gmrender_pid() -> Optional[int]:
+    # ⚡ Bolt Optimization: Replace subprocess pgrep with native procfs traversal
     try:
-        r = subprocess.run(["pgrep", "-f", "gmediarender"], capture_output=True, text=True, timeout=2)
-        if r.returncode == 0 and r.stdout.strip():
-            return int(r.stdout.strip().splitlines()[0])
+        for pid_str in os.listdir("/proc"):
+            if pid_str.isdigit():
+                try:
+                    with open(f"/proc/{pid_str}/cmdline", "r", errors="ignore") as f:
+                        if "gmediarender" in f.read():
+                            return int(pid_str)
+                except Exception:
+                    pass
     except Exception as exc:
         print(f"[WARN] Swallowed exception: {type(exc).__name__}: {exc}", file=sys.stderr)
     return None
+
+
+def _gmrender_running() -> bool:
+    return _gmrender_pid() is not None
 
 
 def _gmrender_uptime(pid: Optional[int]) -> Optional[int]:
