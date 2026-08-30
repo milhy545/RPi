@@ -57,23 +57,47 @@ def _stop_pa_dlna() -> None:
         except Exception:
             proc.kill()
     else:
-        subprocess.run(["pkill", "-f", f"pa-dlna.*--port {_PA_DLNA_PORT}"], capture_output=True, text=True, timeout=5)
+        needle = f"--port {_PA_DLNA_PORT}"
+        try:
+            for pid in os.listdir("/proc"):
+                if pid.isdigit():
+                    try:
+                        with open(f"/proc/{pid}/cmdline", "rb") as f:
+                            cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                            if "pa-dlna" in cmd and needle in cmd:
+                                os.kill(int(pid), 15)
+                    except (IOError, OSError):
+                        pass
+        except OSError:
+            pass
     _pa_dlna_proc = None
 
 
 def _gmrender_running() -> bool:
     try:
-        r = subprocess.run(["pgrep", "-f", "gmediarender"], capture_output=True, text=True, timeout=2)
-        return r.returncode == 0 and bool(r.stdout.strip())
-    except Exception:
-        return False
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "gmediarender" in cmd:
+                            return True
+                except (IOError, OSError): pass
+    except OSError: pass
+    return False
 
 
 def _gmrender_pid() -> Optional[int]:
     try:
-        r = subprocess.run(["pgrep", "-f", "gmediarender"], capture_output=True, text=True, timeout=2)
-        if r.returncode == 0 and r.stdout.strip():
-            return int(r.stdout.strip().splitlines()[0])
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "gmediarender" in cmd:
+                            return int(pid)
+                except (IOError, OSError): pass
+    except OSError: pass
     except Exception as exc:
         print(f"[WARN] Swallowed exception: {type(exc).__name__}: {exc}", file=sys.stderr)
     return None

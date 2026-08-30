@@ -22,3 +22,6 @@
 ## 2024-11-23 - [Subprocess systemctl is-active Elimination]
 **Learning:** To efficiently check if a systemd service is active natively in Python without the heavy overhead of spawning a `systemctl is-active` subprocess, check for the existence of its invocation symlink.
 **Action:** Use `os.path.lexists(f'/run/systemd/units/invocation:{service_name}.service')` to avoid process creation overhead on low-end hardware.
+## 2024-05-18 - [Eliminating pkill Subprocess Calls]
+**Learning:** While replacing `pgrep` with native `/proc` parsing to find PIDs is a good optimization, continuing to use `subprocess.run(["kill", "-15", pid])` or `subprocess.run(["pkill", "-f", "..."])` defeats some of the purpose by still spinning up a shell process for the termination itself.
+**Action:** When natively parsing the `/proc` filesystem to find a process, terminate it using native Python commands such as `os.kill(int(pid), 15)` rather than shelling out to a termination command.

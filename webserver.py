@@ -175,18 +175,19 @@ def mcmd(*a):
 def mget(p): return mcmd("get_property",p)
 
 def _mpv_pids_for_socket(path=MSOCK):
-    try:
-        r=subprocess.run(["pgrep","-af","mpv"],capture_output=True,text=True,timeout=3)
-    except Exception:
-        return []
     pids=[]
     needle=f"--input-ipc-server={path}"
-    for line in r.stdout.splitlines():
-        parts=line.split(maxsplit=1)
-        if len(parts)<2: continue
-        if needle in parts[1]:
-            try: pids.append(int(parts[0]))
-            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+    try:
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if needle in cmd and "mpv" in cmd:
+                            try: pids.append(int(pid))
+                            except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+                except (IOError, OSError): pass
+    except OSError: pass
     return pids
 
 def _terminate_pids(pids, timeout=3.0):
@@ -1025,10 +1026,18 @@ def audio_select_dlna_renderer(name, location, usn=""):
 def _pa_dlna_running():
     global _pa_dlna_proc
     if _pa_dlna_proc and _pa_dlna_proc.poll() is None: return True
+    needle = f"--port {_PA_DLNA_PORT}"
     try:
-        r=subprocess.run(["pgrep","-f",f"pa-dlna.*--port {_PA_DLNA_PORT}"],capture_output=True,text=True,timeout=2)
-        return r.returncode==0 and bool(r.stdout.strip())
-    except Exception: return False
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "pa-dlna" in cmd and needle in cmd:
+                            return True
+                except (IOError, OSError): pass
+    except OSError: pass
+    return False
 
 def _start_pa_dlna():
     global _pa_dlna_proc
@@ -1045,16 +1054,29 @@ def _start_pa_dlna():
 def _gmrender_running():
     """Check if gmediarender is running."""
     try:
-        r=subprocess.run(["pgrep","-f","gmediarender"],capture_output=True,text=True,timeout=2)
-        return r.returncode==0 and bool(r.stdout.strip())
-    except Exception: return False
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "gmediarender" in cmd:
+                            return True
+                except (IOError, OSError): pass
+    except OSError: pass
+    return False
 
 def _gmrender_pid():
     """Get gmediarender PID."""
     try:
-        r=subprocess.run(["pgrep","-f","gmediarender"],capture_output=True,text=True,timeout=2)
-        if r.returncode==0 and r.stdout.strip():
-            return int(r.stdout.strip().splitlines()[0])
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "gmediarender" in cmd:
+                            return int(pid)
+                except (IOError, OSError): pass
+    except OSError: pass
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return None
 
@@ -1160,7 +1182,17 @@ def audio_disconnect_dlna():
         try: _pa_dlna_proc.wait(timeout=5)
         except Exception: _pa_dlna_proc.kill()
     else:
-        subprocess.run(["pkill","-f",f"pa-dlna.*--port {_PA_DLNA_PORT}"],capture_output=True,text=True,timeout=5)
+        needle = f"--port {_PA_DLNA_PORT}"
+        try:
+            for pid in os.listdir("/proc"):
+                if pid.isdigit():
+                    try:
+                        with open(f"/proc/{pid}/cmdline", "rb") as f:
+                            cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                            if "pa-dlna" in cmd and needle in cmd:
+                                os.kill(int(pid), 15)
+                    except (IOError, OSError): pass
+        except OSError: pass
     return {"ok":True,"running":_pa_dlna_running(),"delay_reset":True}
 
 def audio_keepalive(action, sink=None):
