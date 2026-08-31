@@ -25,3 +25,7 @@
 ## 2024-05-18 - [Eliminating pkill Subprocess Calls]
 **Learning:** While replacing `pgrep` with native `/proc` parsing to find PIDs is a good optimization, continuing to use `subprocess.run(["kill", "-15", pid])` or `subprocess.run(["pkill", "-f", "..."])` defeats some of the purpose by still spinning up a shell process for the termination itself.
 **Action:** When natively parsing the `/proc` filesystem to find a process, terminate it using native Python commands such as `os.kill(int(pid), 15)` rather than shelling out to a termination command.
+
+## 2026-07-26 - [Dynamic Subprocess Exec Fallback]
+**Learning:** `asyncio.create_subprocess_shell` incurs unnecessary CPU and memory overhead on resource-constrained hardware by spawning an intermediate `/bin/sh` shell. This overhead scales up rapidly during periodic polling (like reading Wi-Fi state or Bluetooth devices). Many generic system commands don't actually need shell features.
+**Action:** When creating a generic wrapper for running shell commands (like `run_sys_cmd`), check the command string for shell-specific operators (like `|`, `>`, `<`, `&`, `;`). If none are present, parse the command with `shlex.split()` and use `asyncio.create_subprocess_exec` to avoid the overhead of the intermediate shell process while still supporting arbitrary commands.

@@ -855,11 +855,37 @@ class RPiDashboard(App):
     async def run_sys_cmd(self, cmd: str, timeout: float = 5.0) -> str:
         """Helper to run a shell command asynchronously and return its output."""
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # ⚡ Bolt Optimization: Use create_subprocess_exec instead of create_subprocess_shell
+            # when shell features are not required, avoiding the overhead of spawning /bin/sh.
+            # We also ensure not to split environment variable assignments (e.g. FOO=bar) which require a shell
+            # or cause issues if split naively.
+            has_shell_features = any(char in cmd for char in "|><&;*?$~`()='\"\\") or cmd.strip().startswith("export ") or cmd.strip().startswith("type ") or cmd.strip().startswith("source ")
+
+            if has_shell_features:
+                proc = await asyncio.create_subprocess_shell(
+                    cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                try:
+                    args = shlex.split(cmd)
+                except ValueError as ve:
+                    # Fallback to shell if shlex fails to parse (e.g., mismatched quotes)
+                    proc = await asyncio.create_subprocess_shell(
+                        cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                else:
+                    if not args:
+                        return ""
+                    proc = await asyncio.create_subprocess_exec(
+                        *args,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:
