@@ -25,3 +25,6 @@
 ## 2024-05-18 - [Eliminating pkill Subprocess Calls]
 **Learning:** While replacing `pgrep` with native `/proc` parsing to find PIDs is a good optimization, continuing to use `subprocess.run(["kill", "-15", pid])` or `subprocess.run(["pkill", "-f", "..."])` defeats some of the purpose by still spinning up a shell process for the termination itself.
 **Action:** When natively parsing the `/proc` filesystem to find a process, terminate it using native Python commands such as `os.kill(int(pid), 15)` rather than shelling out to a termination command.
+## 2026-07-26 - [Subprocess vs Native Python shutil.which]
+**Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
+**Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.

@@ -1227,7 +1227,7 @@ def bluetooth_scan_devices(seconds=5):
     return devices_service.bluetooth_scan_devices(seconds)
 
 def _wifi_nmcli_available():
-    return subprocess.run(["bash","-lc","command -v nmcli >/dev/null"],capture_output=True).returncode==0
+    return shutil.which("nmcli") is not None
 
 def wifi_status():
     if _wifi_nmcli_available():
