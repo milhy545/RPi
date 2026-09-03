@@ -28,3 +28,6 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+## 2026-07-26 - [Subprocess Timeout and shell fallback]
+**Learning:** `asyncio.create_subprocess_shell` overhead on Raspberry Pi causes significant latency and increases memory pressure due to extra fork. A missing timeout on subprocess commands can block the event loop for 5s (the default timeout) or forever (if no timeout is implemented), causing UI freezes.
+**Action:** Replace `create_subprocess_shell` with `create_subprocess_exec` by default, securely parsing the command via `shlex.split`, falling back to `create_subprocess_shell` only if shell syntax is strictly detected (`|><&;*?$~`()='"\`). Make sure a timeout is implemented and enforced using `asyncio.wait_for`.
