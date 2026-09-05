@@ -28,3 +28,7 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+
+## 2026-09-05 - [Replacing pkill Subprocesses in Utility Functions]
+**Learning:** Reusing utility functions like `restart_mpv()` which internally call `subprocess.run(['pkill', ...])` introduces significant process creation overhead. Even for occasional operations, replacing this with native Python logic (like `os.kill`) reduces latency and CPU spikes on the Raspberry Pi.
+**Action:** When working on restart or management functions, avoid invoking shell process management commands like `pkill` or `killall`. Use `_get_pid_by_name` to natively locate the process ID and standard `os.kill(pid, signal)` to terminate.
