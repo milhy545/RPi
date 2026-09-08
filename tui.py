@@ -855,11 +855,23 @@ class RPiDashboard(App):
     async def run_sys_cmd(self, cmd: str, timeout: float = 5.0) -> str:
         """Helper to run a shell command asynchronously and return its output."""
         try:
-            proc = await asyncio.create_subprocess_shell(
-                cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # ⚡ Bolt Optimization: Use create_subprocess_exec instead of shell for simple commands
+            # to avoid spawning an unnecessary /bin/sh -c process on resource-constrained hardware.
+            shell_chars = set('|><&;*?$~()=\'"\\')
+            needs_shell = any(c in cmd for c in shell_chars) or any(builtin in cmd for builtin in ("export ", "source "))
+
+            if needs_shell:
+                proc = await asyncio.create_subprocess_shell(
+                    cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                proc = await asyncio.create_subprocess_exec(
+                    *shlex.split(cmd),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             except asyncio.TimeoutError:

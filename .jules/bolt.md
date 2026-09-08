@@ -28,3 +28,7 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+
+## 2024-11-23 - [Subprocess vs Subprocess Shell]
+**Learning:** Using `asyncio.create_subprocess_shell` always spawns a full shell process `/bin/sh -c` before executing the target binary, which adds significant CPU overhead on resource-constrained hardware like the Raspberry Pi.
+**Action:** When replacing shell subprocesses is not possible (no native Python alternative), use `asyncio.create_subprocess_exec(*shlex.split(cmd))` instead of `asyncio.create_subprocess_shell`. Check for shell operators (like `|`, `>`, `&`, `;`, `*`, `?`, `$`, `~`, `(`, `)`, `=`, `'`, `"`, `\`) and builtins (like `export`, `source`) to safely fall back to shell execution only when absolutely necessary.
