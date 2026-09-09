@@ -28,3 +28,7 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+
+## 2026-07-27 - [Native Port Listening Check]
+**Learning:** Found a performance bottleneck in `webserver.py` where `subprocess.run(["sh","-lc","ss -tln 2>/dev/null | grep -q ':9090 '"])` was used to check if Kodi was listening on its JSON-RPC port. Invoking a shell pipeline with `ss` and `grep` creates significant overhead on resource-constrained hardware like the Raspberry Pi, taking ~1.2s to execute.
+**Action:** Replaced the subprocess pipeline with a native Python function `_is_port_listening(port)` that reads and parses `/proc/net/tcp` and `/proc/net/tcp6` to find listening ports natively (checking for state 10 / `TCP_LISTEN`). This reduced the execution time to less than 0.002s, completely avoiding process creation overhead. Always favor reading `/proc` directly over shelling out to network utilities when checking local port states.

@@ -1273,9 +1273,31 @@ def wifi_connect(ssid, password):
             return {"ok": False, "error": f"nmcli failed: {e}"}
     return {"ok":r.returncode==0,"out":(r.stdout+r.stderr).strip()[:300]}
 
+def _is_port_listening(port: int | str) -> bool:
+    try:
+        port = int(port)
+    except ValueError:
+        return False
+    for proto in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(proto, "r") as f:
+                next(f)  # skip header
+                for line in f:
+                    parts = line.split()
+                    if len(parts) > 3:
+                        try:
+                            _, port_hex = parts[1].split(":")
+                            if int(port_hex, 16) == port and int(parts[3], 16) == 10:  # 10 is TCP_LISTEN
+                                return True
+                        except ValueError:
+                            continue
+        except IOError:
+            continue
+    return False
+
 def kodi_status():
     bins={name: (shutil.which(name) or "") for name in ("kodi","kodi-standalone")}
-    port=subprocess.run(["sh","-lc",f"ss -tln 2>/dev/null | grep -q ':{KODI_P} '"],capture_output=True,text=True,timeout=3).returncode==0
+    port=_is_port_listening(KODI_P)
     rpc=kodi_rpc("Player.GetActivePlayers", t=1)
     installed=bool(bins.get("kodi") or bins.get("kodi-standalone"))
     reachable=("error" not in rpc) and (port or rpc.get("result") is not None)
