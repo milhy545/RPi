@@ -368,7 +368,12 @@ def get_https_info() -> Dict[str, Any]:
 def restart_mpv() -> Dict[str, Any]:
     """Restart mpv player."""
     try:
-        _run(["pkill", "-f", "mpv"], t=3)
+        # ⚡ Bolt Optimization: Use native Python process management
+        # Replaced expensive subprocess shell call (`pkill`) with native
+        # procfs parsing and os.kill to avoid process creation overhead.
+        pid = _get_pid_by_name("mpv")
+        if pid:
+            os.kill(int(pid), 15)
         return {"ok": True, "message": "mpv restarted"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
