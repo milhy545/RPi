@@ -10,6 +10,11 @@ import shutil
 import socket
 import subprocess
 import time
+import fcntl
+import struct
+import sys
+import array
+import contextlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, PORT
@@ -395,20 +400,37 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+        # ⚡ Bolt Optimization: Use native Python to get network info
+        # Replaced expensive subprocess shell calls (`hostname -I` and `ip route show default`)
+        # with native socket ioctls and file I/O to avoid process creation overhead on Raspberry Pi.
+        ips = []
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        pack_format = 'iP' if is_64bits else 'iI'
+        names = array.array('B', b'\0' * 4096)
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
+        with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+            outbytes = struct.unpack(pack_format, fcntl.ioctl(
+                s.fileno(),
+                0x8912,  # SIOCGIFCONF
+                struct.pack(pack_format, 4096, names.buffer_info()[0])
+            ))[0]
+            namestr = names.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip = socket.inet_ntoa(namestr[i+20:i+24])
+                if ip != "127.0.0.1":
+                    ips.append(ip)
+
+        # Get default gateway natively
         gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        with open("/proc/net/route", "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 3 and parts[1] == "00000000":
+                    gw_hex = parts[2]
+                    if gw_hex != "00000000":
+                        gateway = socket.inet_ntoa(struct.pack("<L", int(gw_hex, 16)))
+                        break
 
         return {
             "ips": ips,

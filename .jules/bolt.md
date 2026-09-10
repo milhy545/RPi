@@ -28,3 +28,6 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+## 2024-11-23 - [Subprocess vs Native Socket ioctl]
+**Learning:** Found a performance bottleneck in `rpi_dashboard/services/system.py` where `subprocess.run(["hostname", "-I"])` and `subprocess.run(["ip", "route", "show", "default"])` were used to retrieve network information. Subprocess calls are computationally expensive, especially on a resource-constrained hardware like the Raspberry Pi, taking ~0.5s per call. Benchmarks showed that retrieving IPs natively with `SIOCGIFCONF` via `fcntl.ioctl` and parsing `/proc/net/route` natively was ~98% faster.
+**Action:** Replaced `hostname -I` with `socket`, `fcntl.ioctl`, and `struct` to read IP addresses natively, wrapping the socket in `contextlib.closing`. Replaced `ip route` with native parsing of `/proc/net/route`. Always favor native Python system calls (e.g. ioctls or procfs parsing) over subprocess shell commands on low-end hardware.
