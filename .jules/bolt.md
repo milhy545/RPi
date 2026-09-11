@@ -28,3 +28,6 @@
 ## 2026-07-26 - [Subprocess vs Native Python shutil.which]
 **Learning:** Spouštět celý bash proces a command jen kvůli ověření existence binárky (např. pomocí `command -v`) je na malém hardwaru zbytečně nákladné. V benchmarcích bylo nativní Pythoní `shutil.which()` přibližně 1600x rychlejší.
 **Action:** Kdykoliv potřebuješ zjistit, jestli existuje nějaká utilita/binárka v systému, použij nativní `shutil.which(bin) is not None` namísto volání jakéhokoliv shell commandu.
+## 2024-11-23 - [Subprocess ss ss -tln vs Native /proc/net/tcp]
+**Learning:** Checking for listening ports using shell commands like `subprocess.run(["sh","-lc","ss -tln ..."])` is resource-intensive due to the overhead of spawning a shell and running `ss` and `grep`, especially on a Raspberry Pi. Reading `/proc/net/tcp` and `/proc/net/tcp6` directly is much faster and avoids process creation.
+**Action:** When you need to check if a local port is listening, avoid shelling out to network utilities like `ss` or `netstat`. Instead, natively parse `/proc/net/tcp` and `/proc/net/tcp6`, matching the hex-encoded local port and connection state `0A` (TCP_LISTEN).
