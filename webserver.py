@@ -2618,10 +2618,38 @@ def _dashboard_hostnames_and_ips():
         if hn:
             names.add(hn); names.add(f"{hn}.local")
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+
+    # ⚡ Bolt Optimization: Replace `hostname -I` subprocess with native Python to extract IPv4 and IPv6
+    # This avoids the overhead of spawning a shell and process table lookup on RPi.
     try:
-        for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
-            if ip: ips.add(ip)
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+        import fcntl, struct, array
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        pack_format = 'iP' if is_64bits else 'iI'
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            names_arr = array.array('B', b'\0' * 4096)
+            outbytes = struct.unpack(pack_format, fcntl.ioctl(s.fileno(), 0x8912, struct.pack(pack_format, 4096, names_arr.buffer_info()[0])))[0]
+            namestr = names_arr.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip = socket.inet_ntoa(namestr[i+20:i+24])
+                if ip: ips.add(ip)
+    except Exception as e: print(f"[WARN] Native IPv4 extraction failed: {e}", file=sys.stderr)
+
+    try:
+        if os.path.exists("/proc/net/if_inet6"):
+            import ipaddress
+            with open("/proc/net/if_inet6", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if parts:
+                        ip_hex = parts[0]
+                        # Format IPv6: insert colons every 4 characters
+                        ip = ":".join(ip_hex[i:i+4] for i in range(0, 32, 4))
+                        # Basic zero compression (not perfect but standard enough for hostnames)
+                        ip = str(ipaddress.IPv6Address(ip))
+                        ips.add(ip)
+    except Exception as e: print(f"[WARN] Native IPv6 extraction failed: {e}", file=sys.stderr)
+
     try:
         for flag in ("-4","-6"):
             r=subprocess.run(["tailscale","ip",flag],capture_output=True,text=True,timeout=3)
