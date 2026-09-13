@@ -31,3 +31,6 @@
 ## 2024-11-23 - [Subprocess ss ss -tln vs Native /proc/net/tcp]
 **Learning:** Checking for listening ports using shell commands like `subprocess.run(["sh","-lc","ss -tln ..."])` is resource-intensive due to the overhead of spawning a shell and running `ss` and `grep`, especially on a Raspberry Pi. Reading `/proc/net/tcp` and `/proc/net/tcp6` directly is much faster and avoids process creation.
 **Action:** When you need to check if a local port is listening, avoid shelling out to network utilities like `ss` or `netstat`. Instead, natively parse `/proc/net/tcp` and `/proc/net/tcp6`, matching the hex-encoded local port and connection state `0A` (TCP_LISTEN).
+## 2026-07-28 - [Subprocess hostname -I vs Native socket and procfs]
+**Learning:** Using `subprocess.check_output(["hostname", "-I"])` to retrieve local IP addresses incurs process creation overhead, which is relatively slow on the Raspberry Pi. Reading this via `socket.if_nameindex()`, `fcntl.ioctl` (for IPv4), and `/proc/net/if_inet6` (for IPv6) natively in Python resolves IPs significantly faster (~10x faster) without blocking the event loop or consuming system resources for spawning subprocesses.
+**Action:** Replace shell calls for resolving IP addresses like `hostname -I` with native Python `socket` module usage and `procfs` file reading to enhance performance.

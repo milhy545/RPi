@@ -8,6 +8,7 @@ import os
 import math
 import shutil
 import socket
+import sys
 import subprocess
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -166,10 +167,49 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
             names.add(f"{hn}.local")
     except Exception:
         pass
+    # ⚡ Bolt Optimization: Use native Python to get IP info without creating subprocesses
+    # Replaced expensive subprocess.check_output(["hostname", "-I"]) which avoids spawning a bash shell
     try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
-            if ip:
-                ips.add(ip)
+        import fcntl, struct, array, ipaddress
+        # IPv4 via ioctl
+        max_possible = 128
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        pack_fmt = 'iP' if is_64bits else 'iI'
+        bytes_arr = array.array('B', b'\0' * (max_possible * struct_size))
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                res = fcntl.ioctl(
+                    s.fileno(),
+                    0x8912,  # SIOCGIFCONF
+                    struct.pack(pack_fmt, bytes_arr.buffer_info()[1] * bytes_arr.itemsize, bytes_arr.buffer_info()[0])
+                )
+                outbytes = struct.unpack(pack_fmt, res)[0]
+                namestr = bytes_arr.tobytes()
+
+                for i in range(0, outbytes, struct_size):
+                    ip = socket.inet_ntoa(namestr[i+20:i+24])
+                    if ip != '127.0.0.1':
+                        ips.add(ip)
+        except OSError:
+            pass
+
+        # IPv6 via /proc/net/if_inet6
+        try:
+            with open("/proc/net/if_inet6", "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 6 and parts[5] != 'lo':
+                        hex_ip = parts[0]
+                        formatted_ip = ":".join(hex_ip[i:i+4] for i in range(0, 32, 4))
+                        try:
+                            parsed = ipaddress.ip_address(formatted_ip)
+                            if not parsed.is_loopback:
+                                ips.add(str(parsed))
+                        except ValueError:
+                            pass
+        except OSError:
+            pass
     except Exception:
         pass
     try:
