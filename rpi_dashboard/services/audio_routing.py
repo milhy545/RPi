@@ -182,7 +182,8 @@ def dlnain_set_target(sink: str) -> Dict[str, Any]:
     cfg["manual_sink"] = sink
     _save_dlnain_mode(cfg)
     if cfg.get("mode") == "manual":
-        _dlnain_retarget(sink)
+        if not _dlnain_retarget(sink):
+            return {"ok": False, "error": "retarget failed", "manual_sink": sink}
     return {"ok": True, "manual_sink": sink}
 
 
