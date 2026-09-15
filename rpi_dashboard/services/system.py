@@ -8,8 +8,14 @@ import os
 import math
 import shutil
 import socket
+import sys
+import struct
 import subprocess
 import time
+import fcntl
+import array
+import ipaddress
+import binascii
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import HTTP_PORT, HTTPS_PORT, HTTPS_PORT_ALT, PORT
@@ -156,6 +162,59 @@ def _vcgencmd_core_mhz() -> Optional[int]:
         return None
 
 
+
+def _get_ips_native() -> List[str]:
+    """Get all IPs using native socket / procfs instead of subprocess hostname -I."""
+    ips: set[str] = set()
+    try:
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        bytes_length = 32 * struct_size
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            names = array.array('B', b'\0' * bytes_length)
+            pack_format = 'iL' if is_64bits else 'iI'
+            outbytes = struct.unpack(pack_format, fcntl.ioctl(
+                s.fileno(),
+                0x8912, # SIOCGIFCONF
+                struct.pack(pack_format, bytes_length, names.buffer_info()[0])
+            ))[0]
+            namestr = names.tobytes()
+
+        for i in range(0, outbytes, struct_size):
+            iface = namestr[i:i+16].split(b'\0', 1)[0].decode('ascii', errors='ignore')
+            if iface != 'lo':
+                ips.add(socket.inet_ntoa(namestr[i+20:i+24]))
+    except Exception:
+        pass
+
+    try:
+        with open('/proc/net/if_inet6', 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 6 and parts[5] != 'lo':
+                    ip_bytes = bytes.fromhex(parts[0])
+                    ips.add(str(ipaddress.IPv6Address(ip_bytes)))
+    except Exception:
+        pass
+
+    return list(ips)
+
+def _get_gateway_native() -> Optional[str]:
+    """Get default gateway using native procfs instead of subprocess ip route."""
+    try:
+        with open("/proc/net/route", "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2 and parts[1] == "00000000":
+                    gateway_hex = parts[2]
+                    if gateway_hex != "00000000":
+                        ip_bytes = binascii.unhexlify(gateway_hex)[::-1]
+                        return socket.inet_ntoa(ip_bytes)
+    except Exception:
+        pass
+    return None
+
 def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     names = {"rpi-tv", "rpi-tv.local", "localhost"}
     ips = {"127.0.0.1"}
@@ -166,10 +225,11 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
             names.add(f"{hn}.local")
     except Exception:
         pass
+    # ⚡ Bolt Optimization: Use native Python to get IPs
+    # Replaced expensive subprocess call to 'hostname -I' with native socket/procfs
     try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
-            if ip:
-                ips.add(ip)
+        for ip in _get_ips_native():
+            ips.add(ip)
     except Exception:
         pass
     try:
@@ -394,22 +454,11 @@ def restart_rpi() -> Dict[str, Any]:
 
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
+    # ⚡ Bolt Optimization: Use native Python for network discovery
+    # Replaced expensive subprocess calls to 'hostname -I' and 'ip route'
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
-
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
-
+        ips = _get_ips_native()
+        gateway = _get_gateway_native()
         return {
             "ips": ips,
             "gateway": gateway,
