@@ -31,3 +31,7 @@
 ## 2024-11-23 - [Subprocess ss ss -tln vs Native /proc/net/tcp]
 **Learning:** Checking for listening ports using shell commands like `subprocess.run(["sh","-lc","ss -tln ..."])` is resource-intensive due to the overhead of spawning a shell and running `ss` and `grep`, especially on a Raspberry Pi. Reading `/proc/net/tcp` and `/proc/net/tcp6` directly is much faster and avoids process creation.
 **Action:** When you need to check if a local port is listening, avoid shelling out to network utilities like `ss` or `netstat`. Instead, natively parse `/proc/net/tcp` and `/proc/net/tcp6`, matching the hex-encoded local port and connection state `0A` (TCP_LISTEN).
+
+## 2024-05-18 - Mypy Null Byte Syntax Errors
+**Learning:** Python source files cannot contain literal null byte characters (0x00), even in bytes literals. This causes `mypy` to fail static type checks with the syntax error 'Source code string cannot contain null bytes'. When patching files that construct `array('B', b'\0')` or split on `b'\0'`, bash herestrings can easily inject raw null bytes if the escapes aren't formatted perfectly.
+**Action:** When creating byte literals in Python code dynamically using bash heredocs (`cat << 'EOF'`), explicitly double escape `\0` (as `\\0`) to ensure standard backslash sequences are written rather than literal nulls, and run `mypy` to verify.
