@@ -122,6 +122,31 @@ def test_dlnain_start_stop_and_configuration(monkeypatch: pytest.MonkeyPatch) ->
     assert audio_routing.dlnain_set_target("bluez")["manual_sink"] == "bluez"
 
 
+def test_dlnain_set_target_retarget_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the DLNA loopback is active and _start_loopback fails, dlnain_set_target must return ok=False."""
+    config: dict = {"mode": "manual", "manual_sink": None}
+    monkeypatch.setattr(audio_routing, "_load_dlnain_mode", MagicMock(return_value=config))
+    monkeypatch.setattr(audio_routing, "_save_dlnain_mode", MagicMock())
+    # Loopback is running with a known source.
+    monkeypatch.setattr(
+        audio_routing, "_dlnain_loopback_running",
+        MagicMock(return_value=(True, "gmediarender.monitor")),
+    )
+    monkeypatch.setattr(
+        audio_routing, "_find_loopback_by_source",
+        MagicMock(return_value="42"),
+    )
+    monkeypatch.setattr(audio_routing, "_stop_loopback", MagicMock())
+    monkeypatch.setattr(audio_routing.time, "sleep", MagicMock())
+    # _start_loopback returns None → failure.
+    monkeypatch.setattr(audio_routing, "_start_loopback", MagicMock(return_value=None))
+
+    res = audio_routing.dlnain_set_target("new_sink")
+    assert res["ok"] is False, "Expected ok=False when retarget loopback fails"
+    assert "error" in res, "Expected an error message on failure"
+    assert res["manual_sink"] == "new_sink"
+
+
 def test_alexa_route_status_stop_start_and_reset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(audio_routing.audio, "_get_default_sink", MagicMock(return_value="hdmi"))
     monkeypatch.setattr(audio_routing, "_alexa_loopback_running", MagicMock(return_value=(True, "hdmi", "3")))
