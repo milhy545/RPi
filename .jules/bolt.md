@@ -31,3 +31,6 @@
 ## 2024-11-23 - [Subprocess ss ss -tln vs Native /proc/net/tcp]
 **Learning:** Checking for listening ports using shell commands like `subprocess.run(["sh","-lc","ss -tln ..."])` is resource-intensive due to the overhead of spawning a shell and running `ss` and `grep`, especially on a Raspberry Pi. Reading `/proc/net/tcp` and `/proc/net/tcp6` directly is much faster and avoids process creation.
 **Action:** When you need to check if a local port is listening, avoid shelling out to network utilities like `ss` or `netstat`. Instead, natively parse `/proc/net/tcp` and `/proc/net/tcp6`, matching the hex-encoded local port and connection state `0A` (TCP_LISTEN).
+## 2026-09-18 - [Async terminal capture polling]
+**Learning:** Replaced `subprocess.run` with `asyncio.create_subprocess_exec` in the terminal websocket polling loop to prevent blocking the event loop on every output fetch. This significantly improves WebSocket concurrency on the constrained Raspberry Pi hardware, reducing latency and making the terminal WebUI snappier.
+**Action:** When handling WebSockets or recurring tasks in an asyncio loop, never use `subprocess.run` (or any synchronous I/O). Always use `asyncio.create_subprocess_exec` and await `communicate()` to avoid blocking the event loop, especially on low-core hardware like the RPi.

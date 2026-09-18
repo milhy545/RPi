@@ -156,18 +156,38 @@ async def terminal_ws_handler(
         while True:
             await asyncio.sleep(0.35)
             try:
-                content = subprocess.run(
-                    ["tmux", "capture-pane", "-t", session_name, "-p", "-S", f"-{rows}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=2,
-                ).stdout
-                cursor_raw = subprocess.run(
-                    ["tmux", "display-message", "-t", session_name, "-p", "#{cursor_x} #{cursor_y}"],
-                    capture_output=True,
-                    text=True,
-                    timeout=1,
-                ).stdout.strip().split()
+                # ⚡ Bolt Optimization: Use async subprocess to prevent blocking the event loop
+                proc1 = await asyncio.create_subprocess_exec(
+                    "tmux", "capture-pane", "-t", session_name, "-p", "-S", f"-{rows}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout1, _ = await asyncio.wait_for(proc1.communicate(), timeout=2.0)
+                    content = stdout1.decode('utf-8', errors='replace')
+                except asyncio.TimeoutError:
+                    try:
+                        proc1.kill()
+                    except ProcessLookupError:
+                        pass
+                    await proc1.communicate()
+                    raise
+
+                proc2 = await asyncio.create_subprocess_exec(
+                    "tmux", "display-message", "-t", session_name, "-p", "#{cursor_x} #{cursor_y}",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout2, _ = await asyncio.wait_for(proc2.communicate(), timeout=1.0)
+                    cursor_raw = stdout2.decode('utf-8', errors='replace').strip().split()
+                except asyncio.TimeoutError:
+                    try:
+                        proc2.kill()
+                    except ProcessLookupError:
+                        pass
+                    await proc2.communicate()
+                    raise
                 cursor_x = int(cursor_raw[0]) if len(cursor_raw) >= 1 and cursor_raw[0].isdigit() else 0
                 cursor_y = int(cursor_raw[1]) if len(cursor_raw) >= 2 and cursor_raw[1].isdigit() else 0
                 all_lines = content.splitlines()
