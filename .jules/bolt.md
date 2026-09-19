@@ -34,3 +34,6 @@
 ## 2026-09-18 - [Async terminal capture polling]
 **Learning:** Replaced `subprocess.run` with `asyncio.create_subprocess_exec` in the terminal websocket polling loop to prevent blocking the event loop on every output fetch. This significantly improves WebSocket concurrency on the constrained Raspberry Pi hardware, reducing latency and making the terminal WebUI snappier.
 **Action:** When handling WebSockets or recurring tasks in an asyncio loop, never use `subprocess.run` (or any synchronous I/O). Always use `asyncio.create_subprocess_exec` and await `communicate()` to avoid blocking the event loop, especially on low-core hardware like the RPi.
+## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
+**Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
+**Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
