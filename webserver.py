@@ -266,17 +266,28 @@ def _restore_console():
     try:
         # Find which VT the TUI is running on
         tui_pid = None
-        for line in _sp.check_output(["ps","axo","pid,tty,comm"], text=True).splitlines():
-            if "tui.py" in line and "bash" not in line:
-                parts = line.split()
-                if len(parts) >= 2 and parts[1] != "?":
-                    tui_pid = parts[1]
-                    break
-        target_vt = "/dev/tty1"  # fallback
+        tty = None
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "tui.py" in cmd and "bash" not in cmd:
+                            tui_pid = pid
+                            break
+                except (IOError, OSError):
+                    pass
         if tui_pid:
-            tty = _sp.check_output(["ps","-o","tty=","-p",tui_pid], text=True).strip()
-            if tty and tty != "?":
-                target_vt = f"/dev/{tty}"
+            try:
+                target = os.readlink(f"/proc/{tui_pid}/fd/0")
+                if target.startswith("/dev/tty"):
+                    tty = target.replace("/dev/", "")
+                elif target.startswith("/dev/pts/"):
+                    tty = target.replace("/dev/", "")
+            except OSError as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
+        target_vt = "/dev/tty1"  # fallback
+        if tty and tty != "?":
+            target_vt = f"/dev/{tty}"
         # Activate the TUI's VT to restore console
         _sp.run(["setfont"], capture_output=True, timeout=2)
         _sp.run(["chvt","1"], capture_output=True, timeout=2)
@@ -675,9 +686,10 @@ def _sink_input_streams(sinks=None):
                 # Check if this is a keepalive process (pw-cat with silent WAV)
                 is_keepalive=False
                 try:
-                    pr=_run(["ps","-o","args=","-p",client_pid],t=2)
-                    if pr.returncode==0 and "pw-cat" in pr.stdout and SILENT_WAV in pr.stdout:
-                        is_keepalive=True
+                    with open(f"/proc/{client_pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                        if "pw-cat" in cmd and SILENT_WAV in cmd:
+                            is_keepalive=True
                 except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
                 out.append({"id":p[0],"sink_id":sink_id,"sink":sink_label,"client":client_pid,"format":p[4] if len(p)>4 else "","keepalive":is_keepalive})
         return out
@@ -964,19 +976,31 @@ def _keepalive_stop(sink_name=None):
 def _keepalive_orphans():
     out=[]
     try:
-        r=_run(["ps","-eo","pid=,ppid=,args="], t=3)
-        for line in r.stdout.splitlines():
-            if "pw-cat -p --target" not in line or SILENT_WAV not in line:
-                continue
-            m=re.match(r"\s*(\d+)\s+(\d+)\s+(.*)$", line)
-            if not m: continue
-            args=m.group(3)
-            tm=re.search(r'--target "([^"]+)"', args) or re.search(r'--target\s+(.+?)\s+--format', args)
-            target=tm.group(1).strip() if tm else "unknown"
-            if target in ('"$1"', '$1', "unknown") and "rpi-keepalive" in args:
-                km=re.search(r'rpi-keepalive\s+(\S+)\s+'+re.escape(SILENT_WAV), args)
-                if km: target=km.group(1).strip()
-            out.append({"pid": int(m.group(1)), "ppid": int(m.group(2)), "target": target})
+        for pid in os.listdir("/proc"):
+            if pid.isdigit():
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
+                    if "pw-cat" not in cmd or "--target" not in cmd or SILENT_WAV not in cmd:
+                        continue
+                    with open(f"/proc/{pid}/stat", "r") as f:
+                        stat_content = f.read()
+                        rparen_idx = stat_content.rfind(")")
+                        if rparen_idx != -1:
+                            stat_parts = stat_content[rparen_idx + 1:].split()
+                            ppid = int(stat_parts[1]) if len(stat_parts) > 1 else 0
+                        else:
+                            ppid = 0
+
+                    args=cmd
+                    tm=re.search(r'--target "([^"]+)"', args) or re.search(r'--target\s+(.+?)\s+--format', args)
+                    target=tm.group(1).strip() if tm else "unknown"
+                    if target in ('"$1"', '$1', "unknown") and "rpi-keepalive" in args:
+                        km=re.search(r'rpi-keepalive\s+(\S+)\s+'+re.escape(SILENT_WAV), args)
+                        if km: target=km.group(1).strip()
+                    out.append({"pid": int(pid), "ppid": ppid, "target": target})
+                except (IOError, OSError, ValueError, IndexError):
+                    pass
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     return out
 
