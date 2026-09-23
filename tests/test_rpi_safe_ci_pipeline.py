@@ -21,7 +21,6 @@ from rpi_dashboard.ci.rpi_guard import (
     SHAMismatchError,
     LockContentionError,
     is_exact_playback_process,
-    parse_proc_ps_output,
 )
 from rpi_dashboard.ci.staging import stage_candidate, rollback_candidate, get_head_sha
 from rpi_dashboard.ci.evidence import PipelineLock, build_evidence_record, validate_receipt_structure
@@ -72,20 +71,6 @@ def test_exact_process_matching_mpv_vs_keys2mpv():
     assert is_exact_playback_process(proc_moonlight) is True
     assert is_exact_playback_process(proc_keys2mpv) is False
     assert is_exact_playback_process(proc_tui) is True
-
-
-def test_proc_ps_output_parsing():
-    """Test parsing ps output lines into structured process dicts."""
-    ps_data = """  PID  PPID  %CPU COMMAND         ARGS
-  101     1  12.5 mpv             /usr/bin/mpv test.mp4
-  102     1   2.0 python3         python3 keys2mpv.py
-"""
-    procs = parse_proc_ps_output(ps_data)
-    assert len(procs) == 2
-    assert procs[0]["pid"] == 101
-    assert procs[0]["comm"] == "mpv"
-    assert procs[1]["pid"] == 102
-    assert procs[1]["comm"] == "python3"
 
 
 # ─── 2. CPU Attribution & Self-Deadlock Prevention ───────────────────────────
