@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import mock_open, patch, MagicMock
 from rpi_dashboard.ci.rpi_guard import RPiGuard
 
@@ -101,7 +100,6 @@ def test_get_processes_native_procfs_cmdline_error():
 
 def test_get_current_pid_family_procfs():
     from rpi_dashboard.ci.rpi_guard import get_current_pid_family
-    import os
 
     def fake_open(filepath, mode="r", *args, **kwargs):
         if filepath == "/proc/123/stat":
@@ -120,7 +118,6 @@ def test_get_current_pid_family_procfs():
 
 def test_get_current_pid_family_procfs_error():
     from rpi_dashboard.ci.rpi_guard import get_current_pid_family
-    import os
 
     def fake_open(filepath, mode="r", *args, **kwargs):
         raise OSError("File not found")
