@@ -37,8 +37,3 @@
 ## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
 **Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
 **Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
-## 2026-07-27 - Replace shell networking calls with native Python calls
-
-**Learning:** Shell subprocess calls (`hostname -I`, `ip route`) are significantly slower (milliseconds) compared to native Python implementations reading `/proc` directly or using `socket` and `fcntl.ioctl` (microseconds). The performance delta in `get_network_info` was a 300x speedup. `subprocess` overhead is a well-known killer on RPi.
-
-**Action:** Whenever fetching IPs or gateway information in a hot path or frequently called polling endpoint, directly parse `/proc/net/route`, `/proc/net/if_inet6` and use `SIOCGIFCONF` via `fcntl` to query interface IPs.
