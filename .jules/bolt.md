@@ -37,3 +37,7 @@
 ## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
 **Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
 **Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
+
+## 2024-05-18 - [Eliminating ip route subprocess call]
+**Learning:** Found a performance bottleneck in `rpi_dashboard/services/system.py` where `subprocess.run(["ip", "route", "show", "default"])` was used to retrieve network information. Subprocess calls are computationally expensive, taking ~0.3s per call compared to <0.01s using native Python file I/O (`/proc/net/route`).
+**Action:** Replaced the subprocess call with native Python file I/O `open("/proc/net/route")` to parse the default gateway. Always favor native Python I/O over subprocess network utility commands (like `ip route`) where possible to avoid the CPU cost of process creation on low-end hardware.
