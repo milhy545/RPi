@@ -68,7 +68,7 @@ KODI_H, KODI_P = KODI_HOST, KODI_PORT
 MSOCK = MPV_SOCKET
 MPV_LOG = "/tmp/rpi-mpv.log"
 MPV_READY_TIMEOUT = 45.0
-_mpv_proxy_servers = []
+_mpv_proxy_servers: list["MPVProxyServer"] = []  # type: ignore[name-defined]
 
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
