@@ -84,3 +84,71 @@
 
 - [x] **Track: modular_test_ci_config_audio_fix_20260626** — Archived umbrella; remaining modularization, CI, coverage, and audio work is tracked by focused successor tracks | [Plan](./tracks/modular_test_ci_config_audio_fix_20260626/plan.md)
 - [x] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
+
+- [ ] **Track: report_1786035481_bug** — Bug report | [Plan](./tracks/report_1786035481_bug/plan.md)
+
+- [ ] **Track: report_1786036528_bug** — Bug report | [Plan](./tracks/report_1786036528_bug/plan.md)
+
+- [ ] **Track: report_1786160092_bug** — Bug report | [Plan](./tracks/report_1786160092_bug/plan.md)
+
+- [ ] **Track: report_1786034429_bug** — Bug report | [Plan](./tracks/report_1786034429_bug/plan.md)
+
+- [ ] **Track: report_1786036590_bug** — Bug report | [Plan](./tracks/report_1786036590_bug/plan.md)
+
+- [ ] **Track: report_1786098653_bug** — Bug report | [Plan](./tracks/report_1786098653_bug/plan.md)
+
+- [ ] **Track: report_1786034684_bug** — Bug report | [Plan](./tracks/report_1786034684_bug/plan.md)
+
+- [ ] **Track: report_1786033270_bug** — Bug report | [Plan](./tracks/report_1786033270_bug/plan.md)
+
+- [ ] **Track: report_1786035198_bug** — Bug report | [Plan](./tracks/report_1786035198_bug/plan.md)
+
+- [ ] **Track: report_1786160117_bug** — Bug report | [Plan](./tracks/report_1786160117_bug/plan.md)
+
+- [ ] **Track: report_1786033829_bug** — Bug report | [Plan](./tracks/report_1786033829_bug/plan.md)
+
+- [ ] **Track: report_1786034031_bug** — Bug report | [Plan](./tracks/report_1786034031_bug/plan.md)
+
+- [ ] **Track: report_1786098724_bug** — Bug report | [Plan](./tracks/report_1786098724_bug/plan.md)
+
+- [ ] **Track: report_1786034368_bug** — Bug report | [Plan](./tracks/report_1786034368_bug/plan.md)
+
+- [ ] **Track: report_1786035544_bug** — Bug report | [Plan](./tracks/report_1786035544_bug/plan.md)
+
+- [ ] **Track: report_1786036100_bug** — Bug report | [Plan](./tracks/report_1786036100_bug/plan.md)
+
+- [ ] **Track: report_1786034622_bug** — Bug report | [Plan](./tracks/report_1786034622_bug/plan.md)
+
+- [ ] **Track: report_1786033335_bug** — Bug report | [Plan](./tracks/report_1786033335_bug/plan.md)
+
+- [ ] **Track: report_1786034092_bug** — Bug report | [Plan](./tracks/report_1786034092_bug/plan.md)
+
+- [ ] **Track: report_1786160219_bug** — Bug report | [Plan](./tracks/report_1786160219_bug/plan.md)
+
+- [ ] **Track: report_1786126274_bug** — Bug report | [Plan](./tracks/report_1786126274_bug/plan.md)
+
+- [ ] **Track: report_1786037900_bug** — Bug report | [Plan](./tracks/report_1786037900_bug/plan.md)
+
+- [ ] **Track: report_1786033767_bug** — Bug report | [Plan](./tracks/report_1786033767_bug/plan.md)
+
+- [ ] **Track: report_1786160192_bug** — Bug report | [Plan](./tracks/report_1786160192_bug/plan.md)
+
+- [ ] **Track: report_1786036951_bug** — Bug report | [Plan](./tracks/report_1786036951_bug/plan.md)
+
+- [ ] **Track: report_1786035136_bug** — Bug report | [Plan](./tracks/report_1786035136_bug/plan.md)
+
+- [ ] **Track: report_1786037446_bug** — Bug report | [Plan](./tracks/report_1786037446_bug/plan.md)
+
+- [ ] **Track: report_1786036037_bug** — Bug report | [Plan](./tracks/report_1786036037_bug/plan.md)
+
+- [ ] **Track: report_1786126302_bug** — Bug report | [Plan](./tracks/report_1786126302_bug/plan.md)
+
+- [ ] **Track: report_1786037012_bug** — Bug report | [Plan](./tracks/report_1786037012_bug/plan.md)
+
+- [ ] **Track: report_1786037838_bug** — Bug report | [Plan](./tracks/report_1786037838_bug/plan.md)
+
+- [ ] **Track: report_1786037383_bug** — Bug report | [Plan](./tracks/report_1786037383_bug/plan.md)
+
+- [ ] **Track: report_1786148926_bug** — Bug report | [Plan](./tracks/report_1786148926_bug/plan.md)
+
+- [ ] **Track: report_1786148989_bug** — Bug report | [Plan](./tracks/report_1786148989_bug/plan.md)

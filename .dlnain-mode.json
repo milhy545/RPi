@@ -1,1 +1,1 @@
-{"mode": "follow", "manual_sink": null}
+{"mode": "manual", "manual_sink": "bluez_output"}
