@@ -2,6 +2,7 @@
 """RPi-TV v4.2 — fixed title, no black screen, fast CEC."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 import json, os, re, socket, sys, subprocess, time, stat, ssl, shutil, secrets, http.cookies
 import asyncio, threading
 from typing import Dict
@@ -65,16 +66,29 @@ login_limiter = LoginAttemptLimiter()
 
 KODI_H, KODI_P = KODI_HOST, KODI_PORT
 MSOCK = MPV_SOCKET
+MPV_LOG = "/tmp/rpi-mpv.log"
+MPV_READY_TIMEOUT = 45.0
+_mpv_proxy_servers = []
 
 YT_RE = re.compile(r"(?:youtu\.be/|youtube\.com/(?:watch\?.*?[?&]?v=|embed/|shorts/))([A-Za-z0-9_-]{11})")
 
 QUALITY = {
-    "360p": "best[height<=360][ext=mp4]/best[height<=360]",
-    "480p": "best[height<=480][ext=mp4]/best[height<=480]",
-    "720p": "best[height<=720][ext=mp4]/best[height<=720]",
-    "1080p":"best[height<=1080][ext=mp4]/best[height<=1080]",
+    # Higher YouTube qualities are normally separate video and audio streams.
+    # Asking only for a muxed MP4 silently falls back to the 640x360 itag 18.
+    "360p": "bv*[vcodec^=avc1][height<=360][ext=mp4]+ba[ext=m4a]/b[height<=360][ext=mp4]/b[height<=360]",
+    "480p": "bv*[vcodec^=avc1][height<=480][ext=mp4]+ba[ext=m4a]/b[height<=480][ext=mp4]/b[height<=480]",
+    "720p": "bv*[vcodec^=avc1][height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]",
+    "1080p":"bv*[vcodec^=avc1][height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[height<=1080]",
 }
 DQ = "720p"
+
+
+def quality_options_html() -> str:
+    """Return the selectable quality options for both WebUI entry points."""
+    return "\n".join(
+        f'<option value="{quality}"{" selected" if quality == DQ else ""}>{quality}</option>'
+        for quality in QUALITY
+    )
 
 def norm(u: str) -> str:
     """Normalize URL by removing redundant slashes in path."""
@@ -101,29 +115,43 @@ from rpi_dashboard.services.player import _url_cache, _mpv_pool
 def resolve(url, q=None):
     vid=yt_id(url)
     if not vid: return norm(url), {"title": url[:50]}
-    # Check cache first for instant playback
-    cached = _url_cache.get(vid)
-    if cached and cached.get("url"):
-        return cached["url"], cached.get("meta", {})
     fmt=QUALITY.get(q or DQ, QUALITY[DQ])
     try: import yt_dlp as youtube_dl
     except Exception as e: return url, {"error":str(e)}
     _co=os.path.join(os.path.dirname(os.path.abspath(__file__)),"yt-cookies.txt")
     _opts={"quiet":True,"no_warnings":True,"noplaylist":True,"format":fmt,
-           "extractor_args":{"youtube":{"player_client":["default","android","web"]}}}
+           "extractor_args":{"youtube":{"player_client":["android_vr"]}}}
     if os.path.exists(_co): _opts["cookiefile"]=_co
     else: print(f"[WARN] Cookie file not found: {_co}", file=sys.stderr)
     with youtube_dl.YoutubeDL(_opts) as y:
         info=y.extract_info(f"https://youtu.be/{vid}", download=False)
-    surl=info.get("url")
+    requested = info.get("requested_formats") or []
+    video = next(
+        (item for item in requested if item.get("url") and item.get("vcodec") != "none"),
+        None,
+    )
+    audio = next(
+        (
+            item for item in requested
+            if item.get("url") and item.get("vcodec") == "none" and item.get("acodec") != "none"
+        ),
+        None,
+    )
+    surl = video.get("url") if video else info.get("url")
     if not surl:
         fmts=[f for f in (info.get("formats") or []) if f.get("url") and f.get("vcodec")!="none" and f.get("acodec")!="none"]
         fmts.sort(key=lambda f:(f.get("height") or 0), reverse=True)
         if fmts: surl=fmts[0].get("url")
     if not surl: raise RuntimeError("No playable URL")
-    meta = {"id":vid,"title":info.get("title",f"YT {vid}"),"h":info.get("height"),"dur":info.get("duration")}
-    # Cache the resolved URL and metadata
-    _url_cache.put(vid, {"url": surl, "meta": meta})
+    meta = {
+        "id": vid,
+        "title": info.get("title", f"YT {vid}"),
+        "h": (video or {}).get("height") or info.get("height"),
+        "dur": info.get("duration"),
+        "http_headers": info.get("http_headers") or {},
+    }
+    if audio:
+        meta["audio_url"] = audio["url"]
     return surl, meta
 
 def kodi_rpc(m, p=None, t=3):
@@ -174,6 +202,46 @@ def mcmd(*a):
 
 def mget(p): return mcmd("get_property",p)
 
+def _mpv_video_ready():
+    """Check video initialisation through a fresh IPC connection.
+
+    Startup must not reuse pooled control sockets: they can contain unsolicited
+    MPV events and make a valid reply look like a failed start.
+    """
+    request_id = 921
+    request = {"command": ["get_property", "video-params"], "request_id": request_id}
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(1.0)
+            client.connect(MSOCK)
+            client.sendall((json.dumps(request) + "\n").encode("utf-8"))
+            pending = b""
+            while b"\n" not in pending:
+                chunk = client.recv(SOCKET_RECV_SIZE)
+                if not chunk:
+                    return False
+                pending += chunk
+            for line in pending.splitlines():
+                response = json.loads(line.decode("utf-8"))
+                if response.get("request_id") == request_id:
+                    return bool(response.get("data")) and response.get("error") == "success"
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return False
+
+def _mpv_start_error(exit_code=None):
+    """Return a short, URL-safe diagnostic for a failed MPV start."""
+    try:
+        with open(MPV_LOG, "rb") as log_file:
+            lines = log_file.read()[-8192:].decode("utf-8", "replace").splitlines()
+    except OSError:
+        lines = []
+    markers = ("failed", "error", "fatal", "exiting")
+    detail = next((line.strip() for line in reversed(lines) if any(mark in line.lower() for mark in markers)), "No MPV diagnostic was available.")
+    detail = re.sub(r"https?://\S+", "<stream URL>", detail)
+    prefix = "mpv exited during startup" if exit_code is not None else "mpv did not initialise video"
+    return f"{prefix}{f' (code {exit_code})' if exit_code is not None else ''}: {detail[-400:]}"
+
 def _mpv_pids_for_socket(path=MSOCK):
     pids=[]
     needle=f"--input-ipc-server={path}"
@@ -216,22 +284,59 @@ def _terminate_pids(pids, timeout=3.0):
                 stopped.append({"pid":pid,"kill_error":str(e)})
     return stopped
 
+
+def _start_ranged_media_proxy(upstream_url: str) -> str:
+    """Expose one media URL on loopback and ensure its first request is ranged."""
+    class RangedMediaHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def do_GET(self):
+            requested_range = self.headers.get("Range") or "bytes=0-"
+            try:
+                request = Request(upstream_url, headers={"Range": requested_range})
+                with urlopen(request, timeout=20) as upstream:
+                    self.send_response(upstream.status)
+                    for name in ("Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"):
+                        value = upstream.headers.get(name)
+                        if value:
+                            self.send_header(name, value)
+                    self.end_headers()
+                    while chunk := upstream.read(64 * 1024):
+                        self.wfile.write(chunk)
+            except Exception as exc:
+                self.send_error(502, f"Media proxy error: {type(exc).__name__}")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RangedMediaHandler)
+    threading.Thread(target=server.serve_forever, name="mpv-range-proxy", daemon=True).start()
+    _mpv_proxy_servers.append(server)
+    return f"http://127.0.0.1:{server.server_port}/media"
+
+
+def _stop_ranged_media_proxies() -> None:
+    while _mpv_proxy_servers:
+        server = _mpv_proxy_servers.pop()
+        server.shutdown()
+        server.server_close()
+
 def mpv_start(url, q=None, resume=False):
     global _mpv,_mq,_mtitle,_murl
-    # Force HDMI connector + activate HDMI audio profile
-    try:
-        with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f: f.write("on")
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    import subprocess as _sp
-    _sp.run(["pactl","set-card-profile","alsa_card.platform-3f902000.hdmi","output:hdmi-stereo"],
-            capture_output=True, timeout=3)
-
     if not resume and mpv_ipc_socket_live():
         save_mpv_resume_memory()
     mpv_stop(); _mq=q or _mq
-    surl,meta=resolve(url,_mq)
+    try:
+        surl,meta=resolve(url,_mq)
+    except Exception as exc:
+        message = f"Could not resolve media URL: {exc}"
+        print(f"[ERROR] MPV: {message}", file=sys.stderr)
+        return {"ok": False, "error": message}
     _murl=url
     _mtitle=meta.get("title","Playing")
+    if meta.get("id"):
+        surl = _start_ranged_media_proxy(surl)
+        audio_url = meta.get("audio_url")
+        if isinstance(audio_url, str) and audio_url:
+            meta["audio_url"] = _start_ranged_media_proxy(audio_url)
 
     # DeepMind Strategy: mpv pinned to cores 1-2 (media.compute)
     # Escalation for HEVC/heavy: detect via format probe, use cores 1-3
@@ -249,16 +354,75 @@ def mpv_start(url, q=None, resume=False):
                 resume_pos = max(0.0, float(mem["position"]))
             except Exception:
                 resume_pos = None
-    cmd=["taskset", "-c", core_mask, "mpv",
-         "--vo=drm","--drm-mode=640x480","--hwdec=v4l2m2m",
-         "--fullscreen","--no-terminal","--ytdl=no","--ao=pulse",
+    height = int(meta.get("h") or 0)
+    if height >= 720:
+        # The TV receives a native 720p signal, so DRM need not scale 1280x720
+        # video in software on the Pi 3.
+        video_options = ["--drm-mode=1280x720", "--video-unscaled=yes"]
+    else:
+        video_options = ["--drm-mode=720x480", "--scale=bilinear", "--cscale=bilinear"]
+    cmd=["taskset", "-c", core_mask, "mpv", "--vo=drm", *video_options, "--hwdec=auto",
+         "--fullscreen","--no-terminal","--ao=alsa",
+         "--audio-device=alsa/hdmi:CARD=vc4hdmi,DEV=0",
+         "--ytdl=no",
+         f"--log-file={MPV_LOG}", "--msg-level=all=v",
          f"--title={_mtitle}",
-         f"--input-ipc-server={MSOCK}","--keep-open=always"]
+         f"--input-ipc-server={MSOCK}"]
     if resume_pos is not None:
         cmd.append(f"--start={resume_pos:.3f}")
+    headers = meta.get("http_headers") or {}
+    user_agent = headers.get("User-Agent") or headers.get("user-agent")
+    if isinstance(user_agent, str) and user_agent:
+        cmd.append(f"--user-agent={user_agent}")
+    referer = headers.get("Referer") or headers.get("referer")
+    if isinstance(referer, str) and referer:
+        cmd.append(f"--referrer={referer}")
+    audio_url = meta.get("audio_url")
+    if isinstance(audio_url, str) and audio_url:
+        cmd.append(f"--audio-file={audio_url}")
     cmd.append(surl)
-    _mpv=subprocess.Popen(cmd,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-    return {"ok":True,"pid":_mpv.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask,"resume_pos":resume_pos}
+    try:
+        mpv_env = os.environ.copy()
+        mpv_env["PATH"] = "/home/milhy777/.local/bin:" + mpv_env.get("PATH", "")
+        _mpv = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=mpv_env,
+        )
+    except OSError as exc:
+        _stop_ranged_media_proxies()
+        message = f"Could not start mpv: {exc}"
+        print(f"[ERROR] MPV: {message}", file=sys.stderr)
+        return {"ok": False, "error": message}
+
+    deadline = time.monotonic() + MPV_READY_TIMEOUT
+    while True:
+        exit_code = _mpv.poll()
+        if exit_code is not None:
+            _stop_ranged_media_proxies()
+            message = _mpv_start_error(exit_code)
+            print(f"[ERROR] MPV: {message}", file=sys.stderr)
+            return {"ok": False, "error": message}
+        if _mpv_video_ready():
+            break
+        if time.monotonic() >= deadline:
+            message = _mpv_start_error()
+            mpv_stop()
+            print(f"[ERROR] MPV: {message}", file=sys.stderr)
+            return {"ok": False, "error": message}
+        time.sleep(0.25)
+
+    process = _mpv
+    result = {"ok":True,"pid":process.pid,"url":surl,"meta":meta,"q":_mq,"cores":core_mask,"resume_pos":resume_pos}
+    if hasattr(process, "wait"):
+        threading.Thread(
+            target=_restore_console_after_mpv_exit,
+            args=(process,),
+            name="mpv-console-restore",
+            daemon=True,
+        ).start()
+    return result
 
 def _restore_console():
     """Restore fbcon after MPV DRM exit."""
@@ -295,6 +459,20 @@ def _restore_console():
         _sp.run(["sh","-c","echo 0 > /sys/class/vt/vtblank"], capture_output=True, timeout=2)
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
 
+def _restore_console_after_mpv_exit(process):
+    """Return to the Textual console when MPV reaches EOF on its own."""
+    global _mpv
+    try:
+        process.wait()
+    except Exception as exc:
+        print(f"[WARN] MPV exit watcher failed: {type(exc).__name__}", file=sys.stderr)
+        return
+    if _mpv is process:
+        _mpv = None
+        cleanup_stale_mpv_socket()
+        _stop_ranged_media_proxies()
+        _restore_console()
+
 def mpv_stop():
     global _mpv
     pids=[]
@@ -310,6 +488,7 @@ def mpv_stop():
     stopped=_terminate_pids(pids)
     _mpv=None
     cleanup_stale_mpv_socket()
+    _stop_ranged_media_proxies()
     time.sleep(0.5)
     _restore_console()
     return {"ok":True,"stopped":stopped,"pids":sorted(set(pids)),"socket_live":mpv_ipc_socket_live()}
@@ -1368,7 +1547,7 @@ def media_preview(url):
         _co=os.path.join(os.path.dirname(os.path.abspath(__file__)),"yt-cookies.txt")
         _opts={"quiet":True,"no_warnings":True,"noplaylist":True,"skip_download":True,
                "extract_flat":False,"socket_timeout":8,
-               "extractor_args":{"youtube":{"player_client":["default","android","web"]}}}
+               "extractor_args":{"youtube":{"player_client":["android_vr"]}}}
         if os.path.exists(_co): _opts["cookiefile"]=_co
         with youtube_dl.YoutubeDL(_opts) as y:
             info=y.extract_info(f"https://youtu.be/{vid}", download=False)
@@ -1594,16 +1773,13 @@ function toggleHwLive(){
 }
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
-    if(!r||r.error){$('#hw-stats').textContent='Chyba: '+(r?r.error:'Není k dispozici');return}
-    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+(typeof v==='number'?v.toFixed(0):'?')+'%').join('  ');
-    let temp=(typeof r.temp_c==='number')?r.temp_c.toFixed(1)+'°C':'?';
+    if(r.error){$('#hw-stats').textContent='Chyba: '+r.error;return}
+    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
+    let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
     let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
     let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
-    let disk=r.disk||{};
-    let diskAvail=disk.avail_gb!==undefined?' avail '+disk.avail_gb+' GB':'';
-    let ram=r.ram||{};
-    let loadavg=(r.loadavg||[]).join(' ');
-    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+loadavg+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+(ram.used_mb??'?')+'/'+(ram.total_mb??'?')+' MB ('+(ram.percent??'?')+'%)\nDisk: '+(disk.used_gb??'?')+'/'+(disk.total_gb??'?')+' GB ('+(disk.percent??'?')+'%)'+diskAvail+'\nUptime: '+(r.uptime??'?');
+    let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
+    $('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
 }
 
 async function loadSysStatus(){
@@ -2004,7 +2180,7 @@ let sp=new URLSearchParams(window.location.search);let shared=sp.get('share_url'
 if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/http[s]?:\/\/[^\s]+/)[0];play();}
 """
 
-QO="\n".join(f'<option value="{k}"{" selected" if k==DQ else ""}>{k}</option>' for k in QUALITY)
+QO=quality_options_html()
 
 def _load_static_page():
     """Try to load new static HTML page. Returns None if not available."""

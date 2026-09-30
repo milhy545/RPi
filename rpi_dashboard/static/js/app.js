@@ -173,17 +173,14 @@ function toggleHwLive(){
 }
 async function loadHwStats(){
     let r=await api('/system/hw-stats');
-    if(!r||r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+(r?r.error:'Není k dispozici');return}
+    if(r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+r.error;return}
     updateGlobalStatusBar(r);
-    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+(typeof v==='number'?v.toFixed(0):'?')+'%').join('  ');
-    let temp=(typeof r.temp_c==='number')?r.temp_c.toFixed(1)+'°C':'?';
+    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
+    let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
     let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
     let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
-    let disk=r.disk||{};
-    let diskAvail=disk.avail_gb!==undefined?' avail '+disk.avail_gb+' GB':'';
-    let ram=r.ram||{};
-    let loadavg=(r.loadavg||[]).join(' ');
-    if($('#hw-stats'))$('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+loadavg+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+(ram.used_mb??'?')+'/'+(ram.total_mb??'?')+' MB ('+(ram.percent??'?')+'%)\nDisk: '+(disk.used_gb??'?')+'/'+(disk.total_gb??'?')+' GB ('+(disk.percent??'?')+'%)'+diskAvail+'\nUptime: '+(r.uptime??'?');
+    let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
+    if($('#hw-stats'))$('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
 }
 
 function updateGlobalStatusBar(r){

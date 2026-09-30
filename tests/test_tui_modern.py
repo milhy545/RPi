@@ -1,8 +1,10 @@
 """Test modern TUI module."""
 
 import asyncio
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -106,6 +108,97 @@ def test_tui_webui_proxy_covers_legacy_audio_and_preview_routes(monkeypatch):
             await asyncio.to_thread(dashboard._legacy_webserver.shutdown)
             dashboard._legacy_webserver.server_close()
             dashboard._legacy_webserver_thread.join(timeout=5)
+
+    asyncio.run(run_check())
+
+
+def test_live_tui_cast_endpoint_starts_hardware_playback_in_background(monkeypatch):
+    """POST /play must return promptly while the DRM/KMS process owns playback."""
+
+    async def run_check():
+        import tui
+
+        dashboard = tui.RPiDashboard()
+        dashboard.mode_switcher = SimpleNamespace(state=tui.ModeSwitcherState.IDLE)
+
+        started = asyncio.Event()
+
+        async def start(url, quality=None, resume=False):
+            assert url == "https://example.test/video.mp4"
+            started.set()
+            return {"ok": True}
+
+        monkeypatch.setattr(dashboard, "start_mpv_playback", start, raising=False)
+        class Request:
+            async def json(self):
+                return {"url": "https://example.test/video.mp4"}
+
+        response = await dashboard.handle_play(Request())
+        assert response.status == 200
+        assert json.loads(response.text) == {
+            "status": "ok",
+            "message": "Play request accepted",
+        }
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+    asyncio.run(run_check())
+
+
+def test_legacy_mpv_play_rejects_a_queued_second_launch():
+    """A second WebUI play request must not queue behind active DRM playback."""
+
+    async def run_check():
+        import tui
+
+        dashboard = tui.RPiDashboard()
+        dashboard.mode_switcher = SimpleNamespace(state=tui.ModeSwitcherState.RUNNING)
+        request = SimpleNamespace(
+            query={"url": "https://example.test/video.mp4"}
+        )
+        response = await dashboard.handle_legacy_mpv_play(request)
+        assert response.status == 409
+        assert json.loads(response.text) == {
+            "ok": False,
+            "error": "Playback is already active",
+        }
+
+    asyncio.run(run_check())
+
+
+def test_tui_mpv_playback_uses_the_hardware_mode_switcher(monkeypatch):
+    """Web playback must use the verified DRM/KMS launch path, not webserver.mpv_start."""
+
+    async def run_check():
+        import tui
+
+        dashboard = tui.RPiDashboard()
+        dashboard.query_one = lambda *_args, **_kwargs: SimpleNamespace(current_mode="IDLE")
+        launch_calls = []
+
+        async def launch(command, timeout, use_suspend):
+            launch_calls.append((command, timeout, use_suspend))
+            return True
+
+        dashboard.mode_switcher = SimpleNamespace(
+            launch=launch,
+            log_buffer=SimpleNamespace(write=lambda _message: None),
+        )
+        monkeypatch.setattr(tui, "MSOCK", "/tmp/mpv-socket")
+        import webserver
+        monkeypatch.setattr(
+            webserver,
+            "mpv_start",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("legacy pipeline used")),
+        )
+
+        result = await dashboard.start_mpv_playback("https://youtu.be/dQw4w9WgXcQ", "1080p")
+
+        assert result == {"ok": True}
+        assert launch_calls == [(
+            ["mpv", "--vo=gpu", "--gpu-api=opengl", "--gpu-context=drm", "--drm-mode=1920x1080", "--hwdec=v4l2m2m", "--fs", "--log-file=/tmp/rpi-mpv-hardware.log", "--msg-level=all=v", "--ytdl-format=bv*[vcodec^=avc1][height<=1080]+ba[acodec^=mp4a]/b[height<=1080]", "--script-opts=ytdl_hook-ytdl_path=/home/milhy777/.local/bin/yt-dlp", "--input-ipc-server=/tmp/mpv-socket", "https://youtu.be/dQw4w9WgXcQ"],
+            0,
+            False,
+        )]
 
     asyncio.run(run_check())
 

@@ -24,6 +24,7 @@ from rpi_dashboard.services import devices as devices_service
 from rpi_dashboard.tui.bluetooth_console import build_bluetooth_console, normalize_device_keys
 from rpi_dashboard.tui.formatting import human_audio_sink
 from rpi_dashboard.api.routes import get_route
+from rpi_dashboard.services.player import MSOCK
 
 
 API_PORT = int(os.getenv("RPIDASHBOARD_API_PORT", "8090"))
@@ -1967,9 +1968,13 @@ class RPiDashboard(App):
 
     async def handle_webui_index(self, request: web.Request) -> web.StreamResponse:
         """Serve the browser WebUI from the live TUI service."""
+        import webserver
+
         index_path = os.path.join(self.static_dir(), "index.html")
-        with open(index_path, "rb") as handle:
-            return web.Response(body=handle.read(), content_type="text/html", charset="utf-8")
+        with open(index_path, encoding="utf-8") as handle:
+            content = handle.read()
+        content = content.replace("{{QUALITY_OPTIONS}}", webserver.quality_options_html())
+        return web.Response(text=content, content_type="text/html", charset="utf-8")
 
     async def handle_webui_manifest(self, request: web.Request) -> web.Response:
         """Serve a minimal PWA manifest compatible with the legacy webserver."""
@@ -2007,17 +2012,18 @@ class RPiDashboard(App):
 
     async def handle_legacy_mpv_play(self, request: web.Request) -> web.Response:
         """Start mpv through the legacy WebUI playback path."""
-        import webserver
-
         url = request.query.get("url", "").strip()
         quality = request.query.get("q")
         resume = request.query.get("resume", "0") not in {"0", "", "false", "False"}
         if not url:
             return web.json_response({"error": "no url"}, status=400)
-        result = await asyncio.to_thread(webserver.mpv_start, url, quality, resume)
-        if result.get("ok"):
-            self._legacy_mpv_started_at = time.time()
-        return web.json_response(result)
+        if self.mode_switcher.state is not ModeSwitcherState.IDLE:
+            return web.json_response(
+                {"ok": False, "error": "Playback is already active"}, status=409
+            )
+        asyncio.create_task(self.start_mpv_playback(url, quality, resume))
+        self._legacy_mpv_started_at = time.time()
+        return web.json_response({"ok": True, "message": "Play request accepted"})
 
     async def handle_legacy_mpv_stop(self, request: web.Request) -> web.Response:
         """Stop mpv through the legacy WebUI playback path."""
@@ -2185,7 +2191,8 @@ class RPiDashboard(App):
             url = data.get("url")
             if not url:
                 return web.json_response({"status": "error", "message": "Missing 'url' key"}, status=400)
-            asyncio.create_task(self.play_media(url))
+            asyncio.create_task(self.start_mpv_playback(url))
+            self._legacy_mpv_started_at = time.time()
             return web.json_response({"status": "ok", "message": "Play request accepted"})
         except Exception as e:
             return web.json_response({"status": "error", "message": f"Malformed JSON: {e}"}, status=400)
@@ -2215,7 +2222,7 @@ class RPiDashboard(App):
     async def send_mpv_ipc(self, command: list) -> bool:
         """Send JSON command to running MPV instance via unix socket."""
         try:
-            reader, writer = await asyncio.open_unix_connection("/tmp/mpv-socket")
+            reader, writer = await asyncio.open_unix_connection(MSOCK)
             import json
             payload = json.dumps({"command": command}) + "\n"
             writer.write(payload.encode())
@@ -2239,7 +2246,10 @@ class RPiDashboard(App):
             self.write_log("[API] Remote request to stop playback.")
             asyncio.create_task(self.mode_switcher._teardown_active_process())
             return web.json_response({"status": "ok", "message": "Playback stop initiated"})
-        return web.json_response({"status": "error", "message": "No active playback process"}, status=400)
+        import webserver
+
+        stopped = await asyncio.to_thread(webserver.mpv_stop)
+        return web.json_response({"status": "ok", "stop": stopped})
 
     async def handle_player_volume(self, request: web.Request) -> web.Response:
         """Route to set player/system volume."""
@@ -2416,47 +2426,47 @@ class RPiDashboard(App):
             return web.json_response({"error": str(e)}, status=500)
 
 
-    async def play_media(self, url: str) -> None:
-        """Suspend TUI, play the URL using mpv (with IPC socket), and resume TUI using ModeSwitcher.
-        
-        RPi 3B+ uses /etc/mpv/mpv.conf for H.264-only format selection and HW decode settings.
-        """
+    async def start_mpv_playback(
+        self, url: str, quality: str | None = None, resume: bool = False
+    ) -> dict:
+        """Launch MPV through the verified DRM/KMS ModeSwitcher path."""
+        del quality, resume
         mode_status = self.query_one("#mode_status", ModeStatus)
         mode_status.current_mode = "MPV (Player)"
-        self.write_log(f"[NETWORK] Playing cast URL: {url}")
-        
-        from mode_switcher import MPV_TIMEOUT
-        import subprocess as _sp
-        # Force HDMI connector active for DRM output (RPi 3B+ quirk)
+        self.write_log(f"[NETWORK] Starting hardware MPV for: {url[:120]}")
+
         try:
-            with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as f:
-                f.write("on")
-        except Exception as e:
-            self.write_log(f"[WARN] Exception: {e}")
-        # Blank console so DRM planes are not overridden by fbcon
-        try:
-            _sp.run(["sudo", "bash", "-c",
-                     "echo 1 > /sys/class/vt/console/dkblnk 2>/dev/null;"
-                     "cat /dev/zero > /dev/fb0 2>/dev/null"],
-                    timeout=2, capture_output=True)
-        except Exception as e:
-            self.write_log(f"[WARN] Exception: {e}")
-        # MPV reads settings from /etc/mpv/mpv.conf (H.264-only, v4l2m2m HW decode)
-        # use_suspend=False: DRM/KMS video output breaks when TUI suspends
-        await self.mode_switcher.launch([
-            "mpv", "--vo=drm", "--hwdec=auto", "--fs",
-            "--input-ipc-server=/tmp/mpv-socket", url
-        ], timeout=MPV_TIMEOUT, use_suspend=False)
-        # Restore console after MPV finishes
-        try:
-            _sp.run(["sudo", "bash", "-c",
-                     "echo 0 > /sys/class/vt/console/dkblnk 2>/dev/null"],
-                    timeout=2, capture_output=True)
-        except Exception as e:
-            self.write_log(f"[WARN] Exception: {e}")
-        
+            with open("/sys/class/drm/card0-HDMI-A-1/status", "w") as handle:
+                handle.write("on")
+        except OSError as exc:
+            self.write_log(f"[WARN] HDMI force unavailable: {exc}")
+
+        command = [
+            "mpv",
+            "--vo=gpu",
+            "--gpu-api=opengl",
+            "--gpu-context=drm",
+            "--drm-mode=1920x1080",
+            "--hwdec=v4l2m2m",
+            "--fs",
+            "--log-file=/tmp/rpi-mpv-hardware.log",
+            "--msg-level=all=v",
+            "--ytdl-format=bv*[vcodec^=avc1][height<=1080]+ba[acodec^=mp4a]/b[height<=1080]",
+            "--script-opts=ytdl_hook-ytdl_path=/home/milhy777/.local/bin/yt-dlp",
+            f"--input-ipc-server={MSOCK}",
+            url,
+        ]
+        started = await self.mode_switcher.launch(command, timeout=0, use_suspend=False)
         mode_status.current_mode = "IDLE (Dashboard)"
-        self.write_log("[SYSTEM] Finished media playback. Dashboard restored.")
+        if not started:
+            self.write_log("[ERROR] MPV launch was rejected by ModeSwitcher")
+            return {"ok": False, "error": "MPV launch was rejected"}
+        self.write_log("[SYSTEM] MPV exited; dashboard restored.")
+        return {"ok": True}
+
+    async def play_media(self, url: str) -> dict:
+        """Play a URL through the verified hardware launch path."""
+        return await self.start_mpv_playback(url)
 
 
     def move_bluetooth_selection(self, delta: int) -> None:
