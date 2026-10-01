@@ -9,6 +9,10 @@ import math
 import shutil
 import socket
 import subprocess
+import sys
+import array
+import struct
+import fcntl
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -137,6 +141,71 @@ def _meminfo() -> Dict[str, int]:
     return mem
 
 
+def _get_ips_native() -> List[str]:
+    """Get IP addresses without spawning subprocesses."""
+    ips = []
+    try:
+        is_64bits = sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        max_possible = 8
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            while True:
+                bytes_req = max_possible * struct_size
+                names = array.array('B', b'\0' * bytes_req)
+                outbytes = struct.unpack('iL', fcntl.ioctl(
+                    s.fileno(),
+                    0x8912,  # SIOCGIFCONF
+                    struct.pack('iL', bytes_req, names.buffer_info()[0])
+                ))[0]
+                if outbytes == bytes_req:
+                    max_possible *= 2
+                else:
+                    break
+            namestr = names.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip = socket.inet_ntoa(namestr[i+20:i+24])
+                if ip and ip != "127.0.0.1" and ip not in ips:
+                    ips.append(ip)
+    except Exception:
+        pass
+
+    try:
+        with open('/proc/net/if_inet6', 'r') as f:
+            for line in f:
+                fields = line.strip().split()
+                if not fields:
+                    continue
+                hex_addr = fields[0]
+                if len(hex_addr) == 32:
+                    parts = [hex_addr[j:j+4] for j in range(0, 32, 4)]
+                    ipv6_str = ":".join(parts)
+                    try:
+                        import ipaddress
+                        ip = str(ipaddress.IPv6Address(ipv6_str))
+                        if ip != '::1' and ip not in ips:
+                            ips.append(ip)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return ips
+
+
+def _get_gateway_native() -> Optional[str]:
+    """Get default gateway IP natively by parsing /proc/net/route."""
+    try:
+        with open("/proc/net/route") as f:
+            for line in f:
+                fields = line.strip().split()
+                if len(fields) > 2 and fields[1] == '00000000':
+                    hex_ip = fields[2]
+                    return socket.inet_ntoa(struct.pack("<L", int(hex_ip, 16)))
+    except Exception:
+        pass
+    return None
+
+
 def _cpu_freqs_cached() -> List[Optional[int]]:
     freq: List[Optional[int]] = []
     for i in range(4):
@@ -167,7 +236,7 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     except Exception:
         pass
     try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
+        for ip in _get_ips_native():
             if ip:
                 ips.add(ip)
     except Exception:
@@ -395,20 +464,8 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
-
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        ips = _get_ips_native()
+        gateway = _get_gateway_native()
 
         return {
             "ips": ips,

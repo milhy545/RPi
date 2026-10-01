@@ -101,7 +101,7 @@ def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
     from rpi_dashboard.services.system import dashboard_hostnames_and_ips
 
     with patch("rpi_dashboard.services.system.socket.gethostname", return_value="rpi-tv"):
-        with patch("rpi_dashboard.services.system.subprocess.check_output", return_value="192.168.0.100\n"):
+        with patch("rpi_dashboard.services.system._get_ips_native", return_value=["192.168.0.100"]):
             with patch(
                 "rpi_dashboard.services.system.subprocess.run",
                 side_effect=[
