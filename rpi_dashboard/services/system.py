@@ -395,20 +395,25 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
+        # ⚡ Bolt Optimization: Use native Python to get network info
+        # Replaced expensive subprocess shell call (`ip route`)
+        # with native Python file I/O to avoid process
+        # creation overhead on Raspberry Pi. This makes the API faster.
         r = _run(["hostname", "-I"], t=3)
         ips = r.stdout.strip().split()
 
         # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
         gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        try:
+            with open('/proc/net/route', 'r') as f:
+                for f_line in f:
+                    parts = f_line.strip().split()
+                    if len(parts) > 2 and parts[1] == '00000000':
+                        gw_int = int(parts[2], 16)
+                        gateway = f'{gw_int & 0xFF}.{(gw_int >> 8) & 0xFF}.{(gw_int >> 16) & 0xFF}.{(gw_int >> 24) & 0xFF}'
+                        break
+        except FileNotFoundError:
+            pass
 
         return {
             "ips": ips,
