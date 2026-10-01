@@ -2643,8 +2643,38 @@ def _dashboard_hostnames_and_ips():
             names.add(hn); names.add(f"{hn}.local")
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
-        for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
-            if ip: ips.add(ip)
+        # ⚡ Bolt Optimization: Replace subprocess "hostname -I" with native Python socket & ioctl parsing
+        # This avoids process creation overhead during server startup
+        import struct, array, fcntl, sys as _sys
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        is_64bits = _sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        max_bytes = 8192
+        names_buf = array.array('B', b'\0' * max_bytes)
+        try:
+            outbytes = struct.unpack('iL', fcntl.ioctl(
+                s.fileno(),
+                0x8912,  # SIOCGIFCONF
+                struct.pack('iL', max_bytes, names_buf.buffer_info()[0])
+            ))[0]
+            namestr = names_buf.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip_str = socket.inet_ntoa(namestr[i+20:i+24])
+                if ip_str: ips.add(ip_str)
+        finally:
+            s.close()
+
+        try:
+            with open('/proc/net/if_inet6', 'r') as f:
+                for ln in f:
+                    parts = ln.strip().split()
+                    if not parts: continue
+                    hex_ip = parts[0]
+                    if hex_ip:
+                        formatted_ip = ":".join(hex_ip[i:i+4] for i in range(0, 32, 4))
+                        import ipaddress
+                        ips.add(str(ipaddress.IPv6Address(formatted_ip)))
+        except Exception: pass
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
         for flag in ("-4","-6"):
