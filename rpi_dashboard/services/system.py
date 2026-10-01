@@ -8,6 +8,10 @@ import os
 import math
 import shutil
 import socket
+import fcntl
+import struct
+import array
+import sys as _sys
 import subprocess
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -150,7 +154,9 @@ def _cpu_freqs_cached() -> List[Optional[int]]:
 
 def _vcgencmd_core_mhz() -> Optional[int]:
     try:
-        raw = subprocess.check_output(["vcgencmd", "measure_clock", "core"], text=True, timeout=2).strip()
+        raw = subprocess.check_output(
+            ["vcgencmd", "measure_clock", "core"], text=True, timeout=2
+        ).strip()
         return int(raw.split("=")[-1]) // 1000000
     except Exception:
         return None
@@ -166,22 +172,64 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
             names.add(f"{hn}.local")
     except Exception:
         pass
+
+    # NATIVE OPTIMIZATION: get IPv4 via ioctl
     try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
-            if ip:
-                ips.add(ip)
+        is_64bits = _sys.maxsize > 2**32
+        struct_size = 40 if is_64bits else 32
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            max_possible = 8
+            while True:
+                bytes_req = max_possible * struct_size
+                names_arr = array.array("B", b"\0" * bytes_req)
+                outbytes = struct.unpack(
+                    "iL",
+                    fcntl.ioctl(
+                        s.fileno(),
+                        0x8912,  # SIOCGIFCONF
+                        struct.pack("iL", bytes_req, names_arr.buffer_info()[0]),
+                    ),
+                )[0]
+                if outbytes == bytes_req:
+                    max_possible *= 2
+                else:
+                    break
+
+            namestr = names_arr.tobytes()
+            for i in range(0, outbytes, struct_size):
+                ip = socket.inet_ntoa(namestr[i + 20 : i + 24])
+                if ip and ip != "127.0.0.1":
+                    ips.add(ip)
+    except Exception:
+        pass
+
+    # NATIVE OPTIMIZATION: get IPv6 via /proc
+    try:
+        import ipaddress
+
+        with open("/proc/net/if_inet6", "r") as f:
+            for line in f:
+                parts = line.split()
+                if parts:
+                    ip_str = str(ipaddress.IPv6Address(bytes.fromhex(parts[0])))
+                    if ip_str != "::1":
+                        ips.add(ip_str)
     except Exception:
         pass
     try:
         for flag in ("-4", "-6"):
-            r = subprocess.run(["tailscale", "ip", flag], capture_output=True, text=True, timeout=3)
+            r = subprocess.run(
+                ["tailscale", "ip", flag], capture_output=True, text=True, timeout=3
+            )
             if r.returncode == 0:
                 for ip in r.stdout.split():
                     ips.add(ip)
     except Exception:
         pass
     try:
-        r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=3)
+        r = subprocess.run(
+            ["tailscale", "status", "--json"], capture_output=True, text=True, timeout=3
+        )
         if r.returncode == 0:
             d = json.loads(r.stdout or "{}")
             dns = (d.get("Self") or {}).get("DNSName") or ""
@@ -284,11 +332,31 @@ def get_system_status() -> Dict[str, Any]:
     wp_mask = _taskset_mask(wp_pid)
     return {
         "mpv": {"pid": mpv_pid, "mask": mpv_mask, "cores": _mask_to_cores(mpv_mask)},
-        "dashboard": {"pid": dash_pid, "mask": dash_mask, "cores": "0" if dash_mask == "1" else dash_mask},
-        "keys2mpv": {"pid": keys_pid, "mask": keys_mask, "cores": "0" if keys_mask == "1" else keys_mask},
-        "webserver": {"pid": ws_pid, "mask": ws_mask, "cores": "0" if ws_mask == "1" else ws_mask},
-        "pipewire": {"pid": pw_pid, "mask": pw_mask, "cores": "3" if pw_mask == "8" else pw_mask},
-        "wireplumber": {"pid": wp_pid, "mask": wp_mask, "cores": "3" if wp_mask == "8" else wp_mask},
+        "dashboard": {
+            "pid": dash_pid,
+            "mask": dash_mask,
+            "cores": "0" if dash_mask == "1" else dash_mask,
+        },
+        "keys2mpv": {
+            "pid": keys_pid,
+            "mask": keys_mask,
+            "cores": "0" if keys_mask == "1" else keys_mask,
+        },
+        "webserver": {
+            "pid": ws_pid,
+            "mask": ws_mask,
+            "cores": "0" if ws_mask == "1" else ws_mask,
+        },
+        "pipewire": {
+            "pid": pw_pid,
+            "mask": pw_mask,
+            "cores": "3" if pw_mask == "8" else pw_mask,
+        },
+        "wireplumber": {
+            "pid": wp_pid,
+            "mask": wp_mask,
+            "cores": "3" if wp_mask == "8" else wp_mask,
+        },
         "summary": {
             "core0_background": ["dashboard", "keys2mpv", "webserver"],
             "core1_2_media": ["mpv"],
@@ -320,7 +388,10 @@ def get_hw_stats() -> Dict[str, Any]:
     avail_gb = round(st.f_bavail * st.f_frsize / 1024 / 1024 / 1024, 1)
     used_gb = round(total_gb - free_gb, 1)
     temp_c = None
-    for tp in ("/sys/class/thermal/thermal_zone0/temp", "/sys/class/thermal/thermal_zone1/temp"):
+    for tp in (
+        "/sys/class/thermal/thermal_zone0/temp",
+        "/sys/class/thermal/thermal_zone1/temp",
+    ):
         try:
             with open(tp) as f:
                 temp_c = round(int(f.read().strip()) / 1000, 1)
@@ -340,8 +411,18 @@ def get_hw_stats() -> Dict[str, Any]:
         "temp_c": temp_c,
         "freq_mhz": freq,
         "gpu": gpu,
-        "ram": {"used_mb": used_mb, "total_mb": total_mb, "percent": round(100 * used_mb / total_mb, 1) if total_mb else 0},
-        "disk": {"used_gb": used_gb, "total_gb": total_gb, "free_gb": free_gb, "avail_gb": avail_gb, "percent": round(100 * used_gb / total_gb, 1) if total_gb else 0},
+        "ram": {
+            "used_mb": used_mb,
+            "total_mb": total_mb,
+            "percent": round(100 * used_mb / total_mb, 1) if total_mb else 0,
+        },
+        "disk": {
+            "used_gb": used_gb,
+            "total_gb": total_gb,
+            "free_gb": free_gb,
+            "avail_gb": avail_gb,
+            "percent": round(100 * used_gb / total_gb, 1) if total_gb else 0,
+        },
         "uptime": f"{h}h {m}m {s}s",
     }
 
@@ -356,7 +437,9 @@ def get_https_info() -> Dict[str, Any]:
         "https_port": HTTPS_PORT,
         "friendly_http_port": HTTP_PORT,
         "friendly_https_port": HTTPS_PORT_ALT,
-        "cert_exists": os.path.exists(os.path.expanduser("~/.config/rpi-dashboard/https/webui.crt")),
+        "cert_exists": os.path.exists(
+            os.path.expanduser("~/.config/rpi-dashboard/https/webui.crt")
+        ),
         "https_url": f"https://{host}:{HTTPS_PORT}/",
         "friendly_https_url": f"https://{host}/",
         "friendly_http_url": f"http://{host}/",
@@ -395,20 +478,26 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+        # Get IP addresses natively using optimized dashboard_hostnames_and_ips
+        _, ip_list = dashboard_hostnames_and_ips()
+        ips = [ip for ip in ip_list if ip != "127.0.0.1" and not ip.startswith("::1")]
+        if not ips:
+            ips = []
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
+        # Get default gateway natively
         gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        try:
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) > 2 and parts[1] == "00000000":
+                        gateway_hex = parts[2]
+                        gateway_int = int(gateway_hex, 16)
+                        if gateway_int != 0:
+                            gateway = socket.inet_ntoa(struct.pack("<I", gateway_int))
+                            break
+        except Exception:
+            pass
 
         return {
             "ips": ips,
@@ -457,7 +546,15 @@ def get_hwmon_info() -> Dict[str, Any]:
 def get_service_logs(service: str, lines: int = 100) -> Dict[str, Any]:
     """Get systemd journal logs for a service."""
     try:
-        cmd = ["journalctl", "-u", service, "-n", str(lines), "--no-pager", "--output=cat"]
+        cmd = [
+            "journalctl",
+            "-u",
+            service,
+            "-n",
+            str(lines),
+            "--no-pager",
+            "--output=cat",
+        ]
         if not service:
             cmd = ["journalctl", "-n", str(lines), "--no-pager", "--output=cat"]
         r = _run(cmd, t=10)
