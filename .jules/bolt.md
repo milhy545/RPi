@@ -37,3 +37,11 @@
 ## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
 **Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
 **Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
+
+## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
+**Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
+**Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
+
+## 2026-09-19 - [Line-by-line patch scripts]
+**Learning:** When using a line-by-line Python patch script to delete code blocks via a boolean skip flag, if the string triggering the flag to toggle back to False does not exist or comes before the start condition, the script will inadvertently delete the entire remainder of the file.
+**Action:** When using a line-by-line Python patch script to delete code blocks via a boolean skip flag, ensure the string triggering the flag to toggle back to False exists strictly after the start condition in the file, otherwise the script will inadvertently delete the entire remainder of the file.

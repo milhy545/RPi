@@ -77,38 +77,6 @@ def get_current_pid_family() -> Set[int]:
     return pids
 
 
-def parse_proc_ps_output(ps_output: str) -> List[Dict[str, Any]]:
-    """Parse output from `ps -eo pid,ppid,pcpu,comm,args` into process dictionaries."""
-    processes: List[Dict[str, Any]] = []
-    lines = ps_output.strip().splitlines()
-    if not lines:
-        return processes
-    
-    header = lines[0].lower()
-    start_line = 1 if "pid" in header else 0
-
-    for line in lines[start_line:]:
-        parts = line.strip().split(None, 4)
-        if len(parts) < 4:
-            continue
-        try:
-            pid = int(parts[0])
-            ppid = int(parts[1])
-            pcpu = float(parts[2])
-            comm = parts[3]
-            args = parts[4] if len(parts) > 4 else comm
-            processes.append({
-                "pid": pid,
-                "ppid": ppid,
-                "pcpu": pcpu,
-                "comm": comm,
-                "args": args,
-            })
-        except ValueError:
-            continue
-    return processes
-
-
 def is_exact_playback_process(proc: Dict[str, Any]) -> bool:
     """Determine if process is an authoritative playback/gaming process.
 
@@ -186,18 +154,70 @@ class RPiGuard:
     def _get_processes(self) -> List[Dict[str, Any]]:
         if self.proc_provider:
             return self.proc_provider()
+        processes: List[Dict[str, Any]] = []
         try:
-            res = subprocess.run(
-                ["ps", "-eo", "pid,ppid,pcpu,comm,args"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return parse_proc_ps_output(res.stdout)
+            clk_tck = os.sysconf(os.sysconf_names['SC_CLK_TCK'])
         except Exception:
-            processes: List[Dict[str, Any]] = []
+            clk_tck = 100
+
+        try:
+            with open("/proc/uptime", "r") as f:
+                system_uptime = float(f.read().split()[0])
+        except Exception:
             return processes
 
+        for pid_str in os.listdir("/proc"):
+            if not pid_str.isdigit():
+                continue
+            pid = int(pid_str)
+            try:
+                with open(f"/proc/{pid}/stat", "r") as f:
+                    stat_content = f.read()
+
+                rparen_idx = stat_content.rfind(')')
+                if rparen_idx == -1:
+                    continue
+
+                comm = stat_content[stat_content.find('(')+1 : rparen_idx]
+                rest = stat_content[rparen_idx+2:].split()
+
+                if len(rest) < 20:
+                    continue
+
+                ppid = int(rest[1])
+                utime = int(rest[11])
+                stime = int(rest[12])
+                starttime = int(rest[19])
+
+                total_time = utime + stime
+                seconds = system_uptime - (starttime / clk_tck)
+                if seconds > 0:
+                    pcpu = 100.0 * ((total_time / clk_tck) / seconds)
+                else:
+                    pcpu = 0.0
+
+                args = ""
+                try:
+                    with open(f"/proc/{pid}/cmdline", "rb") as f:
+                        cmdline = f.read()
+                        if cmdline:
+                            args = cmdline.replace(b'\x00', b' ').decode(errors='ignore').strip()
+                        else:
+                            args = f"[{comm}]"
+                except (OSError, IOError):
+                    args = f"[{comm}]"
+
+                processes.append({
+                    "pid": pid,
+                    "ppid": ppid,
+                    "pcpu": pcpu,
+                    "comm": comm,
+                    "args": args,
+                })
+            except (OSError, IOError, ValueError, IndexError):
+                continue
+
+        return processes
     def _get_ram_free_mb(self) -> float:
         if self.ram_provider:
             return self.ram_provider()
