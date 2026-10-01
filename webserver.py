@@ -2643,8 +2643,29 @@ def _dashboard_hostnames_and_ips():
             names.add(hn); names.add(f"{hn}.local")
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
-        for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
-            if ip: ips.add(ip)
+        # ⚡ Bolt Optimization: Replacing `hostname -I` with native Python `ipaddress` to parse `/proc/net/if_inet6` avoids subprocess overhead on constrained devices like the Raspberry Pi, saving CPU cycles while correctly preserving IPv6 addresses as required.
+        import fcntl, struct, ipaddress
+        for if_index, if_name in socket.if_nameindex():
+            if if_name != "lo":
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                        ip = socket.inet_ntoa(fcntl.ioctl(
+                            s.fileno(),
+                            0x8915,  # SIOCGIFADDR
+                            struct.pack('256s', if_name[:15].encode('utf-8'))
+                        )[20:24])
+                        ips.add(ip)
+                except Exception:
+                    pass
+        try:
+            with open("/proc/net/if_inet6", "r") as f:
+                for line in f:
+                    hex_ip = line.split()[0]
+                    if not hex_ip.startswith("00000000000000000000000000000001"): # Ignore loopback ::1
+                        formatted_ip = str(ipaddress.IPv6Address(bytes.fromhex(hex_ip)))
+                        ips.add(formatted_ip)
+        except Exception:
+            pass
     except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
     try:
         for flag in ("-4","-6"):
