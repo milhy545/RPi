@@ -395,20 +395,61 @@ def restart_rpi() -> Dict[str, Any]:
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+        import socket
+        import fcntl
+        import struct
+        import ipaddress
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
+        ips = []
+        # Get IPv4 addresses natively
+        try:
+            for if_index, if_name in socket.if_nameindex():
+                if if_name != "lo":
+                    try:
+                        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                            ip = socket.inet_ntoa(fcntl.ioctl(
+                                s.fileno(),
+                                0x8915,  # SIOCGIFADDR
+                                struct.pack('256s', if_name[:15].encode('utf-8'))
+                            )[20:24])
+                            if ip not in ips:
+                                ips.append(ip)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Get IPv6 addresses natively
+        try:
+            with open("/proc/net/if_inet6", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if parts:
+                        hex_ip = parts[0]
+                        if_name = parts[-1]
+                        if if_name != "lo":
+                            try:
+                                formatted_ip = str(ipaddress.IPv6Address(bytes.fromhex(hex_ip)))
+                                if formatted_ip not in ips:
+                                    ips.append(formatted_ip)
+                            except Exception:
+                                pass
+        except Exception:
+            pass
+
+        # Get default gateway natively
         gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        try:
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) > 2 and parts[1] == "00000000":
+                        gw_hex = parts[2]
+                        gw_int = int(gw_hex, 16)
+                        gateway = socket.inet_ntoa(struct.pack("<L", gw_int))
+                        break
+        except Exception:
+            pass
 
         return {
             "ips": ips,
