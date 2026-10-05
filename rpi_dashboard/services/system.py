@@ -3,6 +3,9 @@
 Handles system stats, restart, and hardware monitoring.
 """
 
+import fcntl
+import struct
+import ipaddress
 import json
 import os
 import math
@@ -393,22 +396,61 @@ def restart_rpi() -> Dict[str, Any]:
 
 
 def get_network_info() -> Dict[str, Any]:
-    """Get network information."""
+    """Get network information natively without subprocesses overhead."""
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
+        ips = []
+        # Get IPv4 addresses using fcntl and SIOCGIFADDR
+        try:
+            if os.path.exists("/sys/class/net"):
+                for iface in os.listdir("/sys/class/net"):
+                    if iface != "lo":
+                        try:
+                            # ⚡ Bolt Optimization: Use native fcntl instead of 'hostname -I' subprocess
+                            # Sockets natively support context managers
+                            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                                ip = socket.inet_ntoa(fcntl.ioctl(
+                                    s.fileno(),
+                                    0x8915,  # SIOCGIFADDR
+                                    struct.pack("256s", iface[:15].encode("utf-8"))
+                                )[20:24])
+                                ips.append(ip)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # Get IPv6 addresses natively from /proc/net/if_inet6
+        try:
+            if os.path.exists("/proc/net/if_inet6"):
+                with open("/proc/net/if_inet6", "r") as f:
+                    for line in f:
+                        parts = line.split()
+                        if parts:
+                            hex_ip = parts[0]
+                            # Exclude loopback
+                            if hex_ip != "00000000000000000000000000000001":
+                                formatted_ip = ":".join(hex_ip[i:i+4] for i in range(0, 32, 4))
+                                try:
+                                    ips.append(str(ipaddress.IPv6Address(formatted_ip)))
+                                except Exception:
+                                    pass
+        except Exception:
+            pass
+
+        # ⚡ Bolt Optimization: Get Gateway natively from /proc/net/route instead of 'ip route'
         gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        try:
+            if os.path.exists("/proc/net/route"):
+                with open("/proc/net/route", "r") as f:
+                    next(f)  # skip header
+                    for line in f:
+                        parts = line.strip().split("\t")
+                        if len(parts) > 2 and parts[1] == "00000000":
+                            gateway = socket.inet_ntoa(struct.pack("<L", int(parts[2], 16)))
+                            break
+        except Exception:
+            pass
 
         return {
             "ips": ips,
