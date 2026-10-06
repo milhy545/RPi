@@ -166,19 +166,26 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
             names.add(f"{hn}.local")
     except Exception:
         pass
-    try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
-            if ip:
+    # ⚡ Bolt Optimization: Retrieve IPv4 and IPv6 natively to avoid 3 subprocess overheads
+    import fcntl, struct, ipaddress
+    for _, if_name in socket.if_nameindex():
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                ip = socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', if_name[:15].encode('utf-8')))[20:24])
                 ips.add(ip)
-    except Exception:
-        pass
+        except OSError:
+            pass
     try:
-        for flag in ("-4", "-6"):
-            r = subprocess.run(["tailscale", "ip", flag], capture_output=True, text=True, timeout=3)
-            if r.returncode == 0:
-                for ip in r.stdout.split():
-                    ips.add(ip)
-    except Exception:
+        with open("/proc/net/if_inet6", "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if parts:
+                    ip_str = ":".join(parts[0][i:i+4] for i in range(0, 32, 4))
+                    try:
+                        ips.add(str(ipaddress.IPv6Address(ip_str)))
+                    except ValueError:
+                        pass
+    except OSError:
         pass
     try:
         r = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=3)
