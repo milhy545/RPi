@@ -101,16 +101,10 @@ def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
     from rpi_dashboard.services.system import dashboard_hostnames_and_ips
 
     with patch("rpi_dashboard.services.system.socket.gethostname", return_value="rpi-tv"):
-        with patch("rpi_dashboard.services.system.subprocess.check_output", return_value="192.168.0.100\n"):
-            with patch(
-                "rpi_dashboard.services.system.subprocess.run",
-                side_effect=[
-                    MagicMock(returncode=1, stdout="", stderr=""),
-                    MagicMock(returncode=1, stdout="", stderr=""),
-                    MagicMock(returncode=1, stdout="", stderr=""),
-                ],
-            ):
-                names, ips = dashboard_hostnames_and_ips()
+        with patch("rpi_dashboard.services.system.socket.if_nameindex", return_value=[(1, "eth0")]):
+            with patch("rpi_dashboard.services.system.socket.inet_ntoa", return_value="192.168.0.100"):
+                with patch("rpi_dashboard.services.system.subprocess.run", return_value=MagicMock(returncode=1, stdout="", stderr="")):
+                    names, ips = dashboard_hostnames_and_ips()
 
     assert "rpi-tv" in names
     assert "127.0.0.1" in ips
