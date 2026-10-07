@@ -394,26 +394,54 @@ def restart_rpi() -> Dict[str, Any]:
 
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
+    # ⚡ Bolt Optimization: Replace expensive `subprocess` calls (`hostname -I` and `ip route`)
+    # with native Python socket, ioctl, and /proc/net/route parsing.
+    # This avoids process creation overhead and significantly improves execution speed.
+    import socket
+    import fcntl
+    import struct
+    import ipaddress
+    ips = []
+    gateway = None
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
-
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
-
-        return {
-            "ips": ips,
-            "gateway": gateway,
-        }
+        # IPv4
+        interfaces = os.listdir("/sys/class/net")
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            for iface in interfaces:
+                if iface == "lo":
+                    continue
+                try:
+                    res = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", iface[:15].encode("utf-8")))
+                    ip = socket.inet_ntoa(res[20:24])
+                    if ip not in ips:
+                        ips.append(ip)
+                except Exception:
+                    pass
+        # IPv6
+        try:
+            with open("/proc/net/if_inet6", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 6 and parts[5] != "lo":
+                        hex_ip = parts[0]
+                        formatted = ":".join(hex_ip[i:i+4] for i in range(0, 32, 4))
+                        ip = str(ipaddress.IPv6Address(formatted))
+                        if ip not in ips:
+                            ips.append(ip)
+        except Exception:
+            pass
+        # Gateway
+        try:
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) > 2 and parts[1] == "00000000":
+                        gateway_hex = parts[2]
+                        gateway = socket.inet_ntoa(struct.pack("<L", int(gateway_hex, 16)))
+                        break
+        except Exception:
+            pass
+        return {"ips": ips, "gateway": gateway}
     except Exception as e:
         return {"ips": [], "gateway": None, "error": str(e)}
 
