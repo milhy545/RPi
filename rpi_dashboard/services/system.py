@@ -6,6 +6,9 @@ Handles system stats, restart, and hardware monitoring.
 import json
 import os
 import math
+import fcntl
+import struct
+import ipaddress
 import shutil
 import socket
 import subprocess
@@ -394,21 +397,58 @@ def restart_rpi() -> Dict[str, Any]:
 
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
+    ips = []
+    gateway = None
     try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+        # ⚡ Bolt Optimization: Use native Python instead of `hostname -I`
+        # Replaced expensive `subprocess.run(["hostname", "-I"])` with
+        # native `fcntl.ioctl` and `/proc/net/if_inet6` reading to avoid
+        # process creation overhead on Raspberry Pi.
+        try:
+            if_names = [i for i in os.listdir("/sys/class/net/") if i != "lo"]
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                for if_name in if_names:
+                    try:
+                        # SIOCGIFADDR = 0x8915
+                        res = fcntl.ioctl(s.fileno(), 0x8915, struct.pack("256s", if_name[:15].encode("utf-8")))
+                        ip = socket.inet_ntoa(res[20:24])
+                        if ip not in ips:
+                            ips.append(ip)
+                    except OSError:
+                        pass
+        except OSError:
+            pass
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+        try:
+            with open("/proc/net/if_inet6", "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 6:
+                        if parts[3] == "00":
+                            addr_hex = parts[0]
+                            addr = ":".join(addr_hex[i:i+4] for i in range(0, 32, 4))
+                            try:
+                                ip = ipaddress.IPv6Address(addr)
+                                if str(ip.compressed) not in ips:
+                                    ips.append(str(ip.compressed))
+                            except ValueError:
+                                pass
+        except OSError:
+            pass
+
+        # ⚡ Bolt Optimization: Use native Python instead of `ip route show default`
+        # Replaced expensive `subprocess.run(["ip", "route", "show", "default"])`
+        # with native `/proc/net/route` parsing.
+        try:
+            with open("/proc/net/route", "r") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) > 2 and parts[1] == "00000000":
+                        gateway_hex = parts[2]
+                        gateway = ".".join(str(int(gateway_hex[i:i+2], 16)) for i in range(6, -1, -2))
+                        break
+        except Exception:
+            pass
 
         return {
             "ips": ips,
