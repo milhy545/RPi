@@ -37,3 +37,6 @@
 ## 2026-09-19 - [Subprocess ps vs Native procfs parsing]
 **Learning:** Checking process details by shelling out to `ps` (e.g. `ps -eo pid,ppid,args` or `ps -p [pid]`) creates significant overhead by spawning shells and processes, taking ~15ms per call. Natively iterating through `/proc` and parsing `/cmdline` and `/stat` avoids this overhead entirely, reducing execution time to <1ms.
 **Action:** When you need to retrieve process details or check for specific process arguments, natively parse the `/proc` filesystem (e.g. `/proc/[pid]/cmdline` or `/proc/[pid]/stat`) instead of using `ps` subprocess calls to save significant CPU cycles and latency on low-end hardware.
+## 2024-05-17 - [Native Network Info]
+**Learning:** Shelling out to `hostname -I` or `ip route` in Python is slow. Fetching network properties using `fcntl.ioctl(socket.fileno(), 0x8915, struct.pack("256s", if_name))` and `/proc/net/route` parsing is substantially faster than sub-processes for gathering host IPs and Gateway.
+**Action:** Always prefer native python proc parsing and ioctl over subprocessing `iproute2` or net-tools.
