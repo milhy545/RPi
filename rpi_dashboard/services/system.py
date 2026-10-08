@@ -428,9 +428,10 @@ def get_network_info() -> Dict[str, Any]:
                             addr_hex = parts[0]
                             addr = ":".join(addr_hex[i:i+4] for i in range(0, 32, 4))
                             try:
-                                ip = ipaddress.IPv6Address(addr)
-                                if str(ip.compressed) not in ips:
-                                    ips.append(str(ip.compressed))
+                                ipv6_obj = ipaddress.IPv6Address(addr)
+                                ipv6_str = str(ipv6_obj.compressed)
+                                if ipv6_str not in ips:
+                                    ips.append(ipv6_str)
                             except ValueError:
                                 pass
         except OSError:
