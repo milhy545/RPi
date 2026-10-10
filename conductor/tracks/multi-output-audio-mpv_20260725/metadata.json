@@ -1,0 +1,16 @@
+{
+  "track_id": "multi-output-audio-mpv_20260725",
+  "title": "Multi-Output Audio Distribution for BT Source & MPV",
+  "type": "feature",
+  "status": "done",
+  "created_at": "2026-07-25T00:28:00Z",
+  "updated_at": "2026-07-25T00:28:00Z",
+  "tags": [
+    "audio",
+    "pipewire",
+    "bluetooth",
+    "hdmi",
+    "mpv",
+    "multi-output"
+  ]
+}

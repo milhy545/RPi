@@ -1,0 +1,7 @@
+[Unit]
+Description=Conductor User Report Processor Worker
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/milhy777/rpi-dashboard
+ExecStart=/home/milhy777/rpi-dashboard/tools/process_reports.py

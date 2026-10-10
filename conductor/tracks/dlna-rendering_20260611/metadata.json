@@ -1,0 +1,11 @@
+{
+  "track_id": "dlna-rendering_20260611",
+  "title": "DLNA/UPnP Rendering",
+  "type": "feature",
+  "status": "planned",
+  "created": "2026-06-11T00:00:00Z",
+  "updated": "2026-06-11T00:00:00Z",
+  "priority": "medium",
+  "tags": ["dlna", "upnp", "renderer", "audio", "video"],
+  "dependencies": []
+}

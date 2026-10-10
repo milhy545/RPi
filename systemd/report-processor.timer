@@ -1,0 +1,10 @@
+[Unit]
+Description=Run RPi Dashboard Report Processor every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

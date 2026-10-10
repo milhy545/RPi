@@ -1,0 +1,11 @@
+{
+  "track_id": "playback-resume-memory_20260613",
+  "title": "Playback Resume Memory",
+  "type": "feature",
+  "status": "planned",
+  "created": "2026-06-13T00:00:00Z",
+  "updated": "2026-06-13T00:00:00Z",
+  "priority": "high",
+  "tags": ["mpv", "resume", "webui", "playback-memory", "safety"],
+  "dependencies": ["mpv-keep-open-fix_20260611"]
+}

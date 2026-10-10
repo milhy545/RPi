@@ -1,0 +1,34 @@
+{
+  "id": "mpv-optimization-20260627",
+  "title": "MPV Optimization for Faster Video Playback",
+  "type": "performance",
+  "status": "active",
+  "priority": "high",
+  "created": "2026-07-27",
+  "updated": "2026-08-02",
+  "created_by": "agent",
+  "description": "Optimize RPi Dashboard video playback performance",
+  "acceptance_criteria": [
+    "Video content visible within 120 seconds of playback initiation",
+    "Memory usage <300 MiB at peak playback",
+    "CPU usage <35% during startup phase",
+    "No regression in existing functionality"
+  ],
+  "implementation_notes": {
+    "phase1_status": "COMPLETED",
+    "url_cache": "IMPLEMENTED - File-based cache with 24h TTL",
+    "socket_pool": "IMPLEMENTED - 3-connection pool with auto-reconnect",
+    "api_endpoints": "/cache/stats, /cache/clear, /pool/stats, /pool/clear, /audio/test, /system/restart-mpv",
+    "tests_passed": "284/284",
+    "bugs_fixed": [
+      "Reset Matrix button now works (added 'reset' action to audio/route/alexa-bt endpoint)",
+      "Bluetooth scan timeout increased from 2s to 5s"
+    ],
+    "verification_status": "Target-device startup, memory, and CPU acceptance criteria remain open.",
+    "next_optimizations": [
+      "Async Preloading",
+      "Dynamic Core Pinning",
+      "Memory Optimization"
+    ]
+  }
+}

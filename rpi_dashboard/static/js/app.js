@@ -1,0 +1,1086 @@
+function $(s){return document.querySelector(s)}function $$(s){return document.querySelectorAll(s)}
+function msg(t,c){let box=$('#toast');while(box.children.length>=3)box.firstElementChild.remove();let d=document.createElement('div');d.className='t '+c;d.textContent=t;box.appendChild(d);setTimeout(()=>d.remove(),4000)}
+function getCookie(name){let v=document.cookie.match('(^|;) ?'+name+'=([^;]*)(;|$)');return v?v[2]:null}
+let pendingAuthRetry=null;
+function authRoleForUrl(u){let path=String(u||'').split('?')[0];if(path.startsWith('http')){try{path=new URL(path).pathname}catch(e){}}let admin=['/terminal/','/system/restart-','/system/reboot','/restart/','/ws/','/bt/file-','/bt/remove','/bt/reset','/selftest/','/system/logs'];return admin.some(p=>path.startsWith(p))?'admin':'expert'}
+function cloneApiOpts(opts){let cloned=Object.assign({},opts||{});cloned.headers=Object.assign({},(opts&&opts.headers)||{});return cloned}
+function maybePromptLogin(u,status,data,retry){if(String(u||'').startsWith('/auth/'))return false;let err=(data&&data.error)||'';if(status===503&&/not provisioned/i.test(err)){msg(err,'err');return true}if(status===401||status===403){let role=authRoleForUrl(u);if(status===401){appSetMode('basic');updateRoleBadge('basic')}if(typeof retry==='function')pendingAuthRetry=retry;msg(role.charAt(0).toUpperCase()+role.slice(1)+' login required','err');openLoginModal(role);return true}return false}
+async function api(u, opts={}, internal={}){try{opts=cloneApiOpts(opts);opts.credentials=opts.credentials||'same-origin';let token=getCookie('rpi_csrf');if(token)opts.headers['X-CSRF-Token']=token;let response=await fetch(u,opts);let text=await response.text(),data;try{data=JSON.parse(text)}catch{return{ok:false,error:'HTTP '+response.status+' returned a non-JSON response'}}if(!response.ok){if(!data.error)data.error='HTTP '+response.status;if(!internal.skipAuthRetry&&maybePromptLogin(u,response.status,data,async()=>api(u,opts,{skipAuthRetry:true})))return{ok:false,error:data.error,authRequired:true,status:response.status};}return data}catch(e){return{ok:false,error:e.message}}}
+function appSetMode(m){let app=$('#webui-app');if(!app)return;app.classList.remove('mode-basic','mode-expert');app.classList.add('mode-'+m);let b1=$('#mode-btn-basic'),b2=$('#mode-btn-expert');if(b1)b1.classList.toggle('active',m==='basic');if(b2)b2.classList.toggle('active',m==='expert');try{localStorage.setItem('webui-mode',m)}catch(e){}}
+function sw(n){$$('.tab, .app-nav-item').forEach(t=>t.classList.toggle('active',t.dataset.t===n));$$('.pnl').forEach(p=>p.classList.toggle('active',p.id==='p-'+n));if(n==='player'){playerEnter()}if(n==='bluetooth'){btInitInteractions();bluetoothRefresh();setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},120)}if(n==='terminal'){loadHwStats();loadSysStatus();if(term){setTimeout(termFitNow,80);setTimeout(termFitNow,250)}}}
+let previewTimer=null,previewSeq=0;
+function httpsUrlForCurrent(){let host=location.hostname||'rpi-tv';let p=location.port;if(p==='8080')return 'https://'+host+':8443'+location.pathname;if(p==='80'||p==='')return 'https://'+host+location.pathname;return 'https://'+host+(p?':'+p:'')+location.pathname}
+function updateSecurityBanner(){let b=$('#security-banner');if(!b)return;if(location.protocol==='https:'){b.className='ok show';b.innerHTML='<span>'+L('secureClipboardEnabled')+'</span>';return}let u=httpsUrlForCurrent();b.className='warn show';b.innerHTML='<span>'+L('httpFallbackBanner')+'</span><a href="'+esc(u)+'">'+L('openHttps')+'</a>'}
+function playerActive(){let p=$('#p-player');return !!(p&&p.classList.contains('active'))}
+function playerEnter(){ytCookieStatus();autoClipboardUrl();schedulePreview()}
+function looksMediaUrl(t){return /^https?:\/\//i.test((t||'').trim())}
+async function tryClipboardUrl(manual,force){if(!navigator.clipboard||!navigator.clipboard.readText){if(manual)msg('Clipboard read is not available in this browser/context','err');return false}try{let t=(await navigator.clipboard.readText()).trim();if(looksMediaUrl(t)&&(force||!$('#url').value.trim())){$('#url').value=t;msg('URL pasted from clipboard','ok');previewUrl();return true}else if(manual){msg(looksMediaUrl(t)?'Input already has a URL':'Clipboard does not contain a media URL','info')}}catch(e){if(manual)msg('Clipboard permission denied or unavailable','err')}return false}
+function pasteClipboardUrl(){tryClipboardUrl(true,true)}
+function autoClipboardUrl(){if(playerActive()&&!$('#url').value.trim())tryClipboardUrl(false,false)}
+function schedulePreview(){clearTimeout(previewTimer);previewTimer=setTimeout(previewUrl,500)}
+function drawPreview(r){let box=$('#player-preview');if(!box)return;if(!r||!r.ok){box.classList.remove('on');box.innerHTML='';if(r&&r.error)msg(r.error,'err');return}let img=r.thumbnail?'<img src="'+esc(r.thumbnail)+'" alt="">':'';let dur=r.duration?fmt(r.duration):'';let meta=(r.type||'media')+(dur?' · '+dur:'')+(r.uploader?' · '+esc(r.uploader):'');box.innerHTML=img+'<div><div id="player-preview-title">'+esc(r.title||'Preview')+'</div><div class="media-meta">'+meta+'</div></div>';box.classList.add('on')}
+async function previewUrl(){let u=$('#url').value.trim();let seq=++previewSeq;if(!looksMediaUrl(u)){drawPreview(null);return}let r=await api('/media/preview?url='+encodeURIComponent(u));if(seq===previewSeq)drawPreview(r)}
+async function play(){let u=$('#url').value.trim(),q=$('#qual').value;if(!u){msg('Enter URL','err');return}let mr=await api('/mpv/memory?url='+encodeURIComponent(u));let mem=mr&&mr.memory;let resume=false;if(mem&&mem.position!==null&&mem.position>0&&mem.duration&&(mem.duration-mem.position)>30&&mem.position<mem.duration*.95){let pos=mem.position;let hrs=Math.floor(pos/3600);let mins=Math.floor((pos%3600)/60);let secs=Math.floor(pos%60);let tstr;if(hrs>0){tstr=hrs+':'+(mins<10?'0':'')+mins+':'+(secs<10?'0':'')+secs}else{tstr=mins+':'+(secs<10?'0':'')+secs}if(confirm('Resume from '+tstr+'?')){resume=true}else{await api('/mpv/memory/clear?url='+encodeURIComponent(u));}}let r=await api('/mpv/play?url='+encodeURIComponent(u)+'&q='+q+'&resume='+(resume?'1':'0'));if(r.error)msg(r.error,'err');else msg('Playing: '+(r.meta&&r.meta.title||r.q),'ok');setTimeout(st,1500)}
+function pause(){api('/mpv/toggle').then(r=>msg(r.paused!==undefined?(r.paused?'Paused':'Playing'):'?','info'))}
+function stop(){api('/mpv/stop').then(()=>{msg('Stopped','ok');$('#st').textContent='—'})}
+function seek(d){api('/mpv/seek?d='+d)}
+function vol(d){api('/mpv/vol?d='+d)}
+function mute(){api('/mpv/toggle').then(r=>msg(r.paused!==undefined?(r.paused?'Muted':'Unmuted'):'?','info'));setTimeout(st,300)}
+let seeking=false,lastPos=0,lastDur=0;
+function seekTo(v){if(lastDur>0){let pos=(v/100)*lastDur;api('/mpv/seekabs?pos='+pos.toFixed(1))}}
+async function st(){let r=await api('/mpv/status'),s=$('#st');if(!r.on){s.textContent=r.err?'Error':'—';return}let p=fmt(r.pos),du=fmt(r.dur);s.innerHTML='<b>'+esc(r.title||'?')+'</b><br>'+p+'/'+du+(r.paused?' ⏸':'')+' Vol:'+Math.round(r.vol)+'% '+r.q;lastPos=r.pos||0;lastDur=r.dur||0;if(!seeking&&lastDur>0){let pct=(lastPos/lastDur)*100;$('#sbar').value=pct;$('#stime').textContent=fmt(lastPos);$('#dtime').textContent=fmt(lastDur)}}
+function fmt(s){if(!s)return'0:00';let m=Math.floor(s/60),sc=Math.floor(s%60);return m+':'+(sc<10?'0':'')+sc}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}
+function jsarg(s){return String(s??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'\\r').replace(/</g,'\\x3C').replace(/>/g,'\\x3E').replace(/&/g,'\\x26')}
+function getCookie(name){let prefix=encodeURIComponent(name)+'=';let item=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith(prefix));return item?decodeURIComponent(item.slice(prefix.length)):''}
+function setCookie(name,value){document.cookie=encodeURIComponent(name)+'='+encodeURIComponent(value)+'; path=/; max-age=31536000; SameSite=Lax'}
+const LANG_KEY='rpidash-lang'
+const I18N={cz:{player:'Přehrávač',apps:'Aplikace',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Zařízení',terminal:'Terminál',status:'Stav',quick:'Rychlé',ageCookies:'Věk / cookies',cookieStatus:'Stav cookies',ageCheck:'Kontrola věku',play:'Přehrát',pasteClipboard:'Vložit schránku',openHttps:'Otevřít HTTPS',httpFallbackBanner:'HTTP fallback je aktivní. Pro vložení ze schránky použij zabezpečenou verzi.',secureClipboardEnabled:'Zabezpečená verze: clipboard je povolený po schválení oprávnění prohlížeče.',refresh:'Obnovit',connect:'Připojit',disconnect:'Odpojit',saveApply:'Uložit + použít',inputUrl:'YouTube nebo přímá URL...',audioDelay:'Audio delay (ms):',playerDesc:'Přehrávání YouTube/mpv a diagnostika cookies.',appsDesc:'Spuštění aplikací a návrat do dashboardu.',cecPower:'Napájení',cecBridge:'Remote→MPV Bridge',cecNav:'Navigace',cecVol:'Hlasitost',cecInput:'Vstup',cecDevices:'Zařízení',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy cesta pro odeslání URL do lokálního Kodi na 127.0.0.1:9090 přes Player.Open. Smysl má jen pokud Kodi skutečně běží jako renderer/přehrávač; běžné YouTube/mpv přehrávání používá kartu Player.',audioTitle:'Audio & Media',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',outputSinks:'Výstupní zařízení',inputSources:'Vstupní zdroje',mixer:'Mixér — aktivní streamy',audioRouting:'Směrování zvuku',dlnaLatency:'Kompenzace DLNA zpoždění',ytAge:'YouTube věk / cookies',ytAgeDesc:'Kontrola čerstvosti cookies bez vyzrazení hodnot. Použij, když age-restricted video nejde přehrát.',diagnostics:'Diagnostika',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesTitle:'Zařízení',devicesDesc:'Wi‑Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',btPair:'Párování Bluetooth',wifiConfig:'Wi‑Fi konfigurace',roles:'Doporučené role zařízení',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj zde, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj zde pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.',termConnect:'Připojit',termDisconnect:'Odpojit',scan:'Skenovat',pair:'Párovat',trust:'Důvěřovat',remove:'Odebrat',found:'Nalezeno',paired:'spárováno',connected:'Připojeno',disconnected:'Odpojeno',playing:'Přehrávám',paused:'Pozastaveno',stopped:'Zastaveno',language:'Jazyk',clickScan:'Klikni na Skenovat',clickScanRefresh:'Klikni na Skenovat nebo Obnovit',clickCookieStatus:'Klikni na Stav cookies',appsLaunch:'Spustit aplikaci',appsReturn:'Návrat do Dashboardu',appsReturnDesc:'• <b>Ctrl+C</b> — ukončí většinu aplikací<br>• <b>Ctrl+Q</b> — ukončí Steam Link<br>• <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>• Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení',cecBridgeDesc:'Play/Pause, Stop, Seek, Vol via TV remote',ssid:'SSID',password:'Heslo',tipPlayerInput:'Vlož YouTube URL nebo přímý odkaz na video/audio.',tipAgeCheck:'Zadej YouTube URL pro kontrolu věkového ověření.',tipCecScan:'Prohledá CEC sběrnici a zobrazí HDMI zařízení.',tipCecBridge:'Přeposílá tlačítka TV ovladače na mpv.',tipAudioBt:'Přepne výstup na Bluetooth soundbar.',tipAudioHdmi:'Přepne výstup na HDMI.',tipAudioDlna:'Přepne výstup na DLNA zařízení.',tipDlnaLatency:'Nastav zpoždění zvuku při DLNA přehrávání.',tipBtScan:'Skenuje okolní Bluetooth zařízení.',tipWifiScan:'Skenuje dostupné Wi-Fi sítě.',tipWifiConnect:'Připojí RPi ke zvolené Wi-Fi. Heslo zůstává jen v prohlížeči.',tipKodiUrl:'URL adresa odeslaná do Kodi přes JSON-RPC.',tipMpvQ:'Kvalita přehrávání; vyšší rozlišení víc zatěžuje RPi.',feedbackBtn:'💬 Zpětná vazba',feedbackTitle:'💬 Odeslat zpětnou vazbu',feedbackTypeLabel:'Typ:',feedbackBug:'Nahlásit chybu',feedbackFeature:'Návrh na vylepšení',feedbackDescLabel:'Popis:',feedbackSubmit:'Odeslat',feedbackPlaceholder:'Zde popište chybu nebo nápad...',feedbackRequired:'Popis je povinný.',feedbackSending:'Odesílám zpětnou vazbu...',feedbackSuccess:'Zpětná vazba byla uložena! Soubor:',feedbackFailed:'Chyba při odesílání zpětné vazby.',ssidRequired:'Název sítě SSID je povinný.',wifiConnected:'Wi‑Fi připojena.',wifiFailed:'Připojení k Wi‑Fi selhalo.',wifiScanning:'Skenování Wi‑Fi...',wifiScanDone:'Skenování Wi‑Fi dokončeno.',wifiScanFailed:'Skenování Wi‑Fi selhalo.',ytUrlRequired:'Zadejte YouTube URL.',ytChecking:'Ověřování věku a cookies...',ytExtractable:'Video lze bez problému přehrát.',ytFailed:'Ověření věku selhalo.',launching:'Spouštím',failed:'selhalo',stopping:'Zastavování...',termReady:'Terminál připraven.',connectionError:'Chyba připojení.',appsMpv:'🎬 MPV Přehrávač',appsStopReturn:'⏹ ZASTAVIT & VRÁTIT SE',hwStatsTitle:'HW Statistiky & Zátěž',hwUpdateBtn:'Aktualizovat',hwLiveBtn:'Živé sledování',hwLoading:'Načítám HW statistiky...',sysLoading:'Načítám parametry procesů...',restartTitle:'Restart Systému',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboardu',restartRpi:'Restart RPi',taDefault:'Výchozí výstup:',taRaw:'Surová JSON data',clickRefresh:'Klikni Obnovit',wifiUse:'Použít',wifiNone:'Žádné sítě nenalezeny',
+network:'🌐 Síť',
+networkTitle:'🌐 Síť',
+networkDesc:'Nastavení sítě a správa Wi-Fi.',
+tailscaleTitle:'🔗 Tailscale',
+tailscaleDesc:'Stav Tailscale VPN.',
+sectionNetwork:'Síť: Wi-Fi stav, skenování sítě, připojení. Tailscale VPN status.',
+system:'⚙️ Systém',
+systemTitle:'⚙️ Systém',
+systemDesc:'HW statistiky, CPU masky, restart akce.',
+logs:'📋 Logy',
+logsTitle:'📋 Systémové logy',
+logsDesc:'Prohlížení systemd journalu a aplikačních logů pro diagnostiku.',
+sectionLogs:'Logy: vyber službu a počet řádků, klikni Obnovit. Logy se načtou z journalctl.',
+httpsInfoTitle:'HTTPS Info',
+logServiceDashboard:'Dashboard',
+logServiceMpv:'MPV',
+logServiceKeys2mpv:'Keys2MPV',
+logServicePipewire:'PipeWire',
+logServiceWireplumber:'WirePlumber',
+logServiceBluetooth:'Bluetooth',
+logServiceAll:'Vše (journalctl -u)'},en:{player:'Player',apps:'Apps',cec:'CEC',kodi:'Kodi',audio:'Audio',bluetooth:'Bluetooth',devices:'Devices',terminal:'Terminal',status:'Status',quick:'Quick',ageCookies:'Age / cookies',cookieStatus:'Cookie status',ageCheck:'Age check',play:'Play',pasteClipboard:'Paste clipboard',openHttps:'Open HTTPS',httpFallbackBanner:'HTTP fallback is active. Use the secure version for clipboard paste.',secureClipboardEnabled:'Secure version: clipboard is enabled after browser permission.',refresh:'Refresh',connect:'Connect',disconnect:'Disconnect',saveApply:'Save + apply',inputUrl:'YouTube or direct URL...',audioDelay:'Audio delay (ms):',playerDesc:'YouTube/mpv playback and cookie diagnostics.',appsDesc:'Launch apps and return to the dashboard.',cecPower:'Power',cecBridge:'Remote→MPV Bridge',cecNav:'Navigation',cecVol:'Volume',cecInput:'Input',cecDevices:'Devices',kodiTitle:'Kodi JSON-RPC launcher',kodiDesc:'Legacy route for sending a URL to a local Kodi instance on 127.0.0.1:9090 via Player.Open. It is useful only if Kodi is installed/running as a renderer; normal YouTube/mpv playback uses the Player tab.',audioTitle:'Audio & Media',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',outputSinks:'Output Sinks',inputSources:'Input Sources',mixer:'Mixer — Active Streams',audioRouting:'Audio Routing',dlnaLatency:'DLNA Latency Compensation',ytAge:'YouTube Age / Cookies',ytAgeDesc:'Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.',diagnostics:'Diagnostics',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesTitle:'Devices',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',btPair:'Bluetooth Pairing',wifiConfig:'Wi‑Fi Configuration',roles:'Suggested Device Roles',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.',termConnect:'Connect',termDisconnect:'Disconnect',scan:'Scan',pair:'Pair',trust:'Trust',remove:'Remove',found:'Found',paired:'paired',connected:'Connected',disconnected:'Disconnected',playing:'Playing',paused:'Paused',stopped:'Stopped',language:'Language',clickScan:'Click Scan',clickScanRefresh:'Click Scan or Refresh',clickCookieStatus:'Click Cookie status',appsLaunch:'Launch app',appsReturn:'Back to Dashboard',appsReturnDesc:'• <b>Ctrl+C</b> — closes most applications<br>• <b>Ctrl+Q</b> — closes Steam Link<br>• <b>STOP button</b> — forces a return<br>• Apps run directly on the TV and the dashboard returns automatically after exit',cecBridgeDesc:'Play/Pause, Stop, Seek, Volume via TV remote',ssid:'SSID',password:'Password',tipPlayerInput:'Paste a YouTube URL or direct video/audio link.',tipAgeCheck:'Enter a YouTube URL to check age/cookie status.',tipCecScan:'Scan the CEC bus and list HDMI devices.',tipCecBridge:'Forward TV remote buttons to mpv.',tipAudioBt:'Switch audio output to Bluetooth soundbar.',tipAudioHdmi:'Switch audio output to HDMI.',tipAudioDlna:'Switch audio output to a DLNA device.',tipDlnaLatency:'Set audio delay offset for DLNA playback.',tipBtScan:'Scan nearby Bluetooth devices.',tipWifiScan:'Scan available Wi-Fi networks.',tipWifiConnect:'Connect to a Wi-Fi network. Password stays only in your browser.',tipKodiUrl:'URL address to send to Kodi via JSON-RPC.',tipMpvQ:'Playback quality; higher resolution uses more RPi resources.',feedbackBtn:'💬 Feedback',feedbackTitle:'💬 Submit Feedback',feedbackTypeLabel:'Type:',feedbackBug:'Bug Report',feedbackFeature:'Feature Request',feedbackDescLabel:'Description:',feedbackSubmit:'Submit',feedbackPlaceholder:'Please describe the issue or your feature request...',feedbackRequired:'Description is required.',feedbackSending:'Submitting feedback...',feedbackSuccess:'Feedback submitted! File:',feedbackFailed:'Failed to submit feedback.',ssidRequired:'SSID required.',wifiConnected:'Wi-Fi connected.',wifiFailed:'Wi-Fi connection failed.',wifiScanning:'Scanning Wi-Fi...',wifiScanDone:'Wi-Fi scan done.',wifiScanFailed:'Wi-Fi scan failed.',ytUrlRequired:'Enter YouTube URL.',ytChecking:'Checking YouTube age/cookies...',ytExtractable:'Video is extractable.',ytFailed:'Age/cookie check failed.',launching:'Launching',failed:'failed',stopping:'Stopping...',termReady:'Terminal ready.',connectionError:'Connection error.',appsMpv:'🎬 MPV Player',appsStopReturn:'⏹ STOP & RETURN',hwStatsTitle:'HW Stats & CPU Masks',hwUpdateBtn:'Update',hwLiveBtn:'Live monitoring',hwLoading:'Loading HW stats...',sysLoading:'Loading CPU masks...',restartTitle:'Restart Actions',restartMpv:'Restart mpv',restartDashboard:'Restart Dashboard',restartRpi:'Restart RPi',taDefault:'Default sink:',taRaw:'Raw technical JSON',clickRefresh:'Click Refresh',wifiUse:'Use',wifiNone:'No networks found',
+network:'🌐 Network',
+networkTitle:'🌐 Network',
+networkDesc:'Network configuration and Wi-Fi management.',
+tailscaleTitle:'🔗 Tailscale',
+tailscaleDesc:'Tailscale VPN status.',
+sectionNetwork:'Network: Wi-Fi status, scan networks, connect. Tailscale VPN status.',
+system:'⚙️ System',
+systemTitle:'⚙️ System',
+systemDesc:'HW stats, CPU masks, restart actions.',
+logs:'📋 Logs',
+logsTitle:'📋 System Logs',
+logsDesc:'View systemd journal and application logs for troubleshooting.',
+sectionLogs:'Logs: select service and number of lines, click Refresh. Logs loaded from journalctl.',
+httpsInfoTitle:'HTTPS Info',
+logServiceDashboard:'Dashboard',
+logServiceMpv:'MPV',
+logServiceKeys2mpv:'Keys2MPV',
+logServicePipewire:'PipeWire',
+logServiceWireplumber:'WirePlumber',
+logServiceBluetooth:'Bluetooth',
+logServiceAll:'All (journalctl -u)'}}
+Object.assign(I18N.cz,{bluetooth:'Bluetooth',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesDesc:'Wi-Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj v Bluetooth, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj v Bluetooth pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.'});
+Object.assign(I18N.en,{bluetooth:'Bluetooth',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust in Bluetooth, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust in Bluetooth for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.'});
+
+const HELPERS={
+cz:{
+sectionPlayer:'Přehrávač: vlož YouTube nebo přímou URL, vyber kvalitu a spusť mpv. Stav ukazuje titul, čas, pauzu, hlasitost a kvalitu. Ovládání seek/volume funguje i přes klávesy a remote bridge.',
+sectionQuick:'Rychlé testovací odkazy pro ověření, že mpv/youtube pipeline funguje. Nepoužívej pro produkční diagnostiku, jen jako rychlý smoke test.',
+sectionAgeCookies:'Ověření věku a cookies: 1) vlož problematické YouTube URL do pole v této sekci; 2) klikni Stav cookies a zkontroluj, že yt-cookies.txt existuje a není prázdný; 3) klikni Kontrola věku; 4) pokud je ok=true, yt-dlp video umí extrahovat s aktuálními cookies; 5) pokud kontrola selže na age/cookies, obnov cookies z BrowserOS/CDP na Milhy-PC a test zopakuj. Hodnoty cookies se nikdy nezobrazují, jen metadata/diagnostika.',
+sectionApps:'Aplikace spouští externí režimy přes mode-switcher API. Po spuštění aplikace běží přímo na TV; návrat řeš tlačítkem ZASTAVIT nebo klávesami uvedenými níže.',
+sectionAppsReturn:'Návod k návratu z aplikací. Steam Link typicky ukončí Ctrl+Q, ostatní Ctrl+C; tlačítko ZASTAVIT vynutí návrat do dashboardu.',
+sectionCecPower:'CEC napájení a scan HDMI sběrnice. Scan jen vypíše zařízení, On/Off posílá CEC příkaz TV.',
+sectionCecBridge:'Remote→MPV Bridge přeposílá tlačítka TV ovladače do mpv: play/pause, stop, seek a volume. Zapínej jen když chceš ovládat aktuální mpv přehrávání TV ovladačem.',
+sectionCecNav:'CEC navigační tlačítka posílají jednotlivé keypress příkazy do TV/CEC zařízení.',
+sectionCecVol:'CEC hlasitost posílá volume/mute příkazy přes HDMI-CEC, nezávisle na mpv volume.',
+sectionCecInput:'Přepnutí HDMI vstupu přes CEC active-source. Funkčnost závisí na TV.',
+sectionCecDevices:'Výstup posledního CEC scanu. Pokud je prázdný, TV/adapter nemusí odpovídat.',
+sectionAudio:'Audio & Media je hlavní místo pro routování zvuku. Výstup zvolíš BT/HDMI/DLNA, hlasitost řeší slidery, párování zařízení je v záložce Zařízení.',
+sectionOutputSinks:'Výstupní zařízení: HDMI, BT soundbar, DLNA a případně USB output. CONNECTED znamená výchozí aktivní sink.',
+sectionInputSources:'Vstupní zdroje: USB Alexa input, remote mic a další capture zařízení. Tady se jen zobrazují, routování je níže.',
+sectionMixer:'Mixer ukazuje aktivní audio streamy a kam jsou routované. Keepalive streamy jsou schované, aby nerušily diagnostiku.',
+sectionAudioRouting:'Směrování zvuku pro složitější trasy, např. Alexa AUX/USB input → Bluetooth soundbar přes PipeWire loopback.',
+sectionDlnaLatency:'Kompenzace DLNA zpoždění nastavuje mpv audio-delay v milisekundách. Kladná hodnota zpozdí audio, záporná ho posune dopředu.',
+sectionDiagnostics:'Lidské shrnutí a raw JSON pro debug audio stavu. Raw JSON používej při reportu problémů.',
+sectionDevices:'Zařízení slouží pro párování/připojení hardwaru. Speaker se zde páruje, ale audio výstup se volí v Audio.',
+sectionBluetooth:'Bluetooth pairing: sken najde okolní zařízení, Pair spáruje, Trust uloží důvěru, Connect připojí. Gamepady se nepoužívají jako audio.',
+sectionWifi:'Wi‑Fi konfigurace přes nmcli. Heslo zůstává v prohlížeči a posílá se jen na lokální endpoint pro připojení.',
+sectionNetwork:'Síť: Wi-Fi stav, skenování sítě, připojení. Tailscale VPN status.',
+sectionSystem:'Systém: HW statistiky, CPU masky, restart akce. Klikni Aktualizovat pro obnovu.',
+sectionLogs:'Logy: vyber službu a počet řádků, klikni Obnovit. Logy se načtou z journalctl.',
+sectionHttpsInfo:'HTTPS info: porty, certifikáty, hostnames a IP adresy.',
+sectionRoles:'Doporučené role vysvětlují, kde spravovat reproduktory, ovladače, mikrofony a budoucí hardware.',
+sectionTerminal:'Web terminál se připojuje přes WebSocket na tmux session RPi. Používej na rychlou diagnostiku bez SSH.',
+sectionKodi:'Kodi je legacy JSON-RPC launcher na 127.0.0.1:9090. Normální YouTube/mpv přehrávání používej přes Player; Kodi má smysl jen pokud lokální Kodi opravdu běží.'
+},
+en:{
+sectionPlayer:'Player: paste a YouTube or direct URL, choose quality, and start mpv. Status shows title, time, pause state, volume, and quality. Seek/volume also work via keyboard and remote bridge.',
+sectionQuick:'Quick test links for checking that the mpv/youtube pipeline works. Use as a smoke test only, not as production diagnostics.',
+sectionAgeCookies:'Age and cookies verification: 1) paste the problematic YouTube URL into this section; 2) click Cookie status and verify yt-cookies.txt exists and is not empty; 3) click Age check; 4) if ok=true, yt-dlp can extract the video with current cookies; 5) if it fails on age/cookies, refresh cookies from BrowserOS/CDP on Milhy-PC and repeat. Cookie values are never shown, only metadata/diagnostics.',
+sectionApps:'Apps launch external modes through the mode-switcher API. After launch, the app runs directly on the TV; return with STOP or the shortcuts listed below.',
+sectionAppsReturn:'Return instructions for apps. Steam Link usually exits with Ctrl+Q, most others with Ctrl+C; STOP forces a return to dashboard.',
+sectionCecPower:'CEC power and HDMI bus scan. Scan only lists devices; On/Off sends CEC commands to the TV.',
+sectionCecBridge:'Remote→MPV Bridge forwards TV remote buttons to mpv: play/pause, stop, seek, and volume. Enable it only when you want to control current mpv playback via TV remote.',
+sectionCecNav:'CEC navigation buttons send individual keypress commands to the TV/CEC device.',
+sectionCecVol:'CEC volume sends volume/mute commands over HDMI-CEC, independent of mpv volume.',
+sectionCecInput:'HDMI input switching via CEC active-source. Support depends on the TV.',
+sectionCecDevices:'Output of the last CEC scan. Empty output means the TV/adapter may not respond.',
+sectionAudio:'Audio & Media is the main audio routing page. Choose BT/HDMI/DLNA output here, adjust volume with sliders, and pair devices in Devices.',
+sectionOutputSinks:'Output devices: HDMI, BT soundbar, DLNA, and optional USB output. CONNECTED marks the current default sink.',
+sectionInputSources:'Input sources: USB Alexa input, remote mic, and other capture devices. They are shown here; routing is below.',
+sectionMixer:'Mixer shows active audio streams and their target sinks. Keepalive streams are hidden to keep diagnostics readable.',
+sectionAudioRouting:'Advanced audio routes, e.g. Alexa AUX/USB input → Bluetooth soundbar via PipeWire loopback.',
+sectionDlnaLatency:'DLNA latency compensation sets mpv audio-delay in milliseconds. Positive delays audio, negative advances it.',
+sectionDiagnostics:'Human summary and raw JSON for audio debugging. Use raw JSON when reporting issues.',
+sectionDevices:'Devices is for pairing and connecting hardware. Pair speakers here, but choose audio output in Audio.',
+sectionBluetooth:'Bluetooth pairing: scan finds nearby devices, Pair pairs, Trust stores trust, Connect connects. Gamepads are not used as audio.',
+sectionWifi:'Wi‑Fi configuration through nmcli. Password stays in the browser and is sent only to the local connect endpoint.',
+sectionNetwork:'Network: Wi-Fi status, scan networks, connect. Tailscale VPN status.',
+sectionSystem:'System: HW stats, CPU masks, restart actions. Click Update to refresh.',
+sectionLogs:'Logs: select service and number of lines, click Refresh. Logs loaded from journalctl.',
+sectionHttpsInfo:'HTTPS info: ports, certificates, hostnames and IP addresses.',
+sectionRoles:'Suggested roles explain where to manage speakers, controllers, microphones, and future hardware.',
+sectionTerminal:'Web terminal connects through WebSocket to tmux session RPi. Use it for quick diagnostics without SSH.',
+sectionKodi:'Kodi is the legacy JSON-RPC launcher on 127.0.0.1:9090. Use Player for normal YouTube/mpv playback; Kodi matters only if local Kodi is actually running.'
+}}
+function helperText(k){return (HELPERS[LANG]&&HELPERS[LANG][k])||((HELPERS.cz&&HELPERS.cz[k])||L(k))}
+
+let LANG=(localStorage.getItem(LANG_KEY)||'cz').toLowerCase()==='en'?'en':'cz'
+function L(k){return (I18N[LANG]&&I18N[LANG][k])||((I18N.cz&&I18N.cz[k])||k)}
+function ariaText(k,txt){if(txt!==k)return txt;let m={cz:{pause:'Pozastavit',stop:'Zastavit',rewind10:'Zpět 10 sekund',forward10:'Vpřed 10 sekund',volumedown:'Snížit hlasitost',volumeup:'Zvýšit hlasitost',mute:'Ztlumit'},en:{pause:'Pause',stop:'Stop',rewind10:'Rewind 10 seconds',forward10:'Forward 10 seconds',volumedown:'Volume down',volumeup:'Volume up',mute:'Mute'}};return (m[LANG]&&m[LANG][k])||((m.en&&m.en[k])||txt)}
+function formatMsg(k,vars){let s=L(k);Object.entries(vars||{}).forEach(([key,val])=>{s=s.replaceAll('{'+key+'}',String(val))});return s}
+function tip(el,key){let w=document.createElement('span');w.className='tip-wrap';let b=document.createElement('button');b.className='info-btn';b.textContent='i';b.setAttribute('aria-label','Help');b.setAttribute('type','button');let box=document.createElement('div');box.className='tip-box';box.dataset.tipBox=key;box.textContent=helperText(key);b.addEventListener('click',function(e){e.stopPropagation();document.querySelectorAll('.tip-box.show').forEach(x=>{if(x!==box)x.classList.remove('show')});box.classList.toggle('show')});w.appendChild(b);w.appendChild(box);el.insertAdjacentElement('afterend',w)}
+function addTips(){document.querySelectorAll('[data-tip]').forEach(el=>{if(!el.nextElementSibling||!el.nextElementSibling.classList.contains('tip-wrap'))tip(el,el.dataset.tip)})}
+function setLang(code){LANG=(code||'cz').toLowerCase()==='en'?'en':'cz';try{localStorage.setItem(LANG_KEY,LANG)}catch{};applyLang()}
+function applyLang(){document.documentElement.lang=LANG==='en'?'en':'cs';document.querySelectorAll('[data-i18n]').forEach(el=>{let key=el.dataset.i18n;let txt=L(key);if(el.dataset.i18nAttr==='placeholder'){el.placeholder=txt;return}if(el.dataset.i18nAttr==='title'){el.title=txt;return}if(el.dataset.i18nAttr==='aria-label'){el.setAttribute('aria-label',ariaText(key,txt));return}let icon=el.dataset.icon||'';el.innerHTML=(icon?icon+' ':'')+txt});document.querySelectorAll('[data-tip]').forEach(el=>{if(el.nextElementSibling&&el.nextElementSibling.classList.contains('tip-wrap')){let box=el.nextElementSibling.querySelector('.tip-box');if(box)box.textContent=helperText(el.dataset.tip)}});document.querySelectorAll('[data-lang-btn]').forEach(btn=>btn.classList.toggle('active',btn.dataset.langBtn===LANG));let ls=$('#lang-status');if(ls)ls.textContent=LANG==='en'?'EN':'CZ';updateSecurityBanner()}
+document.addEventListener('click',()=>{document.querySelectorAll('.tip-box.show').forEach(x=>x.classList.remove('show'));autoClipboardUrl()})
+window.addEventListener('focus',()=>setTimeout(autoClipboardUrl,120))
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)setTimeout(autoClipboardUrl,120)})
+function terminalActive(){let p=$('#p-terminal');let ae=document.activeElement;let t=document.getElementById('terminal');return !!((p&&p.classList.contains('active'))||(ae&&ae.closest&&(ae.closest('#terminal')||ae.closest('.xterm')||ae.classList.contains('xterm-helper-textarea')))||(t&&t.contains(ae)))}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable||terminalActive())return;switch(e.key){case'ArrowLeft':e.preventDefault();seek(-10);msg('⏪ -10s','info');break;case'ArrowRight':e.preventDefault();seek(10);msg('⏩ +10s','info');break;case'ArrowUp':e.preventDefault();vol(5);msg('🔊 +5%','info');break;case'ArrowDown':e.preventDefault();vol(-5);msg('🔉 -5%','info');break;case' ':return;case'MediaPlayPause':e.preventDefault();pause();msg('⏯ Play/Pause','info');break;case'MediaTrackNext':e.preventDefault();seek(30);msg('⏩ +30s','info');break;case'MediaTrackPrevious':e.preventDefault();seek(-30);msg('⏪ -30s','info');break;case'VolumeUp':e.preventDefault();vol(5);msg('🔊 +5%','info');break;case'VolumeDown':e.preventDefault();vol(-5);msg('🔉 -5%','info');break;case'AudioVolumeMute':e.preventDefault();api('/mpv/vol?d=-100');msg('🔇 Mute','info');break;case'f':e.preventDefault();api('/mpv/seekabs?pos='+(lastDur*0.25).toFixed(1));msg('⏪ 25%','info');break;case'g':e.preventDefault();api('/mpv/seekabs?pos='+(lastDur*0.5).toFixed(1));msg('⏩ 50%','info');break;case'h':e.preventDefault();api('/mpv/seekabs?pos='+(lastDur*0.75).toFixed(1));msg('⏩ 75%','info');break}})
+function qu(u){$('#url').value=u;play()}
+async function cec(c){msg('CEC: '+c,'info');let r=await api('/cec/send?c='+encodeURIComponent(c));msg(r.ok?'OK: '+c:(r.err||'fail'),r.ok?'ok':'err')}
+async function cecKey(k){let r=await api('/cec/key?k='+encodeURIComponent(k));msg(r.ok?'OK: '+k:'fail',r.ok?'ok':'err')}
+async function cecIn(n){let r=await api('/cec/in?n='+n);msg('HDMI '+n+': '+(r.ok?'ok':r.err||'?'),r.ok?'ok':'err')}
+async function cecScan(){msg('Scanning CEC...','info');let r=await api('/cec/scan');$('#cdev').innerHTML='<pre>'+esc(r.out||r.err||'none')+'</pre>';msg(r.out?'Scan done':'No devices',r.out?'ok':'err')}
+
+let hwLiveTimer=null;
+function toggleHwLive(){
+    let b=$('#hw-live-btn');
+    if(hwLiveTimer){clearInterval(hwLiveTimer);hwLiveTimer=null;if(b)b.textContent='▶ Live monitoring';msg('Live monitoring off','info');return}
+    loadHwStats();loadSysStatus();
+    hwLiveTimer=setInterval(()=>{loadHwStats();if($('#p-terminal')&&$('#p-terminal').classList.contains('active')){loadSysStatus()}},4000);
+    if(b)b.textContent='⏸ Live monitoring';msg('Live monitoring on','ok');
+}
+async function loadHwStats(){
+    let r=await api('/system/hw-stats');
+    if(r.error){if($('#hw-stats'))$('#hw-stats').textContent='Chyba: '+r.error;return}
+    updateGlobalStatusBar(r);
+    let cpu=(r.cpu||[]).map((v,i)=>'Core'+i+' '+v.toFixed(0)+'%').join('  ');
+    let temp=r.temp_c===null?'?':r.temp_c.toFixed(1)+'°C';
+    let freq=(r.freq_mhz||[]).map((v,i)=>'C'+i+' '+v+'MHz').join('  ');
+    let gpu=r.gpu||{};let gpuLine='GPU: core '+(gpu.core_mhz??'?')+'MHz, temp '+(gpu.temp_c??'?')+'°C';
+    let diskAvail=r.disk.avail_gb!==undefined?' avail '+r.disk.avail_gb+' GB':'';
+    if($('#hw-stats'))$('#hw-stats').textContent='CPU: '+cpu+'\nLoad: '+r.loadavg.join(' ')+'\nTemp: '+temp+'\nFreq: '+freq+'\n'+gpuLine+'\nRAM: '+r.ram.used_mb+'/'+r.ram.total_mb+' MB ('+r.ram.percent+'%)\nDisk: '+r.disk.used_gb+'/'+r.disk.total_gb+' GB ('+r.disk.percent+'%)'+diskAvail+'\nUptime: '+r.uptime;
+}
+
+function updateGlobalStatusBar(r){
+    if(!r)return;
+    let cpuEl=$('#status-cpu')||$('.status-cpu');
+    let ramEl=$('#status-ram')||$('.status-ram');
+    let tempEl=$('#status-temp')||$('.status-temp');
+    if(cpuEl&&r.cpu&&r.cpu.length){
+        let avg=Math.round(r.cpu.reduce((a,b)=>a+b,0)/r.cpu.length);
+        cpuEl.textContent=avg+'%';
+    }
+    if(ramEl&&r.ram){
+        ramEl.textContent=r.ram.used_mb+'MB';
+    }
+    if(tempEl){
+        tempEl.textContent=(r.temp_c===null||r.temp_c===undefined)?'?':Math.round(r.temp_c)+'°C';
+    }
+}
+
+async function loadSysStatus(){
+    let r=await api('/system/status');
+    if(r.error){$('#sys-status').textContent='Chyba: '+r.error;return}
+    let html='CPU Mask / Core Assignments:<br>';
+    html+='mpv: mask '+r.mpv.mask+' (cores: '+r.mpv.cores+')<br>';
+    html+='dashboard: mask '+r.dashboard.mask+' (cores: '+r.dashboard.cores+')<br>';
+    html+='keys2mpv: mask '+r.keys2mpv.mask+' (cores: '+r.keys2mpv.cores+')<br>';
+    html+='webserver: mask '+r.webserver.mask+' (cores: '+r.webserver.cores+')<br>';
+    html+='pipewire: mask '+r.pipewire.mask+' (cores: '+r.pipewire.cores+')<br>';
+    html+='wireplumber: mask '+r.wireplumber.mask+' (cores: '+r.wireplumber.cores+')<br>';
+    $('#sys-status').innerHTML=html;
+}
+
+async function restartMpv(){
+    if(!confirm('Opravdu restartovat mpv?')) return;
+    let r=await api('/system/restart-mpv');
+    msg(r.out||'mpv stopped','ok');
+}
+
+async function restartDashboard(){
+    if(!confirm('Opravdu restartovat Dashboard?')) return;
+    let r=await api('/system/restart-dashboard');
+    msg(r.out||'Dashboard restarting...','ok');
+}
+
+async function restartRpi(){
+    if(!confirm(L('confirmReboot'))) return;
+    let r=await api('/system/restart-rpi');
+    msg(r.out||L('rebooting'),'ok');
+}
+async function cecBr(){let s=await api('/cec/br/st');if(s.on){await api('/cec/br/stop');msg(L('bridgeOff'),'info')}else{let r=await api('/cec/br/start');msg(r.ok?L('bridgeOn'):L('failed'),r.ok?'ok':'err')}updBr()}
+async function updBr(){let r=await api('/cec/br/st'),b=$('#brb'),s=$('#brs');if(!b||!s)return;if(r.on){b.textContent='⏹ '+L('cecStop');b.className='on';s.textContent=L('connected')+' — remote→mpv'}else{b.textContent='▶ '+L('cecStart');b.className='';s.textContent=L('disconnected')}}
+async function audio(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err')}
+async function devs(){
+  let r=await api('/devices');let h='';
+  if(r.hdmi&&r.hdmi.length)h+='<b>HDMI:</b> '+r.hdmi.join(', ')+'<br>';
+  if(r.dlna&&r.dlna.length)h+='<b>DLNA:</b> '+r.dlna.join(', ')+'<br>';
+  $('#dev').innerHTML=h||'—';
+  // Paired + connected BT devices
+  let bth='';
+  if(r.bt&&r.bt.length){
+    r.bt.forEach(d=>{
+      let mac=d.match(/\(([0-9A-F:]{17})\)/i);
+      let name=d.replace(/Paired: /,'').replace(/ \(.+\)/,'');
+      let m=mac?mac[1]:'';
+      bth+='<div style="margin:3px 0;display:flex;gap:4px;align-items:center">'+name+' <span style="color:#8b949e;font-size:.7em">'+m+'</span>';
+      if(d.includes('BT (')){bth+=' <button onclick="btDisconnect(\''+m+'\')" style="font-size:.7em;padding:2px 6px"> Disconnect</button>';
+      }else{bth+=' <button onclick="btConnect(\''+m+'\')" style="font-size:.7em;padding:2px 6px"> Connect</button>';
+      bth+=' <button onclick="btRemove(\''+m+'\')" style="font-size:.7em;padding:2px 6px;color:#f85149"> Remove</button>';
+      }
+      bth+='</div>';
+    });
+  }
+  $('#bt-list').innerHTML=bth||'—';
+  $('#bt-status').textContent=r.bt?r.bt.length+' devices':'—'}
+async function btScan(){
+  msg('Scanning BT...','info');
+  let r=await api('/bt/scan');
+  let lines=(r.result||'').split('\n').filter(l=>l.startsWith('Device'));
+  let h='';
+  lines.forEach(l=>{
+    let p=l.split(' ');
+    if(p.length>=3){
+      let mac=p[1];let name=p.slice(2).join(' ');
+      h+='<div style="margin:3px 0;display:flex;gap:4px;align-items:center">'+name+' <span style="color:#8b949e;font-size:.7em">'+mac+'</span>';
+      h+=' <button onclick="btPair(\''+mac+'\')" style="font-size:.7em;padding:2px 6px"> Pair</button>';
+      h+=' <button onclick="btConnect(\''+mac+'\')" style="font-size:.7em;padding:2px 6px"> Connect</button>';
+      h+='</div>';
+    }
+  });
+  $('#bt-list').innerHTML=h||'No devices found';
+  $('#bt-status').textContent=lines.length+' found';
+  msg('Found '+lines.length+' devices','ok')}
+async function refreshDeviceViews(){try{devicesRefresh()}catch(e){}try{devs()}catch(e){}}
+async function btPair(mac){msg('Pairing '+mac+'...','info');let r=await api('/bt/pair?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btConnect(mac){msg('Connecting '+mac+'...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btDisconnect(mac){msg('Disconnecting '+mac+'...','info');let r=await api('/bt/disconnect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btRemove(mac){msg('Removing '+mac+'...','info');let r=await api('/bt/remove?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function btTrust(mac){msg('Trusting '+mac+'...','info');let r=await api('/bt/trust?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(refreshDeviceViews,2000)}
+async function dlnaScan(){msg('Scanning DLNA...','info');let r=await api('/dlna/scan');if(r.devices){let h=r.devices.map(d=>`<div>${d.usn.split('::')[0]} → ${d.location}</div>`).join('');$('#dlna-list').innerHTML=h;$('#dlna-status').textContent=r.count+' renderers';msg('Found '+r.count+' DLNA renderers','ok')}else{msg(r.error||'Scan failed','err')}}
+function badge(state,label){let cls='muted';if(state===true||state==='ok'||state==='pass'||state==='RUNNING'||state==='ACTIVE'||state==='ON'||state==='CONNECTED'||state==='READY')cls='ok';else if(state===false||state==='err'||state==='blocked'||state==='OFF'||state==='STOPPED'||state==='MISSING'||state==='NOT READY')cls='err';else if(state==='na'||state==='not_applicable'||state==='N/A'||state===null)cls='muted';else if(state==='stale'||state==='degraded'||state==='unknown'||state==='warn')cls='warn';return '<span class="badge '+cls+'">'+esc(label)+'</span>'}
+let taVolTimers={};
+function taSetVolDebounced(kind,name,v){let key=kind+':'+name;clearTimeout(taVolTimers[key]);taVolTimers[key]=setTimeout(()=>taSetVol(kind,name,v),250)}
+function meter(v,kind,name){let n=(v==null?0:v);if(!kind||!name)return '<div class="meter"><span style="width:'+n+'%"></span></div><div class="media-meta">Volume: '+(v==null?'—':v+'%')+'</div>';let id='vol-'+kind+'-'+esc(name).replace(/[^a-zA-Z0-9]/g,'_').substring(0,30);return '<div style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0"><input type="range" id="'+id+'" min="0" max="150" value="'+n+'" step="1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="this.nextElementSibling.textContent=this.value+\'%\'; taSetVolDebounced(\''+kind+'\',\''+jsarg(name)+'\',this.value)" onchange="taSetVol(\''+kind+'\',\''+jsarg(name)+'\',this.value)" ontouchstart="event.stopPropagation()"><span style="min-width:36px;font-size:.8em;text-align:right">'+(v==null?'—':v+'%')+'</span><button onclick="taMute(\''+kind+'\',\''+jsarg(name)+'\')" style="font-size:.75em;padding:2px 6px" title="Mute/unmute">🔇</button></div>'}
+function shortName(n){let s=(n||'').replace('alsa_output.platform-3f902000.hdmi.hdmi-stereo','HDMI').replace('alsa_output.platform-3f00b840.mailbox.stereo-fallback','HDMI / Jack');if(s.includes('combined'))return 'Spojený výstup';if(s.includes('bluez_output.24_4B_03_92_0B_8C'))return 'Samsung Soundbar';if(s.includes('bluez_output.FC_58_FA_29_BA_47'))return 'Tibo Sphere 2';if(s.startsWith('bluez_output.'))return 'BT: '+s.split('.')[1].replace(/_/g,':').substr(9);if(s.includes('-uuid:'))s='DLNA '+s.split('-uuid:')[0];return s}
+function deviceCard(icon,title,d,isDefault){let ok=d&&d.present;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let kind=String((d&&d.type)||'').includes('input')?'source':'sink';return '<div class="media-card"><h4>'+icon+' '+title+' '+badge(ok,ok?'ONLINE':'MISSING')+defBadge+'</h4>'+meter(d&&d.volume,kind,d.name)+'<div class="media-meta">'+esc(shortName((d&&d.name)||'not detected'))+'<br>State: '+esc((d&&d.state)||'—')+'</div></div>'}
+function btSoundbarCard(d,isDefault){let ok=d&&d.present,paired=d&&d.paired;let defBadge=isDefault?' <span class="badge ok" style="font-size:.6em">CONNECTED</span>':'';let h='<div class="media-card"><h4>🎧 BT Soundbar '+badge(ok,ok?'ONLINE':(paired?'PAIRED':'MISSING'))+defBadge+'</h4>'+meter(d&&d.volume,'sink',d.name);h+='<div class="media-meta">'+esc((d&&d.label)||'Samsung Soundbar')+'<br>MAC: '+esc((d&&d.mac)||'—')+'<br>Status: '+esc(ok?'Connected':'Paired, not connected')+'</div>';if(paired&&!ok)h+='<div class="row" style="margin-top:.45rem"><button onclick="taBtConnect(\''+jsarg(d.mac)+'\')">🔌 Connect Soundbar</button></div>';return h+'</div>'}
+function dlnaOutputCard(d,selected,connected,keepalive){let ok=d&&d.present;let target=selected?('<br>Selected target: '+esc(selected.name||selected.location)):'<br>No target selected yet.';let connectBtns='';if(selected){if(connected){connectBtns='<button onclick="taDlnaDisconnect()" class="danger" style="font-size:.8em">⏹ Disconnect</button>'}else{connectBtns='<button onclick="taDlnaConnect()" style="font-size:.8em">🔌 Connect</button>'}}let kaBadge='';let hasDlnaKeepalive=keepalive&&d&&d.name&&keepalive.some(k=>k===d.name);if(hasDlnaKeepalive){kaBadge='<span class="badge ok" style="font-size:.65em;margin-left:.3rem">KEEPALIVE</span>'}let status=connected?badge(true,'CONNECTED'):(ok?badge(ok,'NOT CONNECTED'):badge(false,'NOT CONNECTED'));let h='<div class="media-card"><h4>📡 DLNA Output '+status+kaBadge+'</h4>'+meter(d&&d.volume,'sink',d.name)+'<div class="media-meta">Send RPi sound to a network DLNA speaker/TV.'+target+'</div><div class="row" style="margin-top:.4rem;gap:.4rem"><button onclick="taDlnaScan()">🔍 Scan renderers</button>'+connectBtns+'</div><div id="ta-dlna-out-list" class="media-meta" style="margin-top:.35rem">—</div></div>';return h}
+function taHumanSummary(r){let d=r.devices||{},lat=r.latency||{},inputs=r.sink_inputs||[];let lines=[];lines.push('Default output: '+shortName(r.default_sink||'—'));lines.push('HDMI: '+(d.hdmi&&d.hdmi.present?'online, volume '+d.hdmi.volume+'%':'not available'));let ka=r.keepalive||[];lines.push('BT Soundbar: '+(d.bt_soundbar&&d.bt_soundbar.present?(ka.some(k=>k.startsWith('bluez'))?'connected + keepalive':'connected'):'paired but not connected'));lines.push('DLNA Output: '+((r.dlna_connected)?'connected + keepalive':((d.dlna_output&&d.dlna_output.present)?'active, not connected':'not connected')));if(lat.selected_dlna_renderer)lines.push('Selected DLNA target: '+(lat.selected_dlna_renderer.name||lat.selected_dlna_renderer.location));lines.push('Active streams: '+(inputs.length?inputs.map(i=>'playing through '+i.sink).join(', '):'none'));let dl=r.dlna_connected;let dly=lat.dlna_output_offset_ms||0;lines.push('DLNA delay offset: '+dly+' ms'+(dl&&dly?' (active, mpv audio-delay set)':''));return lines.map(x=>'<div>• '+esc(x)+'</div>').join('')}
+async function taRefresh(){
+    let r=await api('/audio/state');
+    if(r.error){msg(r.error,'err');return}
+    renderAudioTopology(r);
+    taMatrixRefresh();
+    routesRefresh();
+    // Update dlna latency input if it exists
+    let latInput = $('#ta-lat-dlna-offset');
+    if(latInput && r.latency) latInput.value = r.latency.dlna_output_offset_ms || 0;
+    let mvSlider = $('#master-volume-slider');
+    if(mvSlider && r.devices) {
+        let vols = [];
+        if(r.devices.hdmi && r.devices.hdmi.present && r.devices.hdmi.volume != null) vols.push(r.devices.hdmi.volume);
+        if(r.devices.bt_soundbar && r.devices.bt_soundbar.present && r.devices.bt_soundbar.volume != null) vols.push(r.devices.bt_soundbar.volume);
+        if(vols.length > 0) { let avg = Math.round(vols.reduce((a,b)=>a+b,0)/vols.length); mvSlider.value = Math.min(avg, 100); $('#master-volume-value').textContent = mvSlider.value + '%'; }
+    }
+}
+async function masterVolChanged(v){
+    let lbl=$('#master-volume-value');
+    if(lbl)lbl.textContent=v+'%';
+    let r=await api('/audio/volume/global?volume='+v);
+    if(r&&r.ok){
+        msg('Master volume → '+v+'%','ok');
+        // Sync BT tab slider if present
+        let btSlider=$('#bt-soundbar-volume');
+        if(btSlider){btSlider.value=v;}
+    }
+    else if(r&&!r.authRequired)msg(r.error||'Master volume failed','err');
+}
+// BT-to-Audio sync: when BT volume changes, update master slider
+function btVolSyncToAudio(vol){
+    let mvSlider=$('#master-volume-slider');
+    let mvLabel=$('#master-volume-value');
+    if(mvSlider){mvSlider.value=vol;}
+    if(mvLabel){mvLabel.textContent=vol+'%';}
+}
+let topoSelectedSource=null;
+function renderAudioTopology(r){
+    let srcCol=$('#audio-topo-sources'), snkCol=$('#audio-topo-sinks');
+    if(!srcCol||!snkCol)return;
+    let sources=(r&&r.sources)||[], sinks=(r&&r.sinks)||[], defSink=(r&&r.default_sink)||'';
+    let d = (r && r.devices) || {};
+    // Add disconnected/known sinks for topology UI
+    let knownSinks = [];
+    if(d.hdmi) knownSinks.push({id: 'hdmi', name: d.hdmi.name || 'HDMI', type: 'hdmi', state: d.hdmi.present ? 'ACTIVE' : 'MISSING', volume: d.hdmi.volume, present: d.hdmi.present});
+    if(d.bt_soundbar) knownSinks.push({id: 'bt', name: d.bt_soundbar.name || 'BT Soundbar', type: 'bt', state: d.bt_soundbar.present ? 'ACTIVE' : 'DISCONNECTED', volume: d.bt_soundbar.volume, present: d.bt_soundbar.present, mac: d.bt_soundbar.mac, paired: d.bt_soundbar.paired});
+    if(d.dlna_output) knownSinks.push({id: 'dlna', name: d.dlna_output.name || 'DLNA Output', type: 'dlna_output', state: r.dlna_connected ? 'CONNECTED' : 'DISCONNECTED', volume: d.dlna_output.volume, present: d.dlna_output.present});
+    if(d.combined) knownSinks.push({id: 'combined', name: d.combined.name || 'Spojený výstup', type: 'combined', state: d.combined.present ? 'ACTIVE' : 'DISCONNECTED', volume: d.combined.volume, present: d.combined.present});
+
+    // Merge knownSinks into sinks, avoiding duplicates by type
+    knownSinks.forEach(ks => {
+        if(!sinks.some(s => s.type === ks.type || (s.name && s.name.includes(ks.name)))) {
+            sinks.push(ks);
+        }
+    });
+
+    // Add "System / Media" as a virtual source always
+    sources.unshift({id: 'system', name: 'system', type: 'system', state: 'RUNNING', volume: null});
+
+    let srcHtml='';
+    if(sources.length===0){
+        srcHtml='<div class="media-meta">No active sources</div>';
+    }else{
+        sources.forEach(s=>{
+            let isPriority = s.type==='usb_input' || s.name.includes('mpv');
+            let isSel = topoSelectedSource===s.name;
+            let icon = s.type==='usb_input'?'🎙️':(s.type==='remote_input'?'🎮':(s.type==='system'?'🎵':'🔊'));
+            srcHtml+='<div class="audio-node-card '+(isPriority?'priority':'')+' '+(isSel?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="source" onclick="audioSelectSource(\''+jsarg(s.name)+'\')" draggable="true" ondragstart="audioDragStart(event,\''+jsarg(s.name)+'\')">';
+            srcHtml+='<div class="audio-node-header"><span>'+icon+' '+esc(shortName(s.name))+'</span><span class="badge ok">ACTIVE</span></div>';
+            srcHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · Vol: '+(s.volume!==null?s.volume+'%':'100%')+'</div></div>';
+        })
+    }
+    srcCol.innerHTML=srcHtml;
+
+    let snkHtml='';
+    if(sinks.length===0){
+        snkHtml='<div class="media-meta">No active sinks</div>';
+    }else{
+        sinks.forEach(s=>{
+            let isDef = s.name===defSink;
+            let icon = s.name.includes('hdmi')?'📺':(s.name.includes('bluez')?'🔈':(s.name.includes('WiiMu')||s.name.includes('LinkPlayer')?'📡':'🔌'));
+            snkHtml+='<div class="audio-node-card '+(isDef?'selected':'')+'" id="node-'+s.id+'" data-name="'+jsarg(s.name)+'" data-type="sink" onclick="audioSelectSink(\''+jsarg(s.name)+'\')" ondragover="audioDragOver(event)" ondragleave="audioDragLeave(event)" ondrop="audioDrop(event,\''+jsarg(s.name)+'\')">';
+            snkHtml+='<div class="audio-node-header"><span>'+icon+' '+esc(shortName(s.name))+'</span>'+(isDef?'<span class="badge ok">DEFAULT</span>':'')+'</div>';
+            let badgeClass = (s.state === 'DISCONNECTED' || s.state === 'MISSING') ? 'err' : 'ok';
+            snkHtml+='<div class="audio-node-meta">Type: '+esc(s.type)+' · State: <span class="badge '+badgeClass+'">'+esc(s.state||'IDLE')+'</span></div>';
+            if (s.state === 'DISCONNECTED' && s.type === 'bt') {
+                snkHtml+='<div style="margin-top: 0.5rem;"><button onclick="taBtConnect(\''+jsarg(s.mac||'')+'\')" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; background: #1f6feb; border: none; border-radius: 4px; color: white;">🔌 Connect BT</button></div>';
+            }
+            if (s.state === 'DISCONNECTED' && s.type === 'dlna_output') {
+                snkHtml+='<div style="margin-top: 0.5rem;"><button onclick="taDlnaScan()" style="font-size: 0.75rem; padding: 0.3rem 0.6rem; background: #238636; border: none; border-radius: 4px; color: white;">🔍 Scan DLNA</button></div>';
+            }
+            if(s.volume!==null && s.present !== false){
+                snkHtml+='<div class="audio-node-vol" onmousedown="event.stopPropagation()"><span style="font-size:0.7rem;color:var(--app-muted)">Vol:</span><input type="range" min="0" max="150" value="'+s.volume+'" onchange="taSetVol(\''+s.type+'\',\''+jsarg(s.name)+'\',this.value)"></div>';
+            }
+            snkHtml+='</div>';
+        })
+    }
+    snkCol.innerHTML=snkHtml;
+}
+function audioDragStart(e,name){e.dataTransfer.setData('text/plain',name);e.target.style.opacity='0.5';setTimeout(()=>e.target.style.opacity='1',100);}
+function audioDragOver(e){e.preventDefault();let c=e.target.closest('.audio-node-card');if(c)c.classList.add('drag-over');}
+function audioDragLeave(e){let c=e.target.closest('.audio-node-card');if(c)c.classList.remove('drag-over');}
+function audioDrop(e,snkName){e.preventDefault();let c=e.target.closest('.audio-node-card');if(c)c.classList.remove('drag-over');let srcName=e.dataTransfer.getData('text/plain');if(srcName==='system'){msg('Setting default sink: '+shortName(snkName),'info');api('/audio/default-sink?name='+encodeURIComponent(snkName)).then(r=>{msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);});return;}if(srcName&&snkName)taMatrixLink(srcName,snkName,true);}
+let currentAudioMatrix = null;
+
+function audioSelectSource(srcName){topoSelectedSource=(topoSelectedSource===srcName)?null:srcName;msg(topoSelectedSource?'Source selected. Now click an Output sink to link.':'Source deselected','info');taRefresh()}
+async function audioSelectSink(snkName){if(!topoSelectedSource){msg('Setting default sink: '+shortName(snkName),'info');let r=await api('/audio/default-sink?name='+encodeURIComponent(snkName));msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);return}let srcName=topoSelectedSource;topoSelectedSource=null;if(srcName==='system'){msg('Setting default sink: '+shortName(snkName),'info');let r=await api('/audio/default-sink?name='+encodeURIComponent(snkName));msg(r.ok?'Default sink set':'Failed to set default sink',r.ok?'ok':'err');setTimeout(taRefresh,500);return}let isLinked=false;if(currentAudioMatrix&&currentAudioMatrix.links){let sNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===srcName);let eNode=Object.values(currentAudioMatrix.nodes).find(n=>n.name===snkName);if(sNode&&eNode){isLinked=currentAudioMatrix.links.some(l=>l[0]===sNode.id&&l[1]===eNode.id);}}taMatrixLink(srcName,snkName,!isLinked);}
+async function taMatrixRefresh(){let r=await api('/audio/matrix');if(!r.nodes)return;currentAudioMatrix=r;drawAudioTopoLines();}
+function drawAudioTopoLines(){let svg=$('#audio-topo-lines');if(!svg||!currentAudioMatrix)return;let html='';let nodes=currentAudioMatrix.nodes;let links=currentAudioMatrix.links;links.forEach(l=>{let outN=nodes[l[0]];let inN=nodes[l[1]];if(!outN||!inN)return;let outEl=$('#node-'+outN.id);let inEl=$('#node-'+inN.id);if(!outEl||!inEl)return;let engineEl=$('#audio-engine-node');if(!engineEl)return;let sBox=outEl.getBoundingClientRect();let eBox=inEl.getBoundingClientRect();let mBox=engineEl.getBoundingClientRect();let svgBox=svg.getBoundingClientRect();let x1=sBox.right-svgBox.left;let y1=sBox.top+sBox.height/2-svgBox.top;let x2=mBox.left-svgBox.left+mBox.width/2;let y2=mBox.top+mBox.height/2-svgBox.top;let x3=eBox.left-svgBox.left;let y3=eBox.top+eBox.height/2-svgBox.top;html+=`<path d="M${x1},${y1} C${x1+40},${y1} ${x2-40},${y2} ${x2},${y2} C${x2+40},${y2} ${x3-40},${y3} ${x3},${y3}" />`;});svg.innerHTML=html;}
+window.addEventListener('resize', drawAudioTopoLines);
+
+async function taMatrixLink(out_n,in_n,checked){msg('Patching audio...','info');let r=await api('/audio/matrix/link?out='+encodeURIComponent(out_n)+'&in='+encodeURIComponent(in_n)+'&state='+(checked?'1':'0'));if(!r.ok)msg('Patch failed','err');else msg('Audio patched','ok');setTimeout(()=>{taRefresh()},500)}
+async function taRoute(a){let r=await api('/audio/route/alexa-bt?action='+a);msg(r.ok?'Route '+a+' OK':(r.error||r.out||'Route failed'),r.ok?'ok':'err');setTimeout(taRefresh,800)}
+async function dlnaRendererRefresh(){let r=await api('/dlna/renderer/status');let el=$('#ta-sources');if(!el)return;if(r.error)return;let h='<div class="media-card"><h4>📡 DLNA Renderer (RPi as target)</h4>';let statusBadge=r.running?badge(true,'RUNNING'):(r.installed?badge(false,'STOPPED'):badge(false,'NOT INSTALLED'));let readyBadge=r.ready?badge(true,'READY'):badge(false,'NOT READY');h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+statusBadge+' '+readyBadge+'</div>';h+='<div class="media-meta">'+esc(r.name||'RPi Renderer');if(r.pid)h+=' · PID: '+r.pid;if(r.uptime){let m=Math.floor(r.uptime/60);h+=' · Uptime: '+m+'m '+((r.uptime%60))+'s'}h+=' · PipeWire: '+(r.pipewire?'✅':'❌')+'</div>';h+='<div class="row" style="margin-top:.4rem">';if(r.running){h+='<button onclick="dlnaRendererStop()" class="danger">⏹ Stop</button>'}else{let disabled=r.installed?'':' disabled title="Install gmediarender first"';h+='<button onclick="dlnaRendererStart()"'+disabled+'>▶ Start</button>'}h+='</div></div>';el.innerHTML+=h}
+async function dlnaRendererStart(){msg('Starting DLNA renderer...','info');let r=await api('/dlna/renderer/start');msg(r.ok?'Renderer started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(()=>{taRefresh()},2000)}
+async function dlnaRendererStop(){msg('Stopping DLNA renderer...','info');let r=await api('/dlna/renderer/stop');msg(r.ok?'Renderer stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(()=>{taRefresh()},1500)}
+async function routesRefresh(){let[alexa,_,dlnain,multi]=await Promise.all([api('/audio/route/alexa-bt?action=status'),api('/dlna/renderer/status').catch(()=>({})),api('/audio/route/dlna-input/status').catch(()=>({})),api('/audio/multi-output?action=status').catch(()=>({}))]);dlnain=dlnain||{};multi=multi||{};let el=$('#ta-routes');if(!el)return;let h='';let alexaOn=alexa.on;let alexaTarget=alexa.target||'?';let alexaDefault=alexa.default_sink||'?';
+h+='<div class="media-card route-card '+(alexaOn?'on':'off')+'"><h4>🎙️ AUX In (Alexa) → follows primary</h4>';
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(alexaOn,alexaOn?'ON':'OFF')+'</div>';
+h+='<div class="media-meta">Source: USB C-Media mono · Target: '+esc(shortName(alexaTarget))+' · Default sink: '+esc(shortName(alexaDefault))+'</div>';
+h+='<div class="row" style="margin-top:.45rem">';
+if(alexaOn){h+='<button data-act="alexa-stop" class="danger">⏹ Stop</button> <button data-act="alexa-retarget">🔄 Retarget</button>'}else{h+='<button data-act="alexa-start">▶ Start</button>'}
+h+='</div></div>';
+h+='<div class="media-card route-card '+(dlnain.running?'on':'off')+'"><h4>📡 DLNA Input (RPi Renderer)</h4>';
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(dlnain.running,dlnain.running?'ON':'OFF')+'</div>';
+let mode=dlnain.mode||'follow';let modeLabel=mode==='follow'?'Follow primary':'Manual';let nextMode=mode==='follow'?'manual':'follow';
+h+='<div class="media-meta">Mode: <button data-act="dlnain-mode" data-mode="'+nextMode+'" style="font-size:.75em;padding:.15rem .4rem">'+modeLabel+'</button>';
+if(mode==='manual'&&dlnain.manual_sink)h+=' · Manual target: '+esc(shortName(dlnain.manual_sink));
+if(dlnain.running&&dlnain.active_target)h+=' · Active: '+esc(shortName(dlnain.active_target));
+h+='</div>';
+if(mode==='manual'){h+='<div class="row" style="margin-top:.3rem;font-size:.78rem">';
+let targets=[{n:'HDMI',s:'alsa_output.platform'},{n:'BT Soundbar',s:'bluez_output'},{n:'DLNA Output',s:'WiiMu'},{n:'USB Output',s:'alsa_output.usb'}];
+targets.forEach(t=>{let sel=dlnain.manual_sink&&shortName(dlnain.manual_sink)===t.n;h+='<button data-act="dlnain-target" data-sink="'+t.s+'" style="'+(sel?'border-color:#58a6ff;color:#58a6ff':'')+'">'+t.n+'</button>'});h+='</div>'}
+h+='<div class="row" style="margin-top:.45rem">';
+if(dlnain.running){h+='<button data-act="dlnain-stop" class="danger">⏹ Stop</button>'}else{h+='<button data-act="dlnain-start">▶ Start</button>'}
+h+='</div></div>';
+let multiOn=!!multi.active;setCookie('multi-output',multiOn?'true':'false');
+let slaves=multi.slaves||multi.available_sinks||[];
+let adapterExceeded=slaves.length>=3||((multi.adapters||[]).length===1&&slaves.length>2);
+h+='<div class="media-card route-card '+(multiOn?'on':'off')+'"><h4>🔀 Multi-Output</h4>';
+if(adapterExceeded){
+h+='<div class="adapter-warning" style="background:#3d2400;border:1px solid #f0883e;color:#ffdfb6;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:0.85rem;">⚠️ <b>Adapter Warning:</b> Integrated Bluetooth adapter stream limit exceeded (max 2 recommended). Connect a USB adapter for additional speakers.</div>';
+}
+h+='<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">'+badge(multiOn,multiOn?'ACTIVE':'OFF')+' Route one source to selected Bluetooth outputs.</div>';
+h+='<div class="media-meta">Outputs: '+esc(slaves.map(shortName).join(' + ')||(multiOn?'multi-speaker active':'two Bluetooth outputs required'));
+if(multi.input_pending)h+=' · Waiting for phone/PC playback';else if((multi.routed_inputs||[]).length)h+=' · BT input routed';
+h+='</div><div class="row" style="margin-top:.45rem"><button data-act="multi-toggle" class="'+(multiOn?'danger':'')+'">'+(multiOn?'Turn OFF Multi-Output':'Turn ON Multi-Output')+'</button>';
+if(multiOn&&(multi.unrouted_inputs||[]).length)h+=' <button data-act="multi-sync">🔄 Route BT Input</button>';
+h+='</div>';
+h+='</div>';
+
+// Update SVG connections when multi-output changes
+function updateAudioPaths(){ routesRefresh(); redraw(); }
+el.innerHTML=h;el.onclick=function(e){let b=e.target.closest('[data-act]');if(!b)return;let a=b.dataset.act;if(a==='alexa-start')alexaRouteStart();else if(a==='alexa-stop')alexaRouteStop();else if(a==='alexa-retarget')alexaRouteRetarget();else if(a==='dlnain-start')dlnainStart();else if(a==='dlnain-stop')dlnainStop();else if(a==='dlnain-mode')dlnainMode(b.dataset.mode);else if(a==='dlnain-target')dlnainTarget(b.dataset.sink);else if(a==='multi-toggle')multiOutputToggle();else if(a==='multi-sync')multiOutputSync()}}
+async function multiOutputToggle(){let st=await api('/audio/multi-output?action=status');let action=st.active?'stop':'start';msg(action==='start'?'Starting Bluetooth multi-output...':'Stopping Bluetooth multi-output...','info');let r=await api('/audio/multi-output?action='+action);msg(r.ok?(action==='start'?'Multi-output active':'Multi-output disabled'):(r.error||'Multi-output failed'),r.ok?'ok':'err');routesRefresh()}
+async function multiOutputSync(){let r=await api('/audio/multi-output?action=sync');msg(r.ok?'Bluetooth input routed':(r.error||'BT input routing failed'),r.ok?'ok':'err');routesRefresh()}
+async function alexaRouteStart(){msg('Starting Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=start');msg(r.ok?'Alexa route started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function alexaRouteStop(){msg('Stopping Alexa routing...','info');let r=await api('/audio/route/alexa-bt?action=stop');msg(r.ok?'Alexa route stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function alexaRouteRetarget(){msg('Retargeting Alexa...','info');let r=await api('/audio/route/alexa-retarget');msg(r.ok?(r.unchanged?'No change needed':'Retargeted to '+shortName(r.new_target)):(r.error||'retarget failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainStart(){msg('Starting DLNA Input routing...','info');let r=await api('/audio/route/dlna-input/start');msg(r.ok?'DLNA Input started':(r.error||'start failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainStop(){msg('Stopping DLNA Input routing...','info');let r=await api('/audio/route/dlna-input/stop');msg(r.ok?'DLNA Input stopped':(r.error||'stop failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainMode(mode){msg('Switching DLNA Input to '+mode+'...','info');let r=await api('/audio/route/dlna-input/mode?mode='+mode);msg(r.ok?'Mode: '+mode:(r.error||'mode failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function dlnainTarget(sink){msg('Setting DLNA Input target...','info');let r=await api('/audio/route/dlna-input/target?sink='+encodeURIComponent(sink));msg(r.ok?'Target set':(r.error||'target failed'),r.ok?'ok':'err');setTimeout(routesRefresh,800)}
+async function taBtConnect(mac){msg('Connecting Soundbar...','info');let r=await api('/bt/connect?mac='+encodeURIComponent(mac));msg(r.result||r.error,r.result?'ok':'err');setTimeout(taRefresh,1500)}
+async function taSwitch(t){let r=await api('/audio/'+t);msg(r.result||r.err,r.result?'ok':'err');setTimeout(taRefresh,800)}
+async function taSetVol(kind,name,v){let r=await api('/audio/volume?kind='+kind+'&name='+encodeURIComponent(name)+'&volume='+v);msg(r.ok?'Volume → '+v+'%':(r.error||'fail'),r.ok?'ok':'err');if(kind==='sink'&&name&&name.includes('bluez'))btVolSyncToAudio(v);setTimeout(taRefresh,600)}
+async function taMute(kind,name){let r=await api('/audio/mute?kind='+kind+'&name='+encodeURIComponent(name));msg(r.ok?'Mute toggled':(r.error||'fail'),r.ok?'ok':'err')}
+async function taSetDefault(name){let r=await api('/audio/default-sink?name='+encodeURIComponent(name));msg(r.ok?'Default → '+name.split('.').pop():r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
+async function taSetLatency(key,v){let r=await api('/audio/latency?key='+key+'&value='+v);msg(r.ok?'Latency saved':r.error||'fail',r.ok?'ok':'err');setTimeout(taRefresh,600)}
+async function taDlnaSelect(name,location,usn){let r=await api('/dlna/select?name='+encodeURIComponent(name)+'&location='+encodeURIComponent(location)+'&usn='+encodeURIComponent(usn||''));msg(r.ok?'DLNA target selected':(r.error||'select failed'),r.ok?'ok':'err');setTimeout(taRefresh,600)}
+async function taDlnaConnect(){msg('Connecting DLNA renderer...','info');let r=await api('/dlna/connect');msg(r.ok?'Connected to DLNA':(r.error||'connect failed'),r.ok?'ok':'err');setTimeout(taRefresh,3000)}
+async function taDlnaDisconnect(){msg('Disconnecting DLNA...','info');let r=await api('/dlna/disconnect');msg(r.ok?'DLNA disconnected':(r.error||'failed'),r.ok?'ok':'err');setTimeout(taRefresh,1000)}
+async function taKeepalive(action,sink){let r=await api('/keepalive?action='+action+(sink?'&sink='+encodeURIComponent(sink):''));return r}
+async function taDlnaScan(){msg('Scanning DLNA renderers...','info');let r=await api('/dlna/scan');if(r.devices&&r.devices.length){let h='<div style="margin-top:.3rem">';r.devices.forEach(d=>{h+='<div style="margin:3px 0;display:flex;gap:6px;align-items:center;border:1px solid #30363d;border-radius:.3rem;padding:.3rem .5rem;flex-wrap:wrap">📡 <b>'+esc(d.name)+'</b> <span style="color:#8b949e;font-size:.7em">'+esc(d.location||'')+'</span><button onclick="taDlnaSelect(\''+jsarg(d.name||'DLNA renderer')+'\',\''+jsarg(d.location||'')+'\',\''+jsarg(d.usn||'')+'\')" style="font-size:.7em;padding:2px 8px">Select</button></div>'});h+='</div>';let el=$('#ta-dlna-out-list');if(el)el.innerHTML=h;msg('Found '+r.count+' DLNA renderers','ok')}else{let el=$('#ta-dlna-out-list');if(el)el.innerHTML='<div style="color:#8b949e">No renderers found</div>';msg(r.error||'No DLNA renderers found','err')}}
+const BT_TOPO_POS_A=[{x:14,y:20},{x:10,y:50},{x:14,y:80},{x:24,y:88},{x:24,y:12},{x:46,y:25}];
+const BT_TOPO_POS_B=[{x:86,y:20},{x:90,y:50},{x:86,y:80},{x:76,y:88},{x:76,y:12},{x:54,y:75}];
+const BT_UI={state:null,selected:'',audioProfiles:[],transfers:[],files:[],obex:{},failureDiagnostics:null,pairing:'',challengeKey:'',scale:1,panX:0,panY:0,drag:false,startX:0,startY:0,lang:'cs'};
+function btRoot(){return $('#bt-app')}
+function devIcon(k){let r=String(k||'').toLowerCase();return r.includes('game')||r.includes('xbox')?'🎮':(r.includes('head')?'🎧':(r.includes('speaker')||r.includes('audio')||r.includes('sound')?'🔊':(r.includes('keyboard')?'⌨':(r.includes('mouse')?'🖱':(r.includes('light')||r.includes('led')?'💡':'◇')))))}
+function btRole(d){return String(d.kind||d.type||d.icon||d.name||d.alias||'unknown').toLowerCase()}
+function btDeviceKey(d){return d.key||d.device_key||''}
+function btDeviceMac(d){return d.address||d.mac||''}
+function btStableKey(d){return btDeviceKey(d)||btDeviceMac(d)||d.name||d.alias||''}
+function btAdapterName(a,i){return a?(a.alias||a.name||('Adapter '+String.fromCharCode(65+i))):('Adapter '+String.fromCharCode(65+i))}
+function btRssi(d){return d&&d.rssi!=null?d.rssi+' dBm':'-- dBm'}
+function btStatusText(d){return d.connected?'Connected':(d.paired?'Paired':(d.present===false?'Offline':'Available'))}
+function btStatusClass(d){return d.connected?'bt-ok':(d.paired?'bt-blue':(d.present===false?'bt-err':'bt-warn'))}
+function btAdapterDevices(devs,id){return (devs||[]).filter(d=>(d.adapter_id||'')===id)}
+function btRssiAvg(devs){let rs=(devs||[]).map(d=>d.rssi).filter(v=>typeof v==='number');if(!rs.length)return '--';return Math.round(rs.reduce((a,b)=>a+b,0)/rs.length)}
+function btNormalizeState(bt){let v2=bt&&bt.v2?bt.v2:bt||{};let devices=(v2.devices)||((bt&&bt.devices)||[...((bt&&bt.paired)||[]),...((bt&&bt.scanned)||[])]);return{raw:v2,devices:devices||[],adapters:v2.adapters||[],backend:v2.backend||{},diagnostics:v2.diagnostics||{},operations:v2.operations||[],events:v2.events||[],settings:v2.settings||{}}}
+function btFilteredDevices(devs){let c=$('#bt-filter-connected'),p=$('#bt-filter-paired'),a=$('#bt-filter-available');return (devs||[]).filter(d=>d.connected?(c?c.checked:true):(d.paired?(p?p.checked:true):(a?a.checked:true)))}
+function btSideForDevice(d,adapters){let idx=adapters.findIndex(a=>a.id===d.adapter_id);if(idx<0){let r=btRole(d);idx=(r.includes('game')||r.includes('keyboard')||r.includes('mouse')||r.includes('led')||r.includes('light'))?1:0}return idx===1?'b':'a'}
+function btTopoDeviceHtml(d,i,adapters,pos){let side=btSideForDevice(d,adapters),key=btStableKey(d),offline=d.present===false||(!d.connected&&d.paired),sel=BT_UI.selected===key?' selected':'';return '<button type="button" id="bt-node-'+i+'" class="bt-node bt-device-node '+(side==='b'?'b ':'')+(offline?'offline ':'')+sel+'" data-bt-key="'+esc(key)+'" data-bt-index="'+i+'" style="left:'+pos.x+'%;top:'+pos.y+'%" onclick="btSelectDevice(\''+jsarg(key)+'\')"><span class="bt-device-ico">'+devIcon(btRole(d))+'</span><span><strong>'+esc(d.name||d.alias||'Unknown Device')+'</strong><small>'+esc(offline?'Offline':btRssi(d))+'</small></span></button>'}
+function btHubHtml(a,side,i){let devs=BT_UI.state?btAdapterDevices(BT_UI.state.devices,a&&a.id):[],avg=btRssiAvg(devs),conn=devs.filter(d=>d.connected).length,avail=devs.filter(d=>!d.connected).length;return '<div id="bt-adapter-'+side+'" class="bt-node bt-adapter-hub '+side+'" style="left:'+(side==='a'?30:70)+'%;top:50%"><div class="bt-hub-label '+side+'">ADAPTER '+String.fromCharCode(65+i)+'</div><div class="bt-hex">♢</div><div class="bt-hub-role">'+(side==='a'?'AUDIO HUB':'IOT & INPUT')+'</div><div class="bt-card-meta">'+(a&&a.powered?'Powered On':'Powered Off')+' · Avg '+avg+' dBm</div><div class="'+(side==='a'?'bt-blue':'bt-ok')+'">'+conn+' Connected · '+avail+' Available</div></div>'}
+function renderBtTopology(bt,devs,adapters){let shown=btFilteredDevices(devs).slice(0,12),a0=adapters[0]||null,a1=adapters[1]||null,counts={a:0,b:0};if(!shown.length)shown=[{name:'No Bluetooth devices',rssi:null,adapter_id:a0&&a0.id,present:false,kind:'unknown',key:'empty'}];return btHubHtml(a0,'a',0)+btHubHtml(a1,'b',1)+shown.map((d,i)=>{let side=btSideForDevice(d,adapters),n=counts[side]++,pool=side==='b'?BT_TOPO_POS_B:BT_TOPO_POS_A;return btTopoDeviceHtml(d,i,adapters,pool[n%pool.length])}).join('')}
+function renderBtAdapters(bt,devs){let adapters=(bt&&bt.adapters)||[];if(!adapters.length)return '<div class="bt-muted">No Bluetooth adapters present.</div>';return adapters.slice(0,2).map((a,i)=>{let side=i===1?'b':'a',list=btAdapterDevices(devs,a.id),avg=btRssiAvg(list);return '<div class="bt-adapter-card '+side+'"><h4>Adapter '+String.fromCharCode(65+i)+'</h4><div class="'+(a.powered?'bt-ok':'bt-warn')+'">'+(a.powered?'● Powered On':'○ Powered Off')+'</div><div class="bt-card-meta">'+esc(a.address||a.id||'Unknown address')+'</div><div class="bt-gauge"><span></span><b>'+avg+'</b></div><div class="bt-card-meta">dBm (Avg)</div><div>Connected: <b>'+list.filter(d=>d.connected).length+'</b> · Paired: <b>'+list.filter(d=>d.paired).length+'</b></div><div class="row" style="justify-content:center;margin-top:10px"><button type="button" onclick="btDiscovery(\''+jsarg(a.id)+'\',\''+(a.discovering?'stop':'start')+'\')">'+(a.discovering?'Stop Scan':'Scan')+'</button><button type="button" onclick="btPower(\''+jsarg(a.id)+'\',\''+(a.powered?'off':'on')+'\')">'+(a.powered?'Power Off':'Power On')+'</button></div></div>'}).join('')}
+function renderReadiness(r){if(!r)return '—';let steps=r.steps||[];if(!steps.length)return '<div>'+badge(r.ready?true:null,r.ready?L('btReady'):L('btNotReady'))+'</div>';return steps.map(s=>{let stVal=s.state===true?true:(s.state===false?false:'na');let stLabel=s.state===true?'PASS':(s.state===false?'BLOCKED':'N/A');return '<div class="bt-readiness-row" style="margin:.25rem 0">'+badge(stVal,stLabel)+' <span><b>'+esc(s.label||s.id)+':</b> '+esc(s.reason||'')+'</span></div>'}).join('')}
+function renderBtController(c){if(!c)return '—';let mods=c.modules||{},inputs=c.input_devices||[],steam=c.steamlink||{},blockers=c.blockers||[];let driver=mods.xpadneo?'xpadneo':(mods.uhid?'uhid':(mods.xpad?'xpad':(mods.hid_microsoft?'hid_microsoft':'missing')));let rows=[];rows.push(badge(!!c.ready,c.ready?L('btReady'):L('btNotReady'))+' Controllers: '+((c.controllers||c.connected||[]).length));rows.push(L('btDriver')+': '+esc(driver));rows.push(L('btInput')+': '+esc(inputs.length?inputs.join(', '):'unknown'));rows.push(L('btSteamLink')+': '+(steam.available===true?'available':(steam.available===false?'missing':'unknown')));if(blockers.length)rows.push('<span class="bt-err">Blockers: '+esc(blockers.join(', '))+'</span>');return rows.map(x=>'<div>'+x+'</div>').join('')}
+function renderBtEvents(bt){let ops=(bt&&bt.operations)||[],events=(bt&&bt.events)||[];let rows=[];ops.slice(-4).forEach(o=>rows.push('OP '+o.type+' '+o.state+(o.error?': '+o.error.code:'')));events.slice(-6).forEach(e=>rows.push(e.type+': '+e.message));return rows.length?rows.map(x=>'<div>'+esc(x)+'</div>').join(''):'—'}
+function renderBtSummary(devs,adapters){let connected=devs.filter(d=>d.connected).length,paired=devs.filter(d=>d.paired).length,online=adapters.filter(a=>a.present&&a.powered).length;let avgs=adapters.slice(0,2).map(a=>btRssiAvg(btAdapterDevices(devs,a.id))+' dBm').join(' / ')||'--';return '<div class="bt-summary-card">Total Connected<b>'+connected+'</b></div><div class="bt-summary-card">Total Paired<b>'+paired+'</b></div><div class="bt-summary-card">Adapters Online<b>'+online+' / '+adapters.length+'</b></div><div class="bt-summary-card">Avg RSSI<b>'+esc(avgs)+'</b></div>'}
+function renderBtQuick(){let items=[['plus-circle','Párovat<br>Nové','btPairNew()','',false],['arrows','Obnovit<br>Topo','bluetoothRefresh()','',false],['export','Export<br>Dat','btExportData()','',false],['diagnostics','Diagnostika<br>Logů','btRunDiagnostics()','',false],['leaf','Úspora<br>Energie','', 'green',true],['connect','Připojit<br>Vše','btConnectAll()','',false],['x','Odpojit<br>Vše','btDisconnectAll()','red',false],['gear','Další<br>Nastavení','btMoreSettings()','',false]];return items.map(i=>'<button type="button" class="bt-action-tile '+i[3]+'" '+(i[4]?'disabled title="Backend support unavailable"':'onclick="'+i[2]+'"')+'><b>'+i[0].slice(0,1).toUpperCase()+'</b><span>'+i[1]+'</span></button>').join('')}
+function btSelectedDevice(){let s=BT_UI.state;if(!s)return null;return s.devices.find(d=>btStableKey(d)===BT_UI.selected)||s.devices.find(d=>d.connected)||s.devices[0]||null}
+function btActionableProfiles(d){return (((d||{}).capabilities||{}).profiles||[]).filter(p=>['audio','headset','media','network','serial'].includes(p.category))}
+function btCapabilityDetails(d){let caps=(d&&d.capabilities)||{},profiles=caps.profiles||[],unknown=caps.unknown_uuids||[];let rows=profiles.map(p=>'<div class="bt-detail-row"><span>'+esc(p.label)+'</span><b>'+esc(p.direction)+'</b></div>').join('');if(!rows)rows='<div class="bt-muted">No recognized profile UUIDs advertised.</div>';if(unknown.length)rows+='<div class="bt-muted">Other UUIDs: '+unknown.length+'</div>';return rows}
+function btPipeWireProfile(d){let mac=btDeviceMac(d).toUpperCase(),card=(BT_UI.audioProfiles||[]).find(c=>String(c.address||'').toUpperCase()===mac);if(!card)return '<div class="bt-muted">No active PipeWire Bluetooth card.</div>';let opts=(card.profiles||[]).filter(p=>p.available!=='no').map(p=>'<option value="'+esc(p.id)+'" '+(p.id===card.active_profile?'selected':'')+'>'+esc(p.description)+' · '+p.sinks+' out / '+p.sources+' in</option>').join('');return '<label class="bt-control-row"><span>PipeWire profile</span><select onchange="btSetAudioProfile(\''+jsarg(card.name)+'\',this.value)">'+opts+'</select></label>'}
+function btRemoteProfileActions(d){let profiles=btActionableProfiles(d);if(!profiles.length)return '';return '<div class="bt-detail-box"><b>Remote profiles</b>'+profiles.map(p=>'<div class="bt-detail-row"><span>'+esc(p.label)+'</span><span><button type="button" onclick="btSelectedProfile(\'connect\',\''+jsarg(p.uuid)+'\')">Connect</button> <button type="button" onclick="btSelectedProfile(\'disconnect\',\''+jsarg(p.uuid)+'\')">Disconnect</button></span></div>').join('')+'</div>'}
+function btMediaDetails(d){let media=((BT_UI.state&&BT_UI.state.diagnostics)||{}).media||{},player=(media.players||[]).find(p=>p.device_key===btDeviceKey(d)),transport=(media.transports||[]).find(t=>t.device_key===btDeviceKey(d)),caps=(d.capabilities||{}).media||{};if(!player&&!transport&&!caps.control_remote&&!caps.controlled_by_remote)return '';let track=(player&&player.track)||{},title=track.Title||track.title||'',artist=track.Artist||track.artist||'',status=(player&&player.status)||'unavailable',volume=transport&&transport.volume;return '<div class="bt-detail-box"><b>AVRCP Media</b><div class="bt-detail-row"><span>'+esc(title||'No track metadata')+'</span><b>'+esc(artist||status)+'</b></div><div class="bt-detail-actions"><button type="button" onclick="btMediaAction(\'previous\')">Previous</button><button type="button" onclick="btMediaAction(\'play\')">Play</button><button type="button" onclick="btMediaAction(\'pause\')">Pause</button><button type="button" onclick="btMediaAction(\'stop\')">Stop</button><button type="button" onclick="btMediaAction(\'next\')">Next</button></div>'+(transport?'<label class="bt-control-row"><span>Transport volume</span><input type="range" min="0" max="127" value="'+Number(volume==null?127:volume)+'" onchange="btMediaAction(\'volume\',this.value)"></label><div class="bt-card-meta">Codec '+esc(transport.codec==null?'unknown':transport.codec)+' · Delay '+esc(transport.delay==null?'unknown':transport.delay)+'</div>':'')+'</div>'}
+function btObexDetails(d){let opp=(((d||{}).capabilities||{}).file_transfer||{}).object_push;if(!opp)return '';let files=BT_UI.files||[],options=files.map(f=>'<option value="'+esc(f.path)+'">'+esc(f.name)+' · '+Math.ceil(Number(f.size||0)/1024)+' KiB</option>').join(''),mac=btDeviceMac(d).toUpperCase(),transfers=(BT_UI.transfers||[]).filter(t=>String(t.address||'').toUpperCase()===mac).slice(-3),rows=transfers.map(t=>{let pct=t.size?Math.min(100,Math.round(100*Number(t.transferred||0)/Number(t.size))):0,cancel=['queued','starting','active'].includes(t.status)?' <button type="button" onclick="btCancelTransfer(\''+jsarg(t.id)+'\')">Cancel</button>':'';return '<div class="bt-detail-row"><span>'+esc(t.direction+' '+t.name)+'</span><b>'+esc(t.status)+' '+pct+'%'+cancel+'</b></div>'}).join('');return '<div class="bt-detail-box"><b>Object Push · ~/Downloads</b><div class="bt-card-meta">Receiver: '+esc(BT_UI.obex.receive_agent?'ready':(BT_UI.obex.error||'unavailable'))+'</div>'+(options?'<div class="bt-detail-row"><select id="bt-send-file">'+options+'</select><button type="button" onclick="btSendSelectedFile()">Send</button></div>':'<div class="bt-muted">No eligible files in Downloads.</div>')+(rows||'<div class="bt-muted">No recent transfers.</div>')+'</div>'}
+function btPairingControl(){return BT_UI.pairing?'<div class="bt-detail-box"><b>Pairing in progress</b><button type="button" class="danger" onclick="btCancelPairing()">Cancel pairing</button></div>':''}
+function btFailureDetails(){let report=BT_UI.failureDiagnostics;if(!report)return '';let classes=report.failure_classes||[],rows=classes.map(item=>'<div class="bt-detail-row"><span>'+esc(item.id)+' · '+item.count+'</span><b>'+esc(item.layer)+'</b></div><div class="bt-card-meta">'+esc(item.mitigation)+'</div>').join('');return '<div class="bt-detail-box"><b>Bounded failure diagnostics</b>'+(rows||'<div class="bt-ok">No known failure class found in the bounded boot log.</div>')+'<div class="bt-card-meta">RSS '+esc((report.resources||{}).process_rss||'unknown')+' · Load '+esc(((report.resources||{}).load_average||[]).join(' / '))+'</div></div>'}
+function btHidBoundary(d){let status=((BT_UI.state&&BT_UI.state.diagnostics)||{}).hid_control||{},available=!!status.available,blockers=(status.blockers||[]).join('; ');return '<div class="bt-detail-box"><b>Optional outbound HID control</b><label class="bt-control-row"><span>Trusted device opt-in</span><input type="checkbox" '+(d.hid_control?'checked ':'')+(available?'':'disabled ')+'onchange="btSelectedHid(this.checked)"></label><div class="bt-card-meta">'+esc(available?'Transport ready; disabled by default.':(blockers||'Outbound HID transport unavailable.'))+'</div><div class="bt-card-meta">Media keys use AVRCP when available.</div></div>'}
+function renderBtDeviceDetails(devs,adapters){let d=btSelectedDevice();if(!d)return '<div class="bt-muted">No device selected.</div>';let a=(adapters||[]).find(x=>x.id===d.adapter_id),offline=d.present===false||(!d.connected&&d.paired),disabledPair=d.paired?' disabled title="Device is already paired"':'',disabledDisconnect=!d.connected?' disabled title="Device is not connected"':'',disabledConnect=(!d.paired||d.connected)?' disabled title="Pair the device before connecting"':'',disabledTrust=d.trusted?' disabled title="Device is already trusted"':'';return '<div class="bt-detail-title">'+esc(d.name||d.alias||'Unknown Device')+'</div><div class="bt-status-pill '+(offline?'offline':'')+'">● '+btStatusText(d)+'</div><div class="bt-detail-box"><div class="bt-detail-row"><span>Signal</span><b class="bt-blue">'+esc(btRssi(d))+'</b></div><div class="bt-detail-row"><span>MAC Address</span><code>'+esc(btDeviceMac(d)||'-')+'</code></div><div class="bt-detail-row"><span>Adapter</span><span class="bt-adapter-tag">'+esc(a?btAdapterName(a,adapters.indexOf(a)):'-')+'</span></div><div class="bt-detail-row"><span>Bonded</span><b>'+esc(d.bonded==null?'Unknown':(d.bonded?'Yes':'No'))+'</b></div><div class="bt-detail-row"><span>Battery</span><b>'+esc(d.battery_percentage==null?'N/A':d.battery_percentage+'%')+'</b></div><label class="bt-control-row"><span>Auto connect</span><input type="checkbox" '+(d.auto_connect?'checked ':'')+'onchange="btSelectedAutoConnect(this.checked)"></label></div><div class="bt-detail-box"><b>Negotiated capabilities</b>'+btCapabilityDetails(d)+'</div>'+btPipeWireProfile(d)+btRemoteProfileActions(d)+btMediaDetails(d)+btObexDetails(d)+btHidBoundary(d)+btPairingControl()+btFailureDetails()+'<div class="bt-detail-actions"><button type="button"'+disabledPair+' onclick="btSelectedAction(\'pair\')">Pair</button><button type="button" class="danger"'+disabledDisconnect+' onclick="btSelectedAction(\'disconnect\')">Odpojit Zařízení</button><button type="button"'+disabledConnect+' onclick="btSelectedAction(\'connect\')">Connect</button><button type="button"'+disabledTrust+' onclick="btSelectedAction(\'trust\')">Trust</button><button type="button" onclick="btSelectedAction(\''+(d.blocked?'unblock':'block')+'\')">'+(d.blocked?'Unblock':'Block')+'</button><button type="button" class="danger" onclick="btSelectedAction(\'remove\')">Remove</button></div>'}
+function renderBtControls(s){let backend=s.backend||{},settings=s.settings||{},degraded=backend.degraded?' <span class="bt-warn">degraded</span>':'',powered=s.adapters.filter(a=>a.present&&a.powered),discoverable=powered.length>0&&powered.every(a=>a.discoverable),timeout=Number(settings.discoverable_timeout==null?120:settings.discoverable_timeout),mode=String(settings.scan_mode||'balanced').toLowerCase();return '<label class="bt-control-row"><span>Automatické připojení</span><span class="bt-switch"><input id="bt-auto-connect" type="checkbox" '+(settings.auto_connect?'checked ':'')+'onchange="btToggleAutoConnect(this.checked)"><span class="bt-slider"></span></span></label><label class="bt-control-row"><span>Viditelnost sítě (All)</span><span class="bt-switch"><input id="bt-discoverable-all" type="checkbox" '+(discoverable?'checked ':'')+'onchange="btToggleDiscoverable(this.checked)"><span class="bt-slider"></span></span></label><div class="bt-control-row"><span>Časovač</span><select id="bt-timeout" onchange="btSettingChanged(\'Timeout\',this.value)"><option value="120" '+(timeout===120?'selected':'')+'>2 min</option><option value="300" '+(timeout===300?'selected':'')+'>5 min</option><option value="0" '+(timeout===0?'selected':'')+'>Trvale</option></select></div><div class="bt-control-row"><span>Režim skenování</span><select id="bt-scan-mode" onchange="btSettingChanged(\'Scan mode\',this.value)"><option value="balanced" '+(mode==='balanced'?'selected':'')+'>Balanced</option><option value="aggressive" '+(mode==='aggressive'?'selected':'')+'>Aggressive</option></select></div><div class="bt-control-row"><span>Backend</span><b>'+esc(backend.name||'legacy')+degraded+'</b></div><div class="bt-control-row"><span>Adapters</span><b>'+s.adapters.length+' · Devices '+s.devices.length+'</b></div>'}
+function btApplyLang(){let lang=(typeof LANG!=='undefined'?LANG:'cz');document.querySelectorAll('[data-bt-i18n-cs]').forEach(el=>{let t=el.getAttribute('data-bt-i18n-'+(lang==='cz'?'cs':'en'));if(t)el.textContent=t;});}
+function renderBluetoothState(bt){let s=btNormalizeState(bt);BT_UI.state=s;if(!BT_UI.selected&&s.devices.length)BT_UI.selected=btStableKey(s.devices.find(d=>d.connected)||s.devices[0]);$('#bt-topology').innerHTML=renderBtTopology(s.raw,s.devices,s.adapters);$('#bt-adapters').innerHTML=renderBtAdapters(s.raw,s.devices);$('#bt-controller').innerHTML='<b>Controller</b>'+renderBtController(s.diagnostics.controllers||(bt&&bt.controller));$('#bt-soundbar').innerHTML='<b>Soundbar</b>'+renderReadiness(s.diagnostics.soundbar);$('#bt-events').innerHTML='<b>Recent Events</b>'+renderBtEvents(s.raw);$('#bt-summary').innerHTML=renderBtSummary(s.devices,s.adapters);$('#bt-quick').innerHTML=renderBtQuick();$('#bt-device-details').innerHTML=renderBtDeviceDetails(s.devices,s.adapters);$('#bt-status').innerHTML=renderBtControls(s);let online=s.adapters.filter(a=>a.present&&a.powered).length;let hci=$('#bt-hci-state');if(hci)hci.textContent='HCI Online '+online+' / '+s.adapters.length;let service=$('#bt-service-state');if(service)service.textContent=s.backend.degraded?'Degraded':'Running';let paired=$('#bt-total-paired');if(paired)paired.textContent='Total Paired: '+s.devices.filter(d=>d.paired).length;let connected=$('#bt-total-connected');if(connected)connected.textContent='Total Connected: '+s.devices.filter(d=>d.connected).length;btApplyLang();setTimeout(()=>{btCenterCanvas(false);btDrawTopologyLines()},30)}
+function btRenderCurrent(){if(BT_UI.state)renderBluetoothState(BT_UI.state.raw)}
+async function bluetoothRefresh(){let results=await Promise.all([api('/bt/state'),api('/audio/bluetooth-profiles'),api('/bt/transfers'),api('/bt/files')]),r=results[0],audio=results[1],obex=results[2],files=results[3];if(r.error&&!r.backend){msg(r.error,'err');return}BT_UI.audioProfiles=audio.cards||[];BT_UI.obex=obex||{};BT_UI.transfers=obex.transfers||[];BT_UI.files=files.files||[];renderBluetoothState(r);applyLang()}
+async function bluetoothScan(){msg(L('scan')+' Bluetooth...','info');let state=await api('/bt/state');let adapters=(state.adapters||[]).filter(a=>a.present&&a.powered);if(!adapters.length){msg('No powered Bluetooth adapter','err');renderBluetoothState(state);return}for(let a of adapters){await api('/bt/discovery?action=start&adapter_id='+encodeURIComponent(a.id))}setTimeout(bluetoothRefresh,1200);msg(L('scan')+' Bluetooth started','ok')}
+async function btDiscovery(adapter,action){let r=await api('/bt/discovery?action='+encodeURIComponent(action)+'&adapter_id='+encodeURIComponent(adapter));msg(r.result||r.error,r.ok?'ok':'err');setTimeout(bluetoothRefresh,800)}
+async function btPower(adapter,onoff){if(onoff==='off'&&!confirm('Power off this Bluetooth adapter?'))return;let r=await api('/bt/adapter-power?adapter_id='+encodeURIComponent(adapter)+'&powered='+(onoff==='on'?'1':'0'));msg(r.result||r.error,r.ok?'ok':'err');setTimeout(bluetoothRefresh,800)}
+async function btDeviceAction(action,adapter,key,mac){if(action==='pair')return btStartPairing(adapter,key,mac);if(action==='remove'&&!confirm('Remove this Bluetooth device?'))return;if(!adapter||!key){if(!mac){msg('No selected Bluetooth device','err');return}msg('Adapter context missing, using legacy '+action,'info')}let url=adapter&&key?('/bt/device-action?action='+encodeURIComponent(action)+'&adapter_id='+encodeURIComponent(adapter)+'&device_key='+encodeURIComponent(key)):('/bt/'+action+'?mac='+encodeURIComponent(mac));msg(action+' '+(mac||key)+'...','info');let r=await api(url);msg(r.result||r.error,r.ok?'ok':'err');setTimeout(bluetoothRefresh,1200)}
+async function btStartPairing(adapter,key,mac){if(!confirm('Start pairing with this device on the selected adapter?'))return;let url='/bt/pairing?action=start&adapter_id='+encodeURIComponent(adapter||'')+'&device_key='+encodeURIComponent(key||'')+(mac?'&mac='+encodeURIComponent(mac):''),r=await api(url);if(!r.ok){msg(r.error||'Pairing failed','err');return}BT_UI.pairing=r.pairing.id;BT_UI.challengeKey='';msg('Pairing started. Waiting for BlueZ challenge...','info');setTimeout(btPollPairing,250)}
+async function btPollPairing(){if(!BT_UI.pairing)return;let r=await api('/bt/pairing?action=status&operation_id='+encodeURIComponent(BT_UI.pairing));if(!r.ok){msg(r.error||'Pairing status failed','err');BT_UI.pairing='';return}let pairing=r.pairing||{},challenge=r.challenge;if(challenge&&challenge.state==='waiting_for_user'){let challengeKey=challenge.type+':'+String(challenge.passkey||challenge.service_uuid||'');if(BT_UI.challengeKey!==challengeKey){BT_UI.challengeKey=challengeKey;let accepted=false,value='';if(challenge.type==='confirmation')accepted=confirm('Bluetooth passkey '+String(challenge.passkey).padStart(6,'0')+' matches the remote device?');else if(challenge.type==='pin_code'||challenge.type==='passkey'){value=prompt('Enter Bluetooth '+(challenge.type==='pin_code'?'PIN code':'passkey')+':','')||'';accepted=!!value}else accepted=confirm('Authorize Bluetooth '+challenge.type+' for the selected device?');await api('/bt/pairing?action=respond&operation_id='+encodeURIComponent(BT_UI.pairing)+'&accepted='+(accepted?'1':'0')+'&value='+encodeURIComponent(value))}}else if(challenge&&challenge.state==='display'){msg('Enter/display Bluetooth code '+(challenge.pin_code||String(challenge.passkey||'').padStart(6,'0'))+' on the remote device.','info')}if(pairing.state==='pending'){setTimeout(btPollPairing,400);return}msg(pairing.state==='succeeded'?'Pairing succeeded':(pairing.error||'Pairing '+pairing.state),pairing.state==='succeeded'?'ok':'err');BT_UI.pairing='';BT_UI.challengeKey='';setTimeout(bluetoothRefresh,400)}
+async function btCancelPairing(){if(!BT_UI.pairing)return;let r=await api('/bt/pairing?action=cancel&operation_id='+encodeURIComponent(BT_UI.pairing));msg(r.ok?'Pairing cancelled':(r.error||'Cancel failed'),r.ok?'ok':'err');BT_UI.pairing='';BT_UI.challengeKey='';setTimeout(bluetoothRefresh,300)}
+function btSelectDevice(key){BT_UI.selected=key;btRenderCurrent()}
+function btSelectedAction(action){let d=btSelectedDevice();if(!d){msg('No selected Bluetooth device','err');return}btDeviceAction(action,d.adapter_id||'',btDeviceKey(d),btDeviceMac(d))}
+async function btSelectedProfile(action,uuid){let d=btSelectedDevice();if(!d)return;let url='/bt/device-profile?action='+encodeURIComponent(action)+'&adapter_id='+encodeURIComponent(d.adapter_id||'')+'&device_key='+encodeURIComponent(btDeviceKey(d))+'&profile_uuid='+encodeURIComponent(uuid);let r=await api(url);msg(r.result||r.error,r.ok?'ok':'err');setTimeout(bluetoothRefresh,900)}
+async function btSelectedAutoConnect(on){let d=btSelectedDevice();if(!d)return;let url='/bt/device-autoconnect?adapter_id='+encodeURIComponent(d.adapter_id||'')+'&device_key='+encodeURIComponent(btDeviceKey(d))+'&enabled='+(on?'1':'0');let r=await api(url);msg(r.ok?'Device auto connect '+(on?'enabled':'disabled'):(r.error||'Auto connect failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,400)}
+async function btSelectedHid(on){let d=btSelectedDevice();if(!d)return;let url='/bt/device-hid?adapter_id='+encodeURIComponent(d.adapter_id||'')+'&device_key='+encodeURIComponent(btDeviceKey(d))+'&enabled='+(on?'1':'0');let r=await api(url);msg(r.ok?'HID control '+(on?'enabled':'disabled'):(r.error||'HID control unavailable'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,400)}
+async function btSetAudioProfile(card,profile){let r=await api('/audio/bluetooth-profiles?card='+encodeURIComponent(card)+'&profile='+encodeURIComponent(profile));msg(r.ok?'Audio profile: '+profile:(r.error||'Profile switch failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,900)}
+async function btMediaAction(action,value){let d=btSelectedDevice();if(!d)return;let url='/bt/media?action='+encodeURIComponent(action)+'&adapter_id='+encodeURIComponent(d.adapter_id||'')+'&device_key='+encodeURIComponent(btDeviceKey(d))+(value==null?'':'&value='+encodeURIComponent(value));let r=await api(url);msg(r.result||r.error,r.ok?'ok':'err');setTimeout(bluetoothRefresh,500)}
+async function btSendSelectedFile(){let d=btSelectedDevice(),select=$('#bt-send-file');if(!d||!select||!select.value)return;let url='/bt/file-send?adapter_id='+encodeURIComponent(d.adapter_id||'')+'&device_key='+encodeURIComponent(btDeviceKey(d))+'&path='+encodeURIComponent(select.value);let r=await api(url);msg(r.ok?'Bluetooth transfer started':(r.error||'Transfer failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,600)}
+async function btCancelTransfer(id){let r=await api('/bt/file-cancel?transfer_id='+encodeURIComponent(id));msg(r.ok?'Transfer cancelled':(r.error||'Cancel failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,400)}
+function btPairNew(){let d=btSelectedDevice();if(d&&!d.paired){btSelectedAction('pair');return}bluetoothScan();msg('Pair mode: select an available device, then Pair from detail.','info')}
+async function btToggleAutoConnect(on){let r=await api('/bt/settings?auto_connect='+(on?'1':'0'));msg(r.ok?'Auto Connect '+(on?'enabled':'disabled'):(r.error||'Auto Connect failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,400)}
+async function btToggleDiscoverable(on){let s=BT_UI.state||{},timeout=Number((s.settings||{}).discoverable_timeout||0),adapters=(s.adapters||[]).filter(a=>a.present&&a.powered);if(!adapters.length){msg('No powered Bluetooth adapter','err');return}let ok=true;for(let a of adapters){let r=await api('/bt/discoverable?adapter_id='+encodeURIComponent(a.id)+'&discoverable='+(on?'1':'0')+'&timeout='+timeout);if(!r.ok){ok=false;msg(r.error||'Discoverability failed','err')}}if(ok)msg('Discoverable '+(on?'enabled':'disabled')+' for visible adapters','ok');setTimeout(bluetoothRefresh,500)}
+async function btSettingChanged(name,value){let key=name==='Timeout'?'discoverable_timeout':'scan_mode',r=await api('/bt/settings?'+key+'='+encodeURIComponent(value));msg(r.ok?name+': '+value:(r.error||name+' failed'),r.ok?'ok':'err');setTimeout(bluetoothRefresh,400)}
+function btExportData(){let data=JSON.stringify(BT_UI.state||{},null,2);try{let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download='rpi-bluetooth-state.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500);msg('Bluetooth state exported','ok')}catch(e){msg('Export failed: '+e.message,'err')}}
+function btMoreSettings(){let target=$('#bt-status');if(target){target.scrollIntoView({behavior:'smooth',block:'center'});target.classList.add('selected');setTimeout(()=>target.classList.remove('selected'),800)}}
+async function btRunDiagnostics(){msg('Collecting bounded Bluetooth diagnostics...','info');let r=await api('/bt/diagnostics');if(!r.ok){msg(r.error||'Diagnostics failed','err');return}BT_UI.failureDiagnostics=r;btRenderCurrent();msg('Bluetooth diagnostics collected','ok')}
+function btConnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.paired&&!d.connected);if(!ds.length){msg('No paired disconnected devices to connect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('connect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
+function btDisconnectAll(){let ds=(BT_UI.state&&BT_UI.state.devices||[]).filter(d=>d.connected);if(!ds.length){msg('No connected devices to disconnect','info');return}ds.slice(0,4).forEach(d=>btDeviceAction('disconnect',d.adapter_id||'',btDeviceKey(d),btDeviceMac(d)))}
+
+function btCenterCanvas(force){let w=$('#bt-topo-wrapper'),c=$('#bt-topo-canvas');if(!w||!c)return;if(!force&&BT_UI.panX!==0)return;let r=w.getBoundingClientRect();if(force){BT_UI.scale=Math.min(1,Math.max(.25,Math.min(r.width/1450,r.height/620)))}BT_UI.panX=(r.width-(1400*BT_UI.scale))/2;BT_UI.panY=(r.height-(600*BT_UI.scale))/2;btUpdateTopoTransform()}
+function btUpdateTopoTransform(){let c=$('#bt-topo-canvas');if(c)c.style.transform='translate('+BT_UI.panX+'px,'+BT_UI.panY+'px) scale('+BT_UI.scale+')'}
+function btZoomTopo(amount){BT_UI.scale=Math.min(Math.max(.25,BT_UI.scale+amount),2);btUpdateTopoTransform();btDrawTopologyLines()}
+function btResetTopo(){BT_UI.scale=1;btCenterCanvas(true);btDrawTopologyLines()}
+function btDrawTopologyLines(){let svg=$('#bt-topology-lines');if(!svg||!BT_UI.state)return;let dark=!btRoot().classList.contains('bt-theme-light'),cyan=dark?'#00F0FF':'#2563eb',green=dark?'#39FF14':'#16a34a';svg.innerHTML='<defs><marker id="bt-arrow-cyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><polygon points="0 0,6 3,0 6" fill="'+cyan+'"/></marker><marker id="bt-arrow-green" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><polygon points="0 0,6 3,0 6" fill="'+green+'"/></marker></defs>';btFilteredDevices(BT_UI.state.devices).slice(0,12).forEach((d,i)=>{let side=btSideForDevice(d,BT_UI.state.adapters),from=side==='a'?'bt-adapter-a':'bt-adapter-b',to='bt-node-'+i,el1=document.getElementById(from),el2=document.getElementById(to);if(!el1||!el2)return;let x1=el1.offsetLeft,y1=el1.offsetTop,x2=el2.offsetLeft,y2=el2.offsetTop,dx=x2-x1,dy=y2-y1,color=side==='a'?cyan:green,marker=side==='a'?'bt-arrow-cyan':'bt-arrow-green';let p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d','M '+x1+' '+y1+' C '+(x1+dx*.35)+' '+y1+', '+(x2-dx*.35)+' '+y2+', '+x2+' '+y2);p.setAttribute('stroke',d.present===false?'#9ca3af':color);p.setAttribute('stroke-width','2.5');p.setAttribute('fill','none');if(d.present===false||(!d.connected&&d.paired))p.setAttribute('stroke-dasharray','5,5');else p.setAttribute('marker-end','url(#'+marker+')');svg.appendChild(p)})}
+function btInitInteractions(){let w=$('#bt-topo-wrapper');if(!w||w.dataset.ready)return;w.dataset.ready='1';w.addEventListener('mousedown',e=>{if(e.target.closest('button'))return;BT_UI.drag=true;BT_UI.startX=e.clientX-BT_UI.panX;BT_UI.startY=e.clientY-BT_UI.panY});window.addEventListener('mousemove',e=>{if(!BT_UI.drag)return;BT_UI.panX=e.clientX-BT_UI.startX;BT_UI.panY=e.clientY-BT_UI.startY;btUpdateTopoTransform()});window.addEventListener('mouseup',()=>BT_UI.drag=false);w.addEventListener('wheel',e=>{e.preventDefault();BT_UI.scale=Math.min(Math.max(.25,BT_UI.scale*(e.deltaY<0?1.05:.95)),2);btUpdateTopoTransform();btDrawTopologyLines()},{passive:false});window.addEventListener('resize',()=>setTimeout(()=>{btCenterCanvas(true);btDrawTopologyLines()},100))}
+async function btPair(mac){return btDeviceAction('pair','','',mac)}
+async function btConnect(mac){return btDeviceAction('connect','','',mac)}
+async function btDisconnect(mac){return btDeviceAction('disconnect','','',mac)}
+async function btRemove(mac){return btDeviceAction('remove','','',mac)}
+async function btTrust(mac){return btDeviceAction('trust','','',mac)}
+async function devicesRefresh(){let r=await api('/devices/state');if(r.error){msg(r.error,'err');return}}
+async function deviceBtScan(){return bluetoothScan()}
+async function wifiStatus(){let r=await api('/wifi/status');$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>'}
+async function wifiScan(){msg(L('wifiScanning'),'info');let r=await api('/wifi/scan');if(r.networks){let h=r.networks.map(n=>'<div style="margin:3px 0"><button onclick="$(\'#wifi-ssid\').value=\''+jsarg(n.ssid)+'\'" style="font-size:.72em;padding:2px 8px">'+L('wifiUse')+'</button> '+esc(n.ssid)+' <span style="color:#8b949e">'+esc(n.signal||'')+' '+esc(n.security||'')+'</span></div>').join('');$('#wifi-list').innerHTML=h||L('wifiNone');msg(L('wifiScanDone'),'ok')}else{$('#wifi-list').innerHTML='<pre>'+esc(JSON.stringify(r,null,2))+'</pre>';msg(r.error||L('wifiScanFailed'),'err')}}
+async function wifiConnect(){let ssid=$('#wifi-ssid').value.trim(),pw=$('#wifi-pass').value;if(!ssid){msg(L('ssidRequired'),'err');return}let r=await fetch('/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid,password:pw})}).then(res=>res.json()).catch(e=>({error:e.message}));msg(r.ok?L('wifiConnected'):(r.error||r.out||L('wifiFailed')),r.ok?'ok':'err');wifiStatus()}
+async function ytCookieStatus(){let r=await api('/youtube/cookies/status');$('#yt-cookie-status').textContent=JSON.stringify(r,null,2)}
+async function ytAgeCheck(){let u=$('#yt-age-url').value.trim();if(!u){msg(L('ytUrlRequired'),'err');return}msg(L('ytChecking'),'info');let r=await api('/youtube/age-check?url='+encodeURIComponent(u));$('#yt-cookie-status').textContent=JSON.stringify(r,null,2);msg(r.ok?L('ytExtractable'):L('ytFailed'),r.ok?'ok':'err')}
+async function launchApp(mode){msg(L('launching')+' '+mode+'...','info');let r=await fetch('http://192.168.0.205:8090/mode/launch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})}).then(r=>r.json());msg(r.status?'OK: '+mode:(r.error||L('failed')),r.status?'ok':'err')}
+async function stopApp(){msg(L('stopping'),'info');let r=await fetch('http://192.168.0.205:8090/mode/stop',{method:'POST'}).then(r=>r.json());msg(r.message||L('stopped'),'ok')}
+// Terminal
+let term=null,termWs=null,termFit=null;
+function termSendResize(){if(term&&termWs&&termWs.readyState===1){termWs.send(JSON.stringify({resize:{cols:term.cols,rows:term.rows}}))}}
+function termFitNow(){if(termFit){termFit.fit();termSendResize()}}
+function termInit(){if(term)return;term=new Terminal({theme:{background:'#0d1117',foreground:'#c9d1d9',cursor:'#58a6ff'},fontSize:13,fontFamily:'monospace',cursorBlink:true,scrollback:0,convertEol:false,disableStdin:false});termFit=new FitAddon.FitAddon();term.loadAddon(termFit);term.open(document.getElementById('terminal'));setTimeout(termFitNow,150);setTimeout(termFitNow,450);term.onData(d=>{if(termWs&&termWs.readyState===1)termWs.send(JSON.stringify({input:d}))});term.onResize(()=>termSendResize());window.addEventListener('resize',()=>setTimeout(termFitNow,120));msg(L('termReady'),'info')}
+function termDrawSnapshot(output,cursor){let text=output||'';let lines=text.split(/\r?\n/);let row=1,col=1;if(cursor&&Number.isFinite(cursor.y)&&Number.isFinite(cursor.x)){row=Math.max(1,Math.min(term.rows,cursor.y+1));col=Math.max(1,Math.min(term.cols,cursor.x+1))}else{let last=lines.length?lines[lines.length-1]:'';row=Math.max(1,Math.min(term.rows,lines.length));col=Math.max(1,Math.min(term.cols,(last||'').length+1))}term.write('\x1b[?25h\x1b[H\x1b[2J'+text+'\x1b['+row+';'+col+'H')}
+// Auth & Security
+function updateRoleBadge(role){
+    let badge=$('#auth-role-badge'), logoutBtn=$('#auth-logout-btn');
+    if(!badge || !logoutBtn)return;
+    badge.textContent=role.charAt(0).toUpperCase() + role.slice(1);
+    badge.style.display='inline-block';
+    logoutBtn.style.display=(role!=='basic')?'inline-block':'none';
+    if(role==='admin') badge.style.color='var(--color-error)';
+    else if(role==='expert') badge.style.color='var(--color-warning)';
+    else { badge.style.color='var(--text-main)'; badge.style.display='none'; }
+}
+async function requestExpertMode(){
+    let r=await api('/auth/whoami');
+    if(r.authenticated && r.role!=='basic') {
+        appSetMode(r.role); updateRoleBadge(r.role);
+    } else {
+        openLoginModal('expert');
+    }
+}
+function openLoginModal(role='expert'){
+    $('#login-role').value=role;
+    $('#login-password').value='';
+    $('#login-modal').classList.add('show');
+}
+function closeLoginModal(){ $('#login-modal').classList.remove('show'); }
+async function submitLogin(){
+    let role=$('#login-role').value, pwd=$('#login-password').value;
+    let r=await api('/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role:role, password:pwd})});
+    if(r.ok){
+        closeLoginModal(); msg('Logged in as '+role,'ok');
+        appSetMode(role); updateRoleBadge(role);
+        if(pendingAuthRetry){let retry=pendingAuthRetry;pendingAuthRetry=null;let rr=await retry();if(rr&&rr.ok)msg('Blocked action completed','ok');else if(rr&&rr.error)msg(rr.error,'err');}
+        if(role==='admin' && $('#p-terminal').classList.contains('active')) termConnect();
+    } else { msg(r.error||'Login failed','err'); }
+}
+async function authLogout(){
+    let r=await api('/auth/logout', {method:'POST'});
+    msg(r.ok?'Logged out':(r.error||'Logout failed'), r.ok?'info':'err');
+    appSetMode('basic'); updateRoleBadge('basic');
+}
+async function termRequestAccess(){
+    let r=await api('/auth/whoami');
+    if(r.authenticated && r.role==='admin'){ termConnect(); }
+    else { openLoginModal('admin'); }
+}
+
+async function termConnect(){
+    let r = await api('/auth/whoami');
+    if (!r.authenticated || r.role !== 'admin') {
+        msg('Admin session required for Terminal', 'err');
+        return;
+    }
+    $('#term-lock-screen').style.display='none';
+    $('#terminal').style.display='block';
+    termInit();let host=location.hostname||'localhost';if(termWs&&termWs.readyState===1)return;termWs=new WebSocket('ws://'+host+':8098');termWs.onopen=()=>{msg(L('connected'),'ok');$('#term-status').textContent=L('connected');term.clear();termWs.send(JSON.stringify({action:'attach',session:'RPi',cols:term.cols,rows:term.rows}))};termWs.onmessage=e=>{try{let d=JSON.parse(e.data);if(d.full&&d.output!==undefined){termDrawSnapshot(d.output,d.cursor)}else if(d.output){term.write(d.output)}}catch{}};termWs.onclose=()=>{$('#term-status').textContent=L('disconnected');msg(L('disconnected'),'info')};termWs.onerror=()=>msg(L('connectionError'),'err')
+}
+function termDisconnect(){if(termWs){termWs.close();termWs=null}$('#term-status').textContent=L('disconnected')}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const r = await api('/auth/whoami');
+    if (r.setup_required) {
+        let btn = $('#mode-btn-expert'); if(btn) btn.style.display = 'none';
+    } else if (r.authenticated && (r.role === 'expert' || r.role === 'admin')) {
+        appSetMode(r.role); updateRoleBadge(r.role);
+    } else {
+        appSetMode('basic'); updateRoleBadge('basic');
+    }
+});
+
+// Feedback Modal
+function openFeedback(){$('#feedback-desc').value='';$('#feedback-modal').classList.add('show')}
+function closeFeedback(){$('#feedback-modal').classList.remove('show')}
+async function submitFeedback(){let t=$('#feedback-type').value,d=$('#feedback-desc').value.trim();if(!d){msg(L('feedbackRequired'),'err');return}closeFeedback();msg(L('feedbackSending'),'info');let r=await fetch('/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:t,description:d})}).then(res=>res.json()).catch(e=>({error:e.message}));if(r.ok){msg(L('feedbackSuccess')+' '+r.file,'ok')}else{msg(r.error||L('feedbackFailed'),'err')}}
+
+loadHwStats();setInterval(()=>{st();loadHwStats()},3000);playerEnter();addTips();applyLang();
+let sp=new URLSearchParams(window.location.search);let shared=sp.get('share_url')||sp.get('text');
+if(shared&&shared.match(/http[s]?:\/\/[^\s]+/)){$('#url').value=shared.match(/http[s]?:\/\/[^\s]+/)[0];play();}
+
+// Theme System
+const ThemeManager = {
+    themes: ['dark', 'light'],
+    accents: ['blue', 'green', 'purple', 'orange', 'pink'],
+    currentTheme: localStorage.getItem('theme') || 'dark',
+    currentAccent: localStorage.getItem('accent') || 'blue',
+
+    init() {
+        this.applyTheme(this.currentTheme);
+        this.applyAccent(this.currentAccent);
+
+        // Detect system preference
+        if (!localStorage.getItem('theme')) {
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            this.setTheme(prefersDark ? 'dark' : 'light');
+        }
+    },
+
+    setTheme(theme) {
+        if (!this.themes.includes(theme)) return;
+        this.currentTheme = theme;
+        localStorage.setItem('theme', theme);
+        this.applyTheme(theme);
+    },
+
+    applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+    },
+
+    setAccent(accent) {
+        if (!this.accents.includes(accent)) return;
+        this.currentAccent = accent;
+        localStorage.setItem('accent', accent);
+        this.applyAccent(accent);
+    },
+
+    applyAccent(accent) {
+        document.documentElement.setAttribute('data-accent', accent);
+    },
+
+    toggle() {
+        this.setTheme(this.currentTheme === 'dark' ? 'light' : 'dark');
+    }
+};
+
+// Initialize theme on load
+document.addEventListener('DOMContentLoaded', () => {
+    ThemeManager.init();
+});
+
+// Add theme toggle to topbar
+function addThemeToggle() {
+    const topbar = document.getElementById('topbar');
+    if (!topbar) return;
+
+    const themeBtn = document.createElement('button');
+    themeBtn.className = 'lang-btn';
+    themeBtn.title = 'Toggle theme';
+    themeBtn.setAttribute('aria-label', 'Toggle theme');
+    themeBtn.innerHTML = '🌓';
+    themeBtn.onclick = () => ThemeManager.toggle();
+    themeBtn.style.cssText = 'font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer';
+
+    const langSwitch = document.getElementById('lang-switch');
+    if (langSwitch) {
+        langSwitch.parentNode.insertBefore(themeBtn, langSwitch);
+    }
+}
+
+// Call on load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', addThemeToggle);
+} else {
+    addThemeToggle();
+}
+
+// Bluetooth Setup Wizard Logic
+let BT_WIZARD = {
+    step: 1,
+    audioAdapter: null,
+    ioAdapter: null,
+    capabilities: null,
+    phoneRole: 'source'
+};
+
+async function btOpenWizard() {
+    BT_WIZARD.step = 1;
+    let modal = $('#bt-wizard-modal');
+    if (modal) modal.classList.add('show');
+    let cap = await api('/bt/capabilities');
+    if (cap && cap.ok) {
+        BT_WIZARD.capabilities = cap;
+        BT_WIZARD.audioAdapter = cap.recommended_audio_adapter;
+        BT_WIZARD.ioAdapter = cap.recommended_io_adapter;
+    }
+    btRenderWizardStep();
+}
+
+function btCloseWizard() {
+    let modal = $('#bt-wizard-modal');
+    if (modal) modal.classList.remove('show');
+}
+
+async function btWizardNext() {
+    if (BT_WIZARD.step === 1) {
+        msg('Vynulování Bluetooth zařízení...', 'info');
+        let r = await api('/bt/reset');
+        if (r.ok) {
+            msg('Bluetooth stav byl úspěšně vynulován.', 'ok');
+            BT_WIZARD.step = 2;
+        } else {
+            msg(r.error || 'Vynulování se nepodařilo', 'err');
+            return;
+        }
+    } else if (BT_WIZARD.step === 2) {
+        let selAudio = $('#bt-wiz-select-audio');
+        let selIO = $('#bt-wiz-select-io');
+        if (selAudio) BT_WIZARD.audioAdapter = selAudio.value;
+        if (selIO) BT_WIZARD.ioAdapter = selIO.value;
+        BT_WIZARD.step = 3;
+        await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.ioAdapter || ''));
+    } else if (BT_WIZARD.step === 3) {
+        BT_WIZARD.step = 4;
+        await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+    } else if (BT_WIZARD.step === 4) {
+        BT_WIZARD.step = 5;
+    } else if (BT_WIZARD.step === 5) {
+        msg('Bluetooth Setup Wizard dokončen!', 'ok');
+        btCloseWizard();
+        bluetoothRefresh();
+        return;
+    }
+    btRenderWizardStep();
+}
+
+function btWizardPrev() {
+    if (BT_WIZARD.step > 1) {
+        BT_WIZARD.step--;
+        btRenderWizardStep();
+    }
+}
+
+function btRenderWizardStep() {
+    let body = $('#bt-wizard-body');
+    let prevBtn = $('#bt-wiz-btn-prev');
+    let nextBtn = $('#bt-wiz-btn-next');
+    if (!body) return;
+
+    for (let i = 1; i <= 5; i++) {
+        let badge = $('.step-badge.step-' + i);
+        if (badge) {
+            badge.classList.toggle('active', BT_WIZARD.step === i);
+            badge.classList.toggle('done', BT_WIZARD.step > i);
+        }
+    }
+
+    if (prevBtn) prevBtn.style.visibility = BT_WIZARD.step > 1 ? 'visible' : 'hidden';
+    if (nextBtn) nextBtn.textContent = BT_WIZARD.step === 5 ? 'Dokončit' : (BT_WIZARD.step === 1 ? 'Vynulovat & Pokračovat →' : 'Pokračovat →');
+
+    if (BT_WIZARD.step === 1) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 1: Vynulování stavu Bluetooth (Reset)</h4><div class="bt-wiz-warning">⚠️ <b>Upozornění:</b> Tento krok zruší párování (unpair) všech připojených i spárovaných Bluetooth zařízení na všech adaptérech. Tím zajistíme čistý stav pro optimalizované rozdělení zátěže (load-balancing).</div><p style="font-size:0.88rem;color:#8b949e;margin-top:10px;">RPi 3 má interní adaptér přetížený sběrnicí UART. Pro plynulé audio na dvou reproduktorech přesuneme zvukové streamy na USB dongle.</p></div>';
+    } else if (BT_WIZARD.step === 2) {
+        let caps = BT_WIZARD.capabilities || {};
+        let adapters = caps.adapters || [];
+        let warnHtml = caps.warning ? '<div class="bt-wiz-warning" style="margin-bottom:12px;">⚠️ ' + esc(caps.warning) + '</div>' : '';
+        let optionsHtml = adapters.map(a => '<option value="' + esc(a.id) + '">' + esc(a.name) + ' (' + esc(a.bus_label) + ')</option>').join('');
+
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 2: Výběr Adaptérů pro Audio a I/O</h4>' + warnHtml + '<p style="font-size:0.88rem;color:#8b949e;">Systém automaticky detekoval dostupné adaptéry a doporučuje následující rozdělení:</p><div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;"><div><label style="font-weight:600;display:block;margin-bottom:4px;">Audio Adaptér (Zvuk & Streamování):</label><select id="bt-wiz-select-audio" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;color:#fff;border-radius:6px;">' + optionsHtml + '</select><span style="font-size:0.8rem;color:#3fb950;">Doporučeno: USB Dongle (vyšší šířka pásma)</span></div><div><label style="font-weight:600;display:block;margin-bottom:4px;">I/O Adaptér (Gamepady, Klávesnice, IoT):</label><select id="bt-wiz-select-io" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;color:#fff;border-radius:6px;">' + optionsHtml + '</select><span style="font-size:0.8rem;color:#8b949e;">Doporučeno: Interní UART</span></div></div></div>';
+        setTimeout(() => {
+            let selAudio = $('#bt-wiz-select-audio');
+            let selIO = $('#bt-wiz-select-io');
+            if (selAudio && BT_WIZARD.audioAdapter) selAudio.value = BT_WIZARD.audioAdapter;
+            if (selIO && BT_WIZARD.ioAdapter) selIO.value = BT_WIZARD.ioAdapter;
+        }, 50);
+    } else if (BT_WIZARD.step === 3) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 3: Párování I/O Zařízení (Gamepady, Klávesnice)</h4><p style="font-size:0.88rem;color:#8b949e;">I/O adaptér (<b>' + esc(BT_WIZARD.ioAdapter || '') + '</b>) skenuje okolí. Zapněte párovací režim na ovladači nebo klávesnici.</p><div style="display:flex;gap:10px;margin-top:10px;"><button type="button" class="bt-primary" onclick="btWizardScanIo()" style="padding:6px 14px;">🔍 Skenovat I/O Zařízení</button></div><div id="bt-wiz-io-devices" style="margin-top:12px;max-height:160px;overflow-y:auto;background:#0d1117;padding:8px;border-radius:6px;border:1px solid #30363d;"><em>Vyhledávání zařízení...</em></div></div>';
+        btWizardPopulateIoDevices();
+    } else if (BT_WIZARD.step === 4) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 4: Párování Audio Zařízení (Reproduktory, Soundbar, Telefon)</h4><p style="font-size:0.88rem;color:#8b949e;">Audio adaptér (<b>' + esc(BT_WIZARD.audioAdapter || '') + '</b>) je v režimu vyhledávání. Zapněte párovací režim na reproduktoru nebo telefonu.</p><div style="display:flex;gap:10px;margin-top:10px;"><button type="button" class="bt-primary" onclick="btWizardScanAudio()" style="padding:6px 14px;">🔍 Skenovat Audio Zařízení</button></div><div id="bt-wiz-audio-devices" style="margin-top:12px;max-height:160px;overflow-y:auto;background:#0d1117;padding:8px;border-radius:6px;border:1px solid #30363d;"><em>Vyhledávání zařízení...</em></div><div style="margin-top:12px;padding:10px;background:#161b22;border:1px solid #30363d;border-radius:6px;"><label style="font-weight:600;font-size:0.88rem;display:block;">Role Připojeného Telefonu (A2DP):</label><select id="bt-wiz-phone-role" onchange="btWizardSetPhoneRole(this.value)" style="margin-top:4px;padding:6px;width:100%;background:#0d1117;color:#fff;border:1px solid #30363d;border-radius:4px;"><option value="source" selected>Zdroj Audia (Telefon vysílá hudbu do RPi / Soundbaru)</option><option value="sink">Příjemce Audia (RPi vysílá hudbu do Telefonu / Sluchátek)</option></select></div></div>';
+        btWizardPopulateAudioDevices();
+    } else if (BT_WIZARD.step === 5) {
+        body.innerHTML = '<div class="bt-wiz-step"><h4>Krok 5: Souhrn Nastavení Topologie</h4><p style="font-size:0.88rem;color:#3fb950;">✅ Optimalizace rozdělení zátěže Bluetooth byla úspěšně nakonfigurována.</p><div style="background:#0d1117;padding:12px;border:1px solid #30363d;border-radius:8px;display:flex;flex-direction:column;gap:8px;"><div><b>Audio Streamy:</b> Spárováno na USB adaptér (<code>' + esc(BT_WIZARD.audioAdapter || '') + '</code>)</div><div><b>I/O Zařízení:</b> Spárováno na interní UART adaptér (<code>' + esc(BT_WIZARD.ioAdapter || '') + '</code>)</div><div><b>Role Telefonu:</b> ' + esc(BT_WIZARD.phoneRole === 'source' ? 'Zdroj Audia (A2DP Source)' : 'Příjemce Audia (A2DP Sink)') + '</div></div><p style="font-size:0.85rem;color:#8b949e;margin-top:10px;">Kliknutím na Dokončit zavřete průvodce a zaktualizujete zobrazení topologie.</p></div>';
+    }
+}
+
+async function btWizardScanIo() {
+    await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.ioAdapter || ''));
+    btWizardPopulateIoDevices();
+}
+
+async function btWizardScanAudio() {
+    await api('/bt/discovery?action=start&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+    btWizardPopulateAudioDevices();
+}
+
+async function btWizardPopulateIoDevices() {
+    let container = $('#bt-wiz-io-devices');
+    if (!container) return;
+    let state = await api('/bt/state');
+    let target = (BT_WIZARD.ioAdapter || '').toLowerCase();
+    let devices = (state.devices || []).filter(d => {
+        if (!target) return true;
+        let devAdapter = (d.adapter_id || '').toLowerCase();
+        return devAdapter === target || devAdapter.includes(target) || target.includes(devAdapter);
+    });
+    if (!devices.length) {
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na I/O adaptéru. Ujistěte se, že zařízení vysílá v párovacím režimu.</em>';
+        return;
+    }
+    container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');
+}
+
+async function btWizardPopulateAudioDevices() {
+    let container = $('#bt-wiz-audio-devices');
+    if (!container) return;
+    let state = await api('/bt/state');
+    let target = (BT_WIZARD.audioAdapter || '').toLowerCase();
+    let devices = (state.devices || []).filter(d => {
+        if (!target) return true;
+        let devAdapter = (d.adapter_id || '').toLowerCase();
+        return devAdapter === target || devAdapter.includes(target) || target.includes(devAdapter);
+    });
+    if (!devices.length) {
+        container.innerHTML = '<em>Nenalezena žádná nová zařízení na Audio adaptéru. Ujistěte se, že reproduktor/telefon vysílá v párovacím režimu.</em>';
+        return;
+    }
+    container.innerHTML = devices.map(d => '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #21262d;"><div><b>' + esc(d.name || d.alias || d.address) + '</b> <span style="font-size:0.8rem;color:#8b949e;">(' + esc(d.address) + ')</span></div><button type="button" class="bt-btn" onclick="btWizardPairDevice(\'' + jsarg(d.adapter_id || '') + '\', \'' + jsarg(d.key || '') + '\')" style="padding:4px 10px;font-size:0.8rem;">' + (d.paired ? 'Spárováno' : 'Spárovat') + '</button></div>').join('');
+}
+
+async function btWizardPairDevice(adapterId, deviceKey) {
+    msg('Párování zařízení...', 'info');
+    let r = await api('/bt/device-action?action=pair&adapter_id=' + encodeURIComponent(adapterId) + '&device_key=' + encodeURIComponent(deviceKey));
+    if (r.ok) {
+        msg('Párování zahájeno.', 'ok');
+    } else {
+        msg(r.error || 'Párování selhalo', 'err');
+    }
+}
+
+async function btWizardSetPhoneRole(role) {
+    BT_WIZARD.phoneRole = role;
+    await api('/bt/phone-role?role=' + encodeURIComponent(role) + '&adapter_id=' + encodeURIComponent(BT_WIZARD.audioAdapter || ''));
+}
+
+// =============================================
+// NETWORK PANEL FUNCTIONS
+// =============================================
+async function networkRefresh() {
+    await Promise.all([wifiStatus(), tailscaleRefresh()]);
+}
+
+async function wifiStatus() {
+    let el = $('#wifi-list');
+    if (!el) return;
+    el.textContent = 'Loading...';
+    let r = await api('/wifi/status');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    if (r.connected) {
+        lines.push('Connected: ' + (r.ssid || 'unknown'));
+        lines.push('IP: ' + (r.ip || 'unknown'));
+        lines.push('Signal: ' + (r.signal || 'unknown'));
+        lines.push('Frequency: ' + (r.frequency || 'unknown'));
+    } else {
+        lines.push('Wi-Fi: Disconnected');
+    }
+    if (r.interfaces && r.interfaces.length) {
+        lines.push('Interfaces: ' + r.interfaces.join(', '));
+    }
+    el.textContent = lines.join('\n');
+}
+
+async function wifiScan() {
+    let el = $('#wifi-list');
+    if (!el) return;
+    el.textContent = 'Scanning...';
+    let r = await api('/wifi/scan');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    if (!r.networks || !r.networks.length) {
+        el.textContent = 'No networks found';
+        return
+    }
+    let h = r.networks.map(n => '<div style="margin:2px 0;display:flex;gap:6px;align-items:center">'
+        + '<b>' + esc(n.ssid || 'hidden') + '</b> '
+        + '<span style="color:#8b949e;font-size:.7em">' + esc(n.bssid || '') + '</span> '
+        + '<span style="color:#8b949e;font-size:.7em">Signal: ' + (n.signal || '?') + '</span>'
+        + '<button onclick="wifiConnectTo(\'' + jsarg(n.ssid || '') + '\')" style="font-size:.7em;padding:2px 6px">Connect</button>'
+        + '</div>').join('');
+    el.innerHTML = h;
+}
+
+async function wifiConnect() {
+    let ssid = $('#wifi-ssid').value.trim();
+    let pass = $('#wifi-pass').value;
+    if (!ssid) { msg('SSID required', 'err'); return }
+    msg('Connecting to ' + ssid + '...', 'info');
+    let r = await api('/wifi/connect?ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass));
+    msg(r.ok ? 'Wi-Fi connected' : (r.error || 'Failed'), r.ok ? 'ok' : 'err');
+    if (r.ok) { $('#wifi-pass').value = ''; await wifiStatus(); }
+}
+
+async function wifiConnectTo(ssid) {
+    let pass = prompt('Password for ' + ssid + ':');
+    if (pass === null) return;
+    msg('Connecting to ' + ssid + '...', 'info');
+    let r = await api('/wifi/connect?ssid=' + encodeURIComponent(ssid) + '&password=' + encodeURIComponent(pass));
+    msg(r.ok ? 'Wi-Fi connected' : (r.error || 'Failed'), r.ok ? 'ok' : 'err');
+    if (r.ok) await wifiStatus();
+}
+
+async function tailscaleRefresh() {
+    let el = $('#tailscale-status');
+    if (!el) return;
+    el.textContent = 'Loading...';
+    let r = await api('/system/network-info');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    if (r.tailscale) {
+        let ts = r.tailscale;
+        lines.push('Tailscale: ' + (ts.connected ? 'Connected' : 'Disconnected'));
+        if (ts.ip) lines.push('Tailscale IP: ' + ts.ip);
+        if (ts.status) lines.push('Status: ' + ts.status);
+    } else {
+        lines.push('Tailscale: Not available');
+    }
+    if (r.network) {
+        lines.push('--- Network Interfaces ---');
+        if (r.network.ips && r.network.ips.length) lines.push('IPs: ' + r.network.ips.join(', '));
+        if (r.network.gateway) lines.push('Gateway: ' + r.network.gateway);
+    }
+    el.textContent = lines.join('\n');
+}
+
+// =============================================
+// SYSTEM PANEL FUNCTIONS
+// =============================================
+async function systemRefresh() {
+    await Promise.all([loadHwStats(), loadSysStatus(), loadHttpsInfo()]);
+}
+
+async function loadHttpsInfo() {
+    let el = $('#https-info');
+    if (!el) return;
+    let r = await api('/system/https-info');
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    let lines = [];
+    lines.push('HTTPS Port: ' + (r.https_port || 8443));
+    lines.push('Friendly HTTPS Port: ' + (r.friendly_https_port || 443));
+    lines.push('Friendly HTTP Port: ' + (r.friendly_http_port || 80));
+    lines.push('Cert Exists: ' + (r.cert_exists ? 'Yes' : 'No'));
+    lines.push('HTTPS URL: ' + (r.https_url || 'N/A'));
+    lines.push('Friendly HTTPS URL: ' + (r.friendly_https_url || 'N/A'));
+    lines.push('Friendly HTTP URL: ' + (r.friendly_http_url || 'N/A'));
+    if (r.names && r.names.length) lines.push('Hostnames: ' + r.names.join(', '));
+    if (r.ips && r.ips.length) lines.push('IPs: ' + r.ips.join(', '));
+    el.textContent = lines.join('\n');
+}
+
+// =============================================
+// LOGS PANEL FUNCTIONS
+// =============================================
+async function logsRefresh() {
+    let el = $('#logs-output');
+    if (!el) return;
+    let service = $('#log-service').value;
+    let lines = $('#log-lines').value || 100;
+    el.textContent = 'Loading logs...';
+    let url = '/system/logs?lines=' + encodeURIComponent(lines);
+    if (service) url += '&service=' + encodeURIComponent(service);
+    let r = await api(url);
+    if (r.error) { el.textContent = 'Error: ' + r.error; return }
+    if (r.logs) {
+        el.textContent = r.logs;
+        el.scrollTop = el.scrollHeight;
+    } else {
+        el.textContent = 'No logs returned';
+    }
+}
+
+async function updateFooterStatus(){
+    try{
+        let[sys,bt,audioState]=await Promise.all([
+            api('/system/status').catch(()=>null),
+            api('/bt/state').catch(()=>null),
+            api('/audio/state').catch(()=>null)
+        ]);
+        let sbService=$('#sb-service');
+        if(sbService){
+            if(sys&&!sys.error){
+                sbService.className='app-status-pill ok';
+                sbService.textContent='● Service Online';
+            }else{
+                sbService.className='app-status-pill err';
+                sbService.textContent='● Service Offline';
+            }
+        }
+        let sbBt=$('#sb-bt');
+        if(sbBt){
+            if(bt&&!bt.error){
+                let st=btNormalizeState(bt);
+                let connected=(st.devices||[]).filter(d=>d.connected).length;
+                let isDegraded=st.backend&&st.backend.degraded;
+                if(isDegraded){
+                    sbBt.className='app-status-pill warn';
+                    sbBt.textContent='📶 BT Degraded';
+                }else if(connected>0){
+                    sbBt.className='app-status-pill ok';
+                    sbBt.textContent='📶 BT ('+connected+' connected)';
+                }else{
+                    sbBt.className='app-status-pill';
+                    sbBt.textContent='📶 BT Ready';
+                }
+            }else{
+                sbBt.className='app-status-pill warn';
+                sbBt.textContent='📶 BT Offline';
+            }
+        }
+        let sbAudio=$('#sb-audio');
+        if(sbAudio){
+            if(audioState&&!audioState.error){
+                let defSink=(audioState.default_sink||'').toLowerCase();
+                sbAudio.className='app-status-pill ok';
+                if(defSink.includes('bluez'))sbAudio.textContent='🔊 Audio: Bluetooth';
+                else if(defSink.includes('hdmi')||defSink.includes('bcm2835'))sbAudio.textContent='🔊 Audio: HDMI';
+                else if(defSink.includes('dlna'))sbAudio.textContent='🔊 Audio: DLNA';
+                else if(defSink)sbAudio.textContent='🔊 Audio: '+shortName(audioState.default_sink);
+                else sbAudio.textContent='🔊 Audio: N/A';
+            }else{
+                sbAudio.className='app-status-pill warn';
+                sbAudio.textContent='🔊 Audio: Error';
+            }
+        }
+        if(sys&&!sys.error){
+            let cpuEl=$('#status-cpu'),ramEl=$('#status-ram'),tempEl=$('#status-temp');
+            if(cpuEl&&sys.cpu_percent!=null)cpuEl.textContent='CPU: '+Number(sys.cpu_percent).toFixed(1)+'%';
+            if(ramEl&&sys.ram)ramEl.textContent='RAM: '+Number(sys.ram.used_mb||0).toFixed(0)+'MB ('+Number(sys.ram.percent||0).toFixed(0)+'%)';
+            if(tempEl)tempEl.textContent='Temp: '+(sys.cpu_temp!=null?Number(sys.cpu_temp).toFixed(1)+'°C':'N/A');
+        }
+    }catch(e){
+        console.warn('Footer status error:',e);
+    }
+}
+setInterval(updateFooterStatus,5000);
+if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',()=>setTimeout(updateFooterStatus,300));
+}else{
+    setTimeout(updateFooterStatus,300);
+}

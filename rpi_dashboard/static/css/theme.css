@@ -1,0 +1,123 @@
+/* CSS Theme & Design Engine for RPi Dashboard */
+:root {
+    /* Color Tokens (Dark Modern Theme) */
+    --bg-dark: #0d1117;
+    --bg-card: rgba(22, 27, 34, 0.75);
+    --bg-card-hover: rgba(33, 38, 45, 0.85);
+    --bg-glass: rgba(13, 17, 23, 0.65);
+    --border-color: rgba(48, 54, 61, 0.6);
+    --border-glow: rgba(88, 166, 255, 0.4);
+
+    /* Surface Tokens — opaque backgrounds for cards, panels, modals */
+    --bg-surface: #161b22;
+    --bg-surface-raised: #21262d;
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+
+    /* Accent & State Colors */
+    --accent-blue: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-purple: #bc8cff;
+    --accent-orange: #d29922;
+    --accent-red: #f85149;
+    --text-main: #c9d1d9;
+    --text-muted: #8b949e;
+    --text-bright: #f0f6fc;
+
+    /* Component State Tokens */
+    --bg-hover: #30363d;
+    --bg-active: #1a5276;
+    --bg-disabled: #21262d;
+    --border-focus: #58a6ff;
+
+    /* Semantic Colour Tokens */
+    --color-success: #3fb950;
+    --color-success-emphasis: #238636;
+    --color-success-bg: #0d2818;
+    --color-warning: #d29922;
+    --color-warning-emphasis: #e3b341;
+    --color-warning-bg: #2d2308;
+    --color-error: #f85149;
+    --color-error-emphasis: #da3633;
+    --color-error-bg: #3d1214;
+    --color-info: #58a6ff;
+    --color-info-emphasis: #1f6feb;
+    --color-info-bg: #0c2d6b;
+
+    /* Typography Tokens */
+    --font-size-xs: 0.72rem;
+    --font-size-sm: 0.8rem;
+    --font-size-base: 0.9rem;
+    --font-size-lg: 1.2rem;
+
+    /* Spacing & Compact Sizing Tokens */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --space-lg: 1.25rem;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    /* Animation & Transitions */
+    --transition-fast: 0.15s ease;
+    --transition-normal: 0.25s ease;
+
+    /* Shadow Tokens */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-glow: 0 0 20px color-mix(in srgb, var(--accent-blue) 30%, transparent);
+
+    /* Border Radius Tokens (already defined) */
+    /* --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px; */
+
+    /* Icon Sizing Tokens */
+    --icon-xs: 1rem;
+    --icon-sm: 1.25rem;
+    --icon-md: 1.5rem;
+    --icon-lg: 2rem;
+}
+
+/* Light Theme Variables Fallback */
+[data-theme="light"] {
+    --bg-dark: #f6f8fa;
+    --bg-card: rgba(255, 255, 255, 0.85);
+    --bg-card-hover: rgba(243, 244, 246, 0.95);
+    --bg-glass: rgba(255, 255, 255, 0.75);
+    --border-color: rgba(208, 215, 222, 0.8);
+
+    --bg-surface: #ffffff;
+    --bg-surface-raised: #e1e4e8;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+
+    --text-main: #24292f;
+    --text-muted: #57606a;
+    --text-bright: #0969da;
+
+    --bg-hover: #e1e4e8;
+    --bg-active: #0550ae;
+    --bg-disabled: #e1e4e8;
+    --border-focus: #0366d6;
+
+    --color-success: #22863a;
+    --color-success-emphasis: #22863a;
+    --color-success-bg: #dcffe4;
+    --color-warning: #735c0f;
+    --color-warning-emphasis: #735c0f;
+    --color-warning-bg: #fff5b1;
+    --color-error: #d73a49;
+    --color-error-emphasis: #d73a49;
+    --color-error-bg: #ffeef0;
+    --color-info: #0366d6;
+    --color-info-emphasis: #0366d6;
+    --color-info-bg: #dbedff;
+
+    /* Shadow Tokens (light) */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.15);
+    --shadow-glow: 0 0 20px color-mix(in srgb, var(--color-info) 30%, transparent);
+}

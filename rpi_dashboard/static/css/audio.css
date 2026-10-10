@@ -1,0 +1,15 @@
+/* Audio Topology CSS added for new UI */
+.audio-app {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.audio-controls {
+    display: flex;
+    gap: 1rem;
+    background: var(--bg-surface);
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--bg-hover);
+    box-shadow: var(--shadow-sm);
+}

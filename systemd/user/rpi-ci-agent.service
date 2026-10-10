@@ -1,0 +1,14 @@
+[Unit]
+Description=Milhy-PC CI agent for synced RPi Dashboard repo
+
+[Service]
+Type=simple
+WorkingDirectory=/home/milhy777/Develop/RPi
+Environment=SOURCE_REMOTE=local
+Environment=POLL_SECONDS=30
+ExecStart=/home/milhy777/Develop/RPi/tools/ci-agent.sh
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=default.target

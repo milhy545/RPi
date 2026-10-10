@@ -1,0 +1,552 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="manifest" href="/static/manifest.json">
+    <title>RPi-TV</title>
+    <link rel="stylesheet" href="/static/css/theme.css">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(()=>{});
+        }
+    </script>
+</head>
+<body>
+    <div id="webui-app" class="webui-app mode-basic theme-dark">
+        <!-- TOPBAR -->
+        <header class="app-topbar">
+            <div class="app-brand">
+                <span>🍓</span>
+                <span>RPi Control Center</span>
+            </div>
+
+            <nav class="app-tabs-horizontal" id="app-tabs-h">
+                <button id="tab-player" class="app-tab-btn tab active" data-t="player" data-i18n="player" onclick="sw('player')">🎬 Player</button>
+                <button id="tab-apps" class="app-tab-btn tab" data-t="apps" data-i18n="apps" onclick="sw('apps')">🚀 Apps</button>
+                <button id="tab-audio" class="app-tab-btn tab" data-t="audio" data-i18n="audio" onclick="sw('audio');taRefresh()">🔊 Audio</button>
+                <button id="tab-bluetooth" class="app-tab-btn tab" data-t="bluetooth" data-i18n="bluetooth" onclick="sw('bluetooth')">🎮 Bluetooth</button>
+                <button id="tab-devices" class="app-tab-btn tab" data-t="devices" data-i18n="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">🧩 Devices</button>
+                <button id="tab-network" class="app-tab-btn tab" data-t="network" data-i18n="network" onclick="sw('network');networkRefresh()">🌐 Network</button>
+                <button id="tab-system" class="app-tab-btn tab" data-t="system" data-i18n="system" onclick="sw('system');systemRefresh()">⚙️ System</button>
+                <button id="tab-logs" class="app-tab-btn tab" data-t="logs" data-i18n="logs" onclick="sw('logs');logsRefresh()">📋 Logs</button>
+                <button id="tab-terminal" class="app-tab-btn tab" data-t="terminal" data-i18n="terminal" onclick="sw('terminal')">💻 Terminal</button>
+            </nav>
+
+            <div class="app-controls">
+                <button class="feedback-btn" onclick="openFeedback()" data-i18n="feedbackBtn" style="font-size:.78rem;padding:.25rem .5rem;border-radius:999px;border:1px solid var(--app-border);background:var(--app-panel-2);color:var(--app-text);cursor:pointer">💬 Feedback</button>
+                <div class="app-mode-switch">
+                    <button id="mode-btn-basic" onclick="appSetMode('basic')" class="active">Basic</button>
+                    <button id="mode-btn-expert" onclick="requestExpertMode()">Expert</button>
+                    <span id="auth-role-badge" style="display:none; margin-left: 8px; padding: 2px 6px; font-size: 0.75rem; border-radius: 4px; background: var(--bg-surface-raised); border: 1px solid var(--border-color);">Basic</span>
+                    <button id="auth-logout-btn" onclick="authLogout()" style="display:none; margin-left: 8px; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; cursor: pointer; border: 1px solid var(--color-error); color: var(--color-error); background: transparent;">Logout</button>
+                </div>
+                <div id="lang-switch">
+                    <button class="lang-btn" data-lang-btn="en" onclick="setLang('en')" title="English" aria-label="English">🇬🇧</button>
+                    <button class="lang-btn" data-lang-btn="cz" onclick="setLang('cz')" title="Čeština" aria-label="Čeština">🇨🇿</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="app-body">
+            <!-- EXPERT LEFT SIDEBAR -->
+            <aside class="app-sidebar-left">
+                <nav class="app-nav-vertical">
+                    <a class="app-nav-item active" data-t="player" onclick="sw('player')">
+                        <span>🎬</span> <span>Player</span>
+                    </a>
+                    <a class="app-nav-item" data-t="apps" onclick="sw('apps')">
+                        <span>🚀</span> <span>Apps</span>
+                    </a>
+                    <a class="app-nav-item" data-t="audio" onclick="sw('audio');taRefresh()">
+                        <span>🔊</span> <span>Audio</span>
+                    </a>
+                    <a class="app-nav-item" data-t="bluetooth" onclick="sw('bluetooth')">
+                        <span>🎮</span> <span>Bluetooth</span>
+                    </a>
+                    <a class="app-nav-item" data-t="devices" onclick="sw('devices');devicesRefresh();wifiStatus()">
+                        <span>🧩</span> <span>Devices</span>
+                    </a>
+                    <a class="app-nav-item" data-t="network" onclick="sw('network');networkRefresh()">
+                        <span>🌐</span> <span>Network</span>
+                    </a>
+                    <a class="app-nav-item" data-t="system" onclick="sw('system');systemRefresh()">
+                        <span>⚙️</span> <span>System</span>
+                    </a>
+                    <a class="app-nav-item" data-t="logs" onclick="sw('logs');logsRefresh()">
+                        <span>📋</span> <span>Logs</span>
+                    </a>
+                    <a class="app-nav-item" data-t="terminal" onclick="sw('terminal')">
+                        <span>💻</span> <span>Terminal</span>
+                    </a>
+                </nav>
+            </aside>
+
+            <!-- MAIN CONTENT AREA -->
+            <main class="app-content">
+                <div id="security-banner"></div>
+                <div id="toast"></div>
+
+    <!-- Player Panel -->
+    <div id="p-player" class="pnl active">
+        <div class="sec">
+            <h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
+            <div class="row">
+                <div class="url-wrap">
+                    <input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()">
+                    <button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button>
+                </div>
+                <select id="qual" style="width:auto;min-width:88px">{{QUALITY_OPTIONS}}</select>
+            </div>
+            <div id="player-preview"></div>
+            <div class="row" style="margin-top:.3rem">
+                <button data-i18n="play" data-icon="▶" onclick="play()">▶ Play</button>
+                <button onclick="pause()" data-i18n="pause" data-i18n-attr="aria-label" aria-label="Pause">⏸</button>
+                <button onclick="stop()" class="danger" data-i18n="stop" data-i18n-attr="aria-label" aria-label="Stop">⏹</button>
+                <button onclick="seek(-10)" data-i18n="rewind10" data-i18n-attr="aria-label" aria-label="Rewind 10 seconds">⏪10</button>
+                <button onclick="seek(10)" data-i18n="forward10" data-i18n-attr="aria-label" aria-label="Forward 10 seconds">10⏩</button>
+                <button onclick="vol(-10)" data-i18n="volumedown" data-i18n-attr="aria-label" aria-label="Volume down">🔉</button>
+                <button onclick="vol(10)" data-i18n="volumeup" data-i18n-attr="aria-label" aria-label="Volume up">🔊</button>
+                <button onclick="mute()" style="font-size:.85rem" data-i18n="mute" data-i18n-attr="aria-label" aria-label="Mute">🔇</button>
+            </div>
+            <div style="margin-top:.4rem">
+                <div style="display:flex;align-items:center;gap:.4rem">
+                    <span id="stime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
+                    <input type="range" id="sbar" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false">
+                    <span id="dtime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
+                </div>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="status">Status</h3>
+            <div id="st">—</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="quick" data-tip="sectionQuick">Quick</h3>
+            <div class="row">
+                <button onclick="qu('https://www.youtube.com/watch?v=dQw4w9WgXcQ')" style="font-size:.75rem">🎵 Rick Astley</button>
+                <button onclick="qu('https://www.youtube.com/watch?v=9bZkp7q19f0')" style="font-size:.75rem">🎵 Gangnam</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="ytAge" data-tip="sectionAgeCookies">YouTube Age / Cookies</h3>
+            <div class="media-meta" data-i18n="ytAgeDesc">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div>
+            <div class="row" style="margin-top:.35rem">
+                <input id="yt-age-url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube URL for age-check..." style="flex:1">
+                <button data-icon="🍪" data-i18n="cookieStatus" onclick="ytCookieStatus()">🍪 Cookie status</button>
+                <button data-icon="🔞" data-i18n="ageCheck" onclick="ytAgeCheck()">🔞 Age check</button>
+            </div>
+            <pre id="yt-cookie-status" data-i18n="clickCookieStatus">Click Cookie status</pre>
+        </div>
+    </div>
+
+    <!-- Apps Panel -->
+    <div id="p-apps" class="pnl">
+        <div class="sec">
+            <h3 data-i18n="appsLaunch" data-tip="sectionApps">Spustit aplikaci</h3>
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:.5rem">
+                <button onclick="launchApp('steamlink')" style="padding:12px;font-size:1rem">🎮 Steam Link</button>
+                <button onclick="launchApp('gfn')" style="padding:12px;font-size:1rem">🎯 GeForce Now</button>
+                <button onclick="launchApp('mpv')" style="padding:12px;font-size:1rem" data-i18n="appsMpv">🎬 MPV Přehrávač</button>
+                <button onclick="launchApp('spotify')" style="padding:12px;font-size:1rem">🎵 Spotify</button>
+                <button onclick="launchApp('amazon')" style="padding:12px;font-size:1rem">🎶 Amazon Music</button>
+                <button onclick="stopApp()" style="padding:12px;font-size:1rem;color:#f85149;border:2px solid #f85149" data-i18n="appsStopReturn">⏹ ZASTAVIT & VRÁTIT SE</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="appsReturn" data-tip="sectionAppsReturn">Návrat do Dashboardu</h3>
+            <div style="font-size:.85em;color:#c9d1d9" data-i18n="appsReturnDesc">
+                • <b>Ctrl+C</b> — ukončí většinu aplikací<br>
+                • <b>Ctrl+Q</b> — ukončí Steam Link<br>
+                • <b>tlačítko ZASTAVIT</b> — vynutí návrat<br>
+                • Aplikace běží přímo na TV, dashboard se automaticky vrátí po ukončení
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Panel -->
+    <div id="p-audio" class="pnl">
+        <div class="audio-topology-container">
+            <div class="audio-topology-header">
+                <div>
+                    <h3 style="margin:0;font-size:1.1rem;color:var(--app-text)">🎵 Audio Flow Topology</h3>
+                    <div class="media-meta">Direct audio routing from active sources to physical outputs. Click a source then output in Basic mode, or drag & drop in Expert mode.</div>
+                </div>
+                <div class="row" style="gap:.8rem;align-items:center;flex-wrap:wrap">
+                    <div style="display:flex;align-items:center;gap:.5rem">
+                        <label style="font-size:.8rem;color:var(--app-muted);white-space:nowrap" data-i18n="masterVolume">🔊 Master</label>
+                        <input type="range" id="master-volume-slider" min="0" max="100" value="100" style="width:120px;accent-color:var(--app-cyan);cursor:pointer" oninput="masterVolChanged(this.value)">
+                        <span id="master-volume-value" style="font-size:.75rem;min-width:32px;color:var(--app-muted)">100%</span>
+                    </div>
+                    <button class="app-tab-btn" onclick="taRefresh()" data-icon="🔄">🔄 Sync Flow</button>
+                </div>
+            </div>
+            <div class="audio-flow-canvas" id="audio-flow-canvas">
+                <svg id="audio-topo-lines" class="audio-topo-lines" aria-hidden="true"></svg>
+                <div class="audio-sources-col" id="audio-topo-sources">
+                    <!-- Dynamic source nodes -->
+                </div>
+                <div class="audio-engine-col">
+                    <div class="pipewire-engine-card" id="audio-engine-node">
+                        <div>⚡</div>
+                        <div>PipeWire</div>
+                        <div style="font-size:0.65rem;opacity:0.8">48kHz float32</div>
+                    </div>
+                </div>
+                <div class="audio-sinks-col" id="audio-topo-sinks">
+                    <!-- Dynamic sink nodes -->
+                </div>
+            </div>
+        </div>
+
+        <div id="ta-routes" style="margin-top: 1rem;"></div>
+
+        <!-- Modern Audio Controls Below Topology -->
+        <div class="audio-controls" style="display:flex; flex-direction: column; gap: 1rem; margin-top: 1rem;">
+            <div style="display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap; background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px;">
+                <div>
+                    <div style="font-weight: 500; margin-bottom: 0.2rem;" data-i18n="dlnaLatency">DLNA Latency Compensation</div>
+                    <div style="font-size: 0.72rem; color: #8b949e;">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio.</div>
+                </div>
+                <div style="display:flex; gap:.4rem; align-items:center;">
+                    <label style="font-size:.72rem;color:#8b949e">Delay (ms):</label>
+                    <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px; padding: 0.3rem; border: 1px solid #30363d; border-radius: 4px; background: #0d1117; color: var(--app-text)">
+                    <button class="app-tab-btn" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)" data-icon="💾" style="padding: 0.4rem 0.8rem; border-radius: 6px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1);">Apply</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; align-items: center; background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px;">
+                <div style="flex: 1;">
+                    <div style="font-weight: 500; margin-bottom: 0.2rem;">Expert Operations</div>
+                    <div style="font-size: 0.72rem; color: #8b949e;">Restart services or reset audio patchbay to defaults.</div>
+                </div>
+                <button class="app-tab-btn" onclick="api('/audio/test')" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Play Test Sound</button>
+                <button class="app-tab-btn" onclick="taRoute('reset')" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Reset Matrix</button>
+                <button class="app-tab-btn" onclick="restartMpv()" style="padding: 0.4rem 0.8rem; border-radius: 6px;">Restart MPV</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bluetooth Panel -->
+    <div id="p-bluetooth" class="pnl">
+        <div id="bt-app" class="bt-app">
+            <div class="bt-workspace">
+                <aside class="bt-sidebar-left">
+                    <div class="bt-menu-title" data-bt-i18n-cs="Hlavní Menu" data-bt-i18n-en="Main Menu">Hlavní Menu</div>
+                    <button type="button">⌂ <span data-bt-i18n-cs="Přehled" data-bt-i18n-en="Overview">Přehled</span></button>
+                    <button type="button">▣ Systém</button>
+                    <button type="button" class="active">♢ Bluetooth</button>
+                    <button type="button">≋ Wi-Fi</button>
+                    <button type="button">▰ Terminál</button>
+                </aside>
+
+                <main class="bt-main-content">
+                    <header class="bt-advanced-header">
+                        <div>
+                            <h2 data-bt-i18n-cs="Správa Topologie Bluetooth" data-bt-i18n-en="Bluetooth Topology Manager">Správa Topologie Bluetooth</h2>
+                            <p data-bt-i18n-cs="Komplexní náhled na adaptéry a zařízení v síti" data-bt-i18n-en="Overview of adapters and network devices">Komplexní náhled na adaptéry a zařízení v síti</p>
+                        </div>
+                        <div>
+                            <button type="button" onclick="bluetoothScan()">⌁ <span data-bt-i18n-cs="Skenovat Adaptéry" data-bt-i18n-en="Scan Adapters">Skenovat Adaptéry</span></button>
+                            <button type="button" class="bt-primary" onclick="btPairNew()">＋ <span data-bt-i18n-cs="Nové Zařízení" data-bt-i18n-en="New Device">Nové Zařízení</span></button>
+                        </div>
+                    </header>
+
+                    <div class="bt-grid-container">
+                        <section class="bt-panel bt-area-topo" aria-label="Live Bluetooth topology">
+                            <div class="bt-topo-title"><h3 data-bt-i18n-cs="Živá Topologie" data-bt-i18n-en="Live Topology">Živá Topologie</h3></div>
+                            <div class="bt-zoom-controls">
+                                <button type="button" onclick="btZoomTopo(0.1)" aria-label="Zoom in">＋</button>
+                                <button type="button" onclick="btZoomTopo(-0.1)" aria-label="Zoom out">−</button>
+                                <button type="button" onclick="btResetTopo()" aria-label="Reset topology">⛶</button>
+                            </div>
+                            <div id="bt-topo-wrapper" class="bt-topo-wrapper">
+                                <div id="bt-topo-canvas" class="bt-topo-canvas">
+                                    <svg id="bt-topology-lines" class="bt-topology-lines" aria-hidden="true"></svg>
+                                    <div id="bt-topology">Loading Bluetooth topology...</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="bt-panel bt-area-ctrl">
+                            <h3>▰ <span data-bt-i18n-cs="Ovládání Služby" data-bt-i18n-en="Service Control">Ovládání Služby</span></h3>
+                            <div id="bt-status" class="bt-control-stack">—</div>
+                        </section>
+
+                        <section class="bt-panel bt-area-filt">
+                            <h3>▽ <span data-bt-i18n-cs="Filtry zobrazení" data-bt-i18n-en="View Filters">Filtry zobrazení</span></h3>
+                            <label><input id="bt-filter-connected" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Připojeno" data-bt-i18n-en="Connected">Připojeno</span></label>
+                            <label><input id="bt-filter-paired" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Spárováno" data-bt-i18n-en="Paired">Spárováno</span></label>
+                            <label><input id="bt-filter-available" type="checkbox" checked onchange="btRenderCurrent()"> <span data-bt-i18n-cs="Dostupná zařízení" data-bt-i18n-en="Available Devices">Dostupná zařízení</span></label>
+                            <button type="button" onclick="bluetoothScan()" data-bt-i18n-cs="Vynutit Skenování" data-bt-i18n-en="Force Scan">Vynutit Skenování</button>
+                        </section>
+
+                        <section class="bt-panel bt-area-over">
+                            <h3>◌ <span data-bt-i18n-cs="Stav Hardware" data-bt-i18n-en="Hardware Status">Stav Hardware</span></h3>
+                            <div id="bt-adapters" class="bt-adapter-cards"></div>
+                        </section>
+
+                        <section class="bt-panel bt-area-details">
+                            <h3>ⓘ <span data-bt-i18n-cs="Detail Zařízení" data-bt-i18n-en="Device Detail">Detail Zařízení</span></h3>
+                            <div id="bt-device-details" class="bt-detail-card">—</div>
+                        </section>
+                    </div>
+                </main>
+
+                <aside class="bt-sidebar-right">
+                    <section class="bt-panel">
+                        <h3>ϟ <span data-bt-i18n-cs="Rychlé akce" data-bt-i18n-en="Quick Actions">Rychlé akce</span></h3>
+                        <div id="bt-quick" class="bt-quick"></div>
+                    </section>
+                    <section class="bt-panel">
+                        <h3>☷ <span data-bt-i18n-cs="Celkový Přehled" data-bt-i18n-en="Summary">Celkový Přehled</span></h3>
+                        <div id="bt-summary" class="bt-summary"></div>
+                    </section>
+                    <section class="bt-panel">
+                        <h3>☰ Diagnostics</h3>
+                        <div id="bt-soundbar">—</div>
+                        <div id="bt-controller">—</div>
+                        <div id="bt-events">—</div>
+                    </section>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- Devices Panel -->
+    <div id="p-devices" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="devicesTitle" data-tip="sectionDevices">Devices</h3>
+                    <div class="media-meta" data-i18n="devicesDesc">Pair and connect hardware here. Speaker output routing and volume remain in Audio.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="devicesRefresh()">🔄 Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="media-grid">
+            <div class="sec">
+                <h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3>
+                <div class="row">
+                    <button onclick="wifiStatus()">📶 Status</button>
+                    <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
+                </div>
+                <div class="row" style="margin-top:.35rem">
+                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
+                </div>
+                <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="roles" data-tip="sectionRoles">Suggested Device Roles</h3>
+            <div class="media-meta" data-i18n="rolesDesc">• Speakers/headphones/soundbars: pair/connect/trust here, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust here for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.</div>
+        </div>
+    </div>
+
+    <!-- Network Panel -->
+    <div id="p-network" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="networkTitle" data-tip="sectionNetwork">🌐 Network</h3>
+                    <div class="media-meta" data-i18n="networkDesc">Network configuration, Wi-Fi management, and Tailscale VPN status.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="networkRefresh()">🔄 Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="media-grid">
+            <div class="sec">
+                <h3 data-i18n="wifiConfig" data-tip="sectionWifi">Wi-Fi Configuration</h3>
+                <div class="row">
+                    <button onclick="wifiStatus()">📶 Status</button>
+                    <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
+                </div>
+                <div class="row" style="margin-top:.35rem">
+                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
+                </div>
+                <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
+            </div>
+            <div class="sec">
+                <h3 data-i18n="tailscaleTitle" data-tip="sectionTailscale">🔗 Tailscale</h3>
+                <div class="row" style="margin-bottom:.35rem">
+                    <button onclick="tailscaleRefresh()" data-i18n="refresh" data-icon="🔄">🔄 Refresh</button>
+                </div>
+                <div id="tailscale-status" class="media-meta">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Panel -->
+    <div id="p-system" class="pnl">
+        <div class="sec">
+            <h3 data-i18n="hwStatsTitle">HW Stats & CPU Masks</h3>
+            <div class="row" style="margin-bottom:.35rem">
+                <button onclick="loadHwStats();loadSysStatus()" style="font-size:.75rem" data-i18n="hwUpdateBtn" data-icon="🔄">🔄 Update</button>
+                <button id="hw-live-btn" onclick="toggleHwLive()" style="font-size:.75rem" data-i18n="hwLiveBtn" data-icon="▶">▶ Live monitoring</button>
+            </div>
+            <div id="hw-stats" style="font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap" data-i18n="hwLoading">Loading HW stats...</div>
+            <div id="sys-status" style="margin-top:.5rem;font-size:.75rem;color:#8b949e;font-family:monospace;white-space:pre-wrap" data-i18n="sysLoading">Loading CPU masks...</div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="restartTitle">Restart Actions</h3>
+            <div class="row">
+                <button onclick="restartMpv()" class="danger" style="font-size:.75rem" data-i18n="restartMpv" data-icon="🔄">🔄 Restart mpv</button>
+                <button onclick="restartDashboard()" style="font-size:.75rem" data-i18n="restartDashboard" data-icon="🔄">🔄 Restart Dashboard</button>
+                <button onclick="restartRpi()" class="danger" style="font-size:.75rem" data-i18n="restartRpi" data-icon="🔄">🔄 Restart RPi</button>
+            </div>
+        </div>
+        <div class="sec">
+            <h3 data-i18n="httpsInfoTitle">HTTPS Info</h3>
+            <div id="https-info" class="media-meta">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Logs Panel -->
+    <div id="p-logs" class="pnl">
+        <div class="sec">
+            <div class="media-head">
+                <div>
+                    <h3 data-i18n="logsTitle" data-tip="sectionLogs">📋 System Logs</h3>
+                    <div class="media-meta" data-i18n="logsDesc">View systemd journal and application logs for troubleshooting.</div>
+                </div>
+                <div class="row">
+                    <button data-i18n="refresh" data-icon="🔄" onclick="logsRefresh()">🔄 Refresh</button>
+                    <select id="log-service" onchange="logsRefresh()" style="width:auto;min-width:180px">
+                        <option value="rpi-dashboard" data-i18n="logServiceDashboard">Dashboard</option>
+                        <option value="mpv" data-i18n="logServiceMpv">MPV</option>
+                        <option value="keys2mpv" data-i18n="logServiceKeys2mpv">Keys2MPV</option>
+                        <option value="pipewire" data-i18n="logServicePipewire">PipeWire</option>
+                        <option value="wireplumber" data-i18n="logServiceWireplumber">WirePlumber</option>
+                        <option value="bluetooth" data-i18n="logServiceBluetooth">Bluetooth</option>
+                        <option value="" data-i18n="logServiceAll">All (journalctl -u)</option>
+                    </select>
+                    <input type="number" id="log-lines" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
+                    <button onclick="logsRefresh()" data-i18n="refresh">Refresh</button>
+                </div>
+            </div>
+        </div>
+        <div class="sec">
+            <pre id="logs-output" style="font-size:.7rem;color:#8b949e;font-family:monospace;white-space:pre-wrap;max-height:500px;overflow:auto;background:#0d1117;padding:.6rem;border-radius:.3rem;border:1px solid #30363d" data-i18n="clickRefresh">Click Refresh to load logs</pre>
+        </div>
+    </div>
+
+    <!-- Terminal Panel -->
+    <div id="p-terminal" class="pnl">
+        <div class="terminal-locked" id="term-lock-screen">
+            <div class="terminal-lock-icon">🔒</div>
+            <h3>Terminal — Admin Access Required</h3>
+            <p>Integration contract:</p>
+            <ul style="text-align: left; display: inline-block; margin-top: 10px; color: var(--text-muted);">
+                <li>Transport: WebSocket on port 8098</li>
+                <li>Auth: Admin session + step-up required</li>
+                <li>PTY: server-side tmux attach</li>
+            </ul>
+            <br><br>
+            <button onclick="termRequestAccess()" class="btn-primary" style="padding: 10px 20px; font-size: 1rem;">
+                Request Access
+            </button>
+        </div>
+        <div id="terminal" style="display:none; width: 100%; height: 600px; padding: 10px; box-sizing: border-box;"></div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content" style="max-width: 350px;">
+            <button class="modal-close" onclick="closeLoginModal()">×</button>
+            <h3>🔒 Authentication Required</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Please authenticate to access expert features.</p>
+            <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
+                <div style="margin-bottom: 0.8rem;">
+                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
+                    <select id="login-role" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem">
+                        <option value="expert">Expert</option>
+                        <option value="admin">Admin (Terminal)</option>
+                    </select>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
+                    <input type="password" id="login-password" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem" required>
+                </div>
+                <button type="submit" class="btn-primary" style="width:100%; padding: 0.5rem; font-weight: bold;">Log In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Feedback Modal -->
+    <div id="feedback-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeFeedback()">×</button>
+            <h3 data-i18n="feedbackTitle">💬 Submit Feedback</h3>
+            <div>
+                <label data-i18n="feedbackTypeLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Type:</label>
+                <select id="feedback-type" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem">
+                    <option value="bug" data-i18n="feedbackBug">Bug Report</option>
+                    <option value="feature" data-i18n="feedbackFeature">Feature Request</option>
+                </select>
+            </div>
+            <div style="margin-top:.4rem">
+                <label data-i18n="feedbackDescLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Description:</label>
+                <textarea id="feedback-desc" data-i18n-attr="placeholder" placeholder="Please describe the issue or your feature request..." style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem;resize:vertical;box-sizing:border-box"></textarea>
+            </div>
+            <button onclick="submitFeedback()" style="width:100%;margin-top:.4rem" data-i18n="feedbackSubmit">Submit</button>
+        </div>
+    </div>
+
+    <!-- Bluetooth Setup Wizard Modal -->
+    <div id="bt-wizard-modal" class="modal">
+        <div class="modal-content bt-wizard-card">
+            <button type="button" class="modal-close" onclick="btCloseWizard()">×</button>
+            <div class="bt-wizard-header" style="border-bottom:1px solid #30363d;padding-bottom:8px;margin-bottom:16px;">
+                <h3 style="margin:0;color:#f0f6fc;font-size:1.25rem;">🪄 Bluetooth Load-Balancing Wizard</h3>
+                <div class="bt-wizard-steps-indicator">
+                    <span class="step-badge step-1 active">1. Reset</span>
+                    <span class="step-badge step-2">2. Adaptéry</span>
+                    <span class="step-badge step-3">3. I/O Párování</span>
+                    <span class="step-badge step-4">4. Audio Párování</span>
+                    <span class="step-badge step-5">5. Souhrn</span>
+                </div>
+            </div>
+            <div id="bt-wizard-body" class="bt-wizard-body" style="min-height:200px;">
+                <!-- Step content rendered dynamically by JS -->
+            </div>
+            <div class="bt-wizard-footer" style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #30363d;padding-top:12px;margin-top:16px;">
+                <button id="bt-wiz-btn-prev" type="button" class="bt-btn" onclick="btWizardPrev()" style="visibility:hidden;padding:6px 14px;">← Zpět</button>
+                <div style="flex:1;"></div>
+                <button id="bt-wiz-btn-next" type="button" class="bt-primary" onclick="btWizardNext()" style="padding:6px 16px;border-radius:6px;cursor:pointer;">Pokračovat →</button>
+            </div>
+        </div>
+            </main>
+        </div>
+
+        <!-- STATUSBAR FOOTER -->
+        <footer class="app-statusbar">
+            <div class="app-status-pills">
+                <span class="app-status-pill" id="sb-service">● Service: Načítání...</span>
+                <span class="app-status-pill" id="sb-bt">📶 BT: Načítání...</span>
+                <span class="app-status-pill" id="sb-audio">🔊 Audio: Načítání...</span>
+            </div>
+            <div class="app-status-pills">
+                <span id="status-cpu">CPU: --</span>
+                <span id="status-ram">RAM: --</span>
+                <span id="status-temp">Temp: --</span>
+            </div>
+        </footer>
+    </div>
+
+    <link rel="stylesheet" href="/static/vendor/xterm.min.css">
+    <script src="/static/vendor/xterm.min.js" charset="utf-8"></script>
+    <script src="/static/vendor/xterm-addon-fit.min.js" charset="utf-8"></script>
+    <script src="/static/js/app.js" charset="utf-8"></script>
+</body>
+</html>

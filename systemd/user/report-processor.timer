@@ -1,0 +1,11 @@
+[Unit]
+Description=Timer for Conductor User Report Processor
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Unit=report-processor.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

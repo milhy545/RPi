@@ -1,0 +1,23 @@
+[Unit]
+Description=gmrender-resurrect DLNA MediaRenderer
+Documentation=https://github.com/hzeller/gmrender-resurrect
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=milhy777
+Environment=PIPEWIRE_RUNTIME_DIR=/run/user/1000
+ExecStartPre=/bin/sleep 3
+ExecStart=/usr/local/bin/gmediarender -f "RPi Renderer"
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryMax=50M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+{
+  "track_id": "cpuset-monitor-fix_20260611",
+  "title": "Fix cpuset-monitor Bug",
+  "type": "bugfix",
+  "status": "done",
+  "created": "2026-06-11T00:00:00Z",
+  "updated": "2026-06-14T00:00:00Z",
+  "completed": "2026-06-14T00:00:00Z",
+  "priority": "high",
+  "tags": ["cpuset", "cpu-affinity", "mpv", "bugfix"],
+  "dependencies": []
+}

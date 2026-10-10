@@ -1,0 +1,113 @@
+"""Test that all service modules can be imported."""
+
+
+
+def test_import_audio():
+    """Test audio module import."""
+    from rpi_dashboard.services import audio
+    assert hasattr(audio, 'audio_state')
+    assert hasattr(audio, 'get_audio_matrix')
+    assert hasattr(audio, 'audio_set_volume')
+    assert hasattr(audio, 'audio_multi_output')
+
+
+def test_import_player():
+    """Test player module import."""
+    from rpi_dashboard.services import player
+    assert hasattr(player, 'mpv_start')
+    assert hasattr(player, 'mpv_stop')
+    assert hasattr(player, 'mpv_st')
+
+
+def test_import_devices():
+    """Test devices module import."""
+    from rpi_dashboard.services import devices
+    assert hasattr(devices, 'devices_state')
+    assert hasattr(devices, 'devices_legacy_summary')
+    assert hasattr(devices, 'bluetooth_scan_devices')
+    assert hasattr(devices, 'wifi_status')
+
+
+def test_import_cec():
+    """Test CEC module import."""
+    from rpi_dashboard.services import cec
+    assert hasattr(cec, 'cec_scan')
+    assert hasattr(cec, 'cec_send')
+    assert hasattr(cec, 'cec_bridge_status')
+    assert hasattr(cec, 'cec_power_on')
+    assert hasattr(cec, 'cec_volume_up')
+
+
+def test_import_system():
+    """Test system module import."""
+    from rpi_dashboard.services import system
+    assert hasattr(system, 'get_system_stats')
+    assert hasattr(system, 'get_system_status')
+    assert hasattr(system, 'restart_mpv')
+    assert hasattr(system, 'restart_dashboard')
+
+
+def test_import_terminal():
+    """Test terminal module import."""
+    from rpi_dashboard.services import terminal
+    assert hasattr(terminal, 'terminal_connect')
+    assert hasattr(terminal, 'terminal_disconnect')
+    assert hasattr(terminal, 'terminal_ws_handler')
+
+
+def test_import_audio_routing():
+    """Test audio routing module import."""
+    from rpi_dashboard.services import audio_routing
+    assert hasattr(audio_routing, 'audio_keepalive')
+    assert hasattr(audio_routing, 'audio_route_alexa_bt')
+    assert hasattr(audio_routing, '_dlnain_start')
+
+
+def test_import_audio_diagnostics():
+    """Test audio diagnostics module import."""
+    from rpi_dashboard.services import audio_diagnostics
+    assert hasattr(audio_diagnostics, 'diagnose_bt_audio_stutter')
+    assert hasattr(audio_diagnostics, 'fix_bt_audio_stutter')
+
+
+def test_import_audio_dlna():
+    """Test audio DLNA module import."""
+    from rpi_dashboard.services import audio_dlna
+    assert hasattr(audio_dlna, 'audio_select_dlna_renderer')
+    assert hasattr(audio_dlna, 'audio_connect_dlna')
+    assert hasattr(audio_dlna, 'audio_disconnect_dlna')
+    assert hasattr(audio_dlna, 'dlna_scan')
+    assert hasattr(audio_dlna, 'dlna_renderer_status')
+
+
+def test_import_media():
+    """Test media module import."""
+    from rpi_dashboard.services import media
+    assert hasattr(media, 'youtube_cookie_status')
+    assert hasattr(media, 'youtube_age_check')
+    assert hasattr(media, 'media_preview')
+
+
+def test_import_api_routes():
+    """Test API routes import."""
+    from rpi_dashboard.api import routes
+    assert hasattr(routes, 'ROUTES')
+    assert hasattr(routes, 'get_route')
+    assert len(routes.ROUTES) > 0
+
+
+def test_import_api_handlers():
+    """Test API handlers import."""
+    from rpi_dashboard.api import handlers
+    assert hasattr(handlers, 'handle_audio_state')
+    assert hasattr(handlers, 'handle_audio_multi_output')
+    assert hasattr(handlers, 'handle_mpv_play')
+    assert hasattr(handlers, 'handle_devices_state')
+
+
+def test_import_models():
+    """Test models import."""
+    from rpi_dashboard.models import schemas
+    assert hasattr(schemas, 'ApiResponse')
+    assert hasattr(schemas, 'AudioState')
+    assert hasattr(schemas, 'MpvStatus')

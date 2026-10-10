@@ -1,0 +1,1 @@
+/tmp/capture_baseline.sh: řádek 28: mpstat: příkaz nenalezen

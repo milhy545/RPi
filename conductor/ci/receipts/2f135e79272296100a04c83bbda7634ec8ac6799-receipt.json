@@ -1,0 +1,16 @@
+{
+  "commit_sha": "2f135e79272296100a04c83bbda7634ec8ac6799",
+  "tree_hash": "f21a8a258ed0f16e6e50178b20a207dc75a4ac76",
+  "profile": "milhy-full",
+  "host": "devbox",
+  "status": "done",
+  "timestamp": "2026-08-06T16:45:29.529492+00:00",
+  "ci_report": "conductor/ci/reports/2f135e7-20260806-164333.md",
+  "actions_url": "",
+  "evidence": {
+    "e2e": "pending",
+    "rpi_gate": {
+      "status": "N/A"
+    }
+  }
+}

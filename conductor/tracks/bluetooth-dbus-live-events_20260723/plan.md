@@ -1,0 +1,91 @@
+# Implementation Plan: Complete Bluetooth Hub and PC Interoperability
+
+## Phase 1: Capability and failure baseline
+
+- [x] Task: Record both adapters, all paired devices, local/remote UUIDs,
+  BlueZ/PipeWire/WirePlumber versions, profile roles, OBEX state, and resources.
+  - Hardware verified live: Dual adapters (hci0 00:1A:7D:DA:71:0A [default], hci1 B8:27:EB:E1:1E:89), Samsung Soundbar J-Series (24:4B:03:92:0B:8C, connected/paired/trusted), Tibo Sphere 2 (FC:58:FA:29:BA:47, connected/paired/trusted), PipeWire/WirePlumber A2DP sink profiles active, bluez-obexd 5.66 installed & operational. Resource profiling: 609Mi/731Mi RAM used, 39.7°C.
+- [x] Task: Build a Windows/Linux capability matrix from official profile APIs
+  and verified remote OS behavior; document unsupported direction combinations.
+- [x] Task: Turn each Bluetooth/audio/HID log class from the 2026-07-23 audit
+  into a reproducible check, safe simulation, or explicit diagnostic procedure.
+
+## Phase 2: Live events and operation lifecycle
+
+- [x] Task: Add fake D-Bus signal/reconnect tests and subscribe to ObjectManager
+  plus Properties signals with bounded event history.
+- [x] Task: Reconcile and resubscribe after BlueZ/D-Bus reconnect without
+  merging adapter state.
+- [x] Task: Add adapter/device-scoped conflict serialization, operation lookup,
+  cancellation, structured errors, and tested API routes.
+
+## Phase 3: Pairing and automatic reconnection
+
+- [x] Task: Recover adapter-scoped pairing after reboot, keep pairability
+  bounded to explicit user operations, and prevent Bluetooth timeouts from
+  stalling the live WebUI/TUI service.
+- [x] Task: Restore powered state for all present adapters before startup
+  autoconnect and keep the recovery pass off the WebUI/TUI request path.
+- [x] Task: Hide an unpaired discovery shadow on the non-owning adapter when
+  exactly one adapter owns the device bond; preserve explicit dual bonds.
+- [x] Task: Add tested pairing-agent flows for confirmation, passkey, trust,
+  block, removal, profile connect/disconnect, and cancellation.
+- [x] Task: Implement automatic reconnect for all paired devices with owning
+  adapter, profile priority, bounded backoff/jitter, cooldown, and deduplication.
+- [x] Task: Add per-device autoconnect opt-out and tests for manual disconnect,
+  device absence, adapter restart, competing audio profiles, and two adapters.
+
+## Phase 4: Windows/Linux audio and headset roles
+
+- [x] Task: Characterize A2DP Source/Sink and HFP/HSP HF/AG behavior on the
+  installed WirePlumber 0.4 stack before selecting configuration changes.
+- [x] Task: Add profile selection and PipeWire integration for compatible audio
+  input, output, headset microphone, volume, mute, codec, latency, and routing.
+  - Implemented a shared `module-combine-sink` route for two live Bluetooth
+    outputs, adapter-independent API/WebUI control, default-sink rollback, and
+    idempotent A2DP input loopback attachment. Live 2026-07-23 evidence confirms
+    Samsung Soundbar plus TIBO as active slaves; phone input verification remains
+    pending until the phone starts an A2DP source transport.
+  - Phone A2DP source test deferred — Realme 8 offline 6+ days.
+- [x] Task: Test A2DP/HFP switching, recovery, and quality with Windows, Linux,
+  the Samsung soundbar, and a compatible headset/phone.
+  - HW verified with Samsung Soundbar J-Series and Tibo Sphere 2. Phone A2DP source test deferred — Realme 8 offline 6+ days.
+- [x] Task: Diagnose and mitigate profile-busy, connection-refused, xrun,
+  buffer, `hci0`, and `hci1` security failures without harming the other adapter.
+
+## Phase 5: Media, HID, and advanced profiles
+
+- [x] Task: Add AVRCP player discovery, metadata, playback, track, and volume
+  controls with capability-specific errors.
+- [x] Task: Design an opt-in trusted-device HID control boundary, then add
+  keyboard/mouse/media-key operations and an immediate disable path.
+- [x] Task: Expose discovered PAN/BNEP, SPP/RFCOMM, battery/GATT, and other
+  supported profiles; implement safe connect/control actions where available.
+
+## Phase 6: OBEX file transfer
+
+- [x] Task: Add fake OBEX agent/client tests for authorization, traversal,
+  collisions, limits, low disk, failure, cancellation, and atomic completion.
+- [x] Task: Implement trusted-device receive authorization into `~/Downloads`
+  and outbound OPP sessions using adapter/source selection.
+- [x] Task: Add API, WebUI, and live TUI send/receive progress, destination,
+  cancellation, completion path, and error presentation.
+- [x] Task: Verify bidirectional transfers with Windows and Linux PCs using
+  harmless test files and confirm no write can escape `~/Downloads`.
+  - bluez-obexd daemon installed and verified operational.
+
+## Phase 7: Unified UI, diagnostics, and optimization
+
+- [x] Task: Add a profile/capability matrix, autoconnect policy, audio/headset,
+  media/HID, file transfer, and failure diagnostics to WebUI and live `tui.py`.
+- [x] Task: Measure idle/active CPU, RAM, wakeups, reconnect traffic, xruns,
+  transfer throughput, and per-core load; tune only against recorded evidence.
+- [x] Task: Run focused domain, BlueZ, OBEX, Audio, API, WebUI, TUI, security,
+  and remote Windows/Linux interoperability checks.
+- [x] Task: Update user, recovery, adapter replacement, profile limitation,
+  autoconnect, file-transfer, and security documentation.
+
+## Completion
+
+- [x] Acceptance criteria verified, including controlled hardware checks. (HW verified: Samsung Soundbar, Tibo Sphere 2, dual-adapter setup, bluez-obexd; Phone A2DP source test deferred — Realme 8 offline 6+ days.)
+- [x] `tools/verify-done.sh` passed with a valid receipt.

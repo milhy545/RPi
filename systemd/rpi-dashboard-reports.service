@@ -1,0 +1,9 @@
+[Unit]
+Description=Process RPi Dashboard WebUI Reports
+After=network.target
+
+[Service]
+Type=oneshot
+User=milhy777
+WorkingDirectory=/home/milhy777/rpi-dashboard
+ExecStart=/home/milhy777/rpi-dashboard/.venv/bin/python tools/process_reports.py

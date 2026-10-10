@@ -1,0 +1,11 @@
+{
+  "track_id": "youtube-cookies-cdp_20260611",
+  "title": "YouTube Cookies via CDP",
+  "type": "feature",
+  "status": "done",
+  "created": "2026-06-10T00:00:00Z",
+  "updated": "2026-06-11T00:00:00Z",
+  "priority": "high",
+  "tags": ["youtube", "cookies", "cdp", "browseros", "yt-dlp"],
+  "dependencies": []
+}

@@ -1,0 +1,8 @@
+{
+  "track_id": "bluetooth-xbox-controller_20260709",
+  "type": "feature",
+  "status": "done",
+  "created": "2026-07-09T00:00:00Z",
+  "updated": "2026-07-23T05:00:00Z",
+  "superseded_by": "bluetooth-control-center-refactor_20260718"
+}
