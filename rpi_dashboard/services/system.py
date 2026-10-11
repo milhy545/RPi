@@ -423,7 +423,7 @@ def get_network_info() -> Dict[str, Any]:
             for i in range(0, outbytes, struct_size):
                 name = namestr[i:i+16].split(b'\0', 1)[0]
                 ip = socket.inet_ntoa(namestr[i+20:i+24])
-                if name != b'lo':
+                if name != b'lo' and ip != "0.0.0.0":
                     ips.append(ip)
     except Exception as e:
         error_msg = str(e)
