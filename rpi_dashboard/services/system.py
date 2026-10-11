@@ -436,7 +436,7 @@ def get_network_info() -> Dict[str, Any]:
         with open("/proc/net/route", "r") as f:
             for line in f:
                 parts = line.strip().split()
-                if len(parts) > 2 and parts[1] == "00000000":
+                if len(parts) > 7 and parts[1] == "00000000" and parts[7] == "00000000":
                     gw_hex = parts[2]
                     if gw_hex != "00000000":
                         gateway = socket.inet_ntoa(struct.pack('<L', int(gw_hex, 16)))
