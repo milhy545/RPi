@@ -5,3 +5,7 @@
 ## 2026-06-20 - Redesigned Audio Mixer with animated lines and a11y improvements
 **Learning:** Found that static dashed lines in the audio mixer were difficult to read. Also discovered that screen readers couldn't understand the `<svg>` visualization of active routes.
 **Action:** Replaced static lines with flowing animated `<path>` elements. Added a `sr-only` class text summary element that accurately reads out all active paths. Ensure `aria-hidden="true"` is applied on purely decorative SVG representations so screen readers do not try to parse complex nodes.
+
+## 2026-07-27 - Form Accessibility: Explicit Label Association and aria-labels
+**Learning:** Found several input fields and labels in the UI without explicit programmatic association. Inputs missing accessible names are difficult for screen-reader users to interact with. A common pattern in older vanilla HTML is relying on visual proximity (e.g. `Label: <input>`) instead of semantic structures like `for`/`id` linking or nested `<label>` wrapping.
+**Action:** When working on vanilla HTML forms without a component library, ensure every input has either an explicit `<label for="id">` or an `aria-label` attribute if no visual label is present. It’s a low-cost, high-impact accessibility improvement that also increases hit areas (clicking the label focuses the input).
