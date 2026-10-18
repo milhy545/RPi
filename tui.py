@@ -885,31 +885,46 @@ class RPiDashboard(App):
         return ""
 
     def get_interfaces_info(self) -> tuple[str, str | None]:
-        """
-        ⚡ Bolt Optimization: Uses native socket and fcntl.ioctl to get network interfaces.
-        Replaces heavy shell subprocess calls like 'ip -br addr' and 'tailscale ip -4'
-        which cause severe asyncio event loop overhead on low-end hardware.
-        """
+        """Vrátí IPv4 adresy rozhraní včetně prefixu a samostatné IP Tailscale."""
         interfaces = []
         ts_ip = None
         try:
-            import socket, fcntl, struct
             import contextlib
-            for if_index, if_name in socket.if_nameindex():
+            import fcntl
+            import ipaddress
+            import struct
+
+            for _if_index, if_name in socket.if_nameindex():
                 if if_name != "lo":
                     try:
                         with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as s:
+                            request = struct.pack("256s", if_name[:15].encode("utf-8"))
                             ip = socket.inet_ntoa(fcntl.ioctl(
                                 s.fileno(),
                                 0x8915,  # SIOCGIFADDR
-                                struct.pack('256s', if_name[:15].encode('utf-8'))
+                                request,
                             )[20:24])
-                            interfaces.append(f"{if_name}: {ip}")
+
+                            ip_display = ip
+                            try:
+                                netmask = socket.inet_ntoa(fcntl.ioctl(
+                                    s.fileno(),
+                                    0x891B,  # SIOCGIFNETMASK
+                                    request,
+                                )[20:24])
+                                prefix = ipaddress.IPv4Network(
+                                    (ip, netmask), strict=False
+                                ).prefixlen
+                                ip_display = f"{ip}/{prefix}"
+                            except (OSError, ValueError, IndexError):
+                                pass
+
+                            interfaces.append(f"{if_name}: {ip_display}")
                             if if_name.startswith("tailscale") or if_name.startswith("tail0"):
                                 ts_ip = ip
-                    except Exception:
+                    except (OSError, ValueError, IndexError):
                         pass
-        except Exception:
+        except (OSError, ValueError, ImportError):
             pass
         return " | ".join(interfaces), ts_ip
 
@@ -1370,8 +1385,9 @@ class RPiDashboard(App):
             try:
                 with open("/etc/hostapd/rpi-service.conf", "r") as f:
                     for line in f:
-                        if line.startswith("ssid="):
-                            ssid = line.strip().split("=", 1)[1]
+                        key, separator, value = line.partition("=")
+                        if separator and key.strip() == "ssid":
+                            ssid = value.strip() or ssid
                             break
             except OSError:
                 pass
