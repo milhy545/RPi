@@ -48,7 +48,13 @@ def _run_verify(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    for key in ("GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_REF", "GITHUB_SHA"):
+    for key in (
+        "GITHUB_ACTIONS",
+        "GITHUB_EVENT_NAME",
+        "GITHUB_REF",
+        "GITHUB_SHA",
+        "VERIFY_BASE_SHA",
+    ):
         env.pop(key, None)
     env.update(
         {
