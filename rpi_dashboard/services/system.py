@@ -7,12 +7,11 @@ import json
 import os
 import math
 import ipaddress
+import ctypes
 import shutil
 import signal
 import socket
 import subprocess
-import struct
-import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -200,59 +199,127 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     return sorted(names), sorted(ips)
 
 
+class _SockAddr(ctypes.Structure):
+    _fields_ = [("sa_family", ctypes.c_ushort), ("sa_data", ctypes.c_ubyte * 14)]
+
+
+class _SockAddrIn(ctypes.Structure):
+    _fields_ = [
+        ("sin_family", ctypes.c_ushort),
+        ("sin_port", ctypes.c_ushort),
+        ("sin_addr", ctypes.c_ubyte * 4),
+        ("sin_zero", ctypes.c_ubyte * 8),
+    ]
+
+
+class _SockAddrIn6(ctypes.Structure):
+    _fields_ = [
+        ("sin6_family", ctypes.c_ushort),
+        ("sin6_port", ctypes.c_ushort),
+        ("sin6_flowinfo", ctypes.c_uint32),
+        ("sin6_addr", ctypes.c_ubyte * 16),
+        ("sin6_scope_id", ctypes.c_uint32),
+    ]
+
+
+class _IfaIfu(ctypes.Union):
+    _fields_ = [
+        ("ifa_broadaddr", ctypes.POINTER(_SockAddr)),
+        ("ifa_dstaddr", ctypes.POINTER(_SockAddr)),
+    ]
+
+
+class _IfAddrs(ctypes.Structure):
+    pass
+
+
+_IfAddrs._fields_ = [
+    ("ifa_next", ctypes.POINTER(_IfAddrs)),
+    ("ifa_name", ctypes.c_char_p),
+    ("ifa_flags", ctypes.c_uint),
+    ("ifa_addr", ctypes.POINTER(_SockAddr)),
+    ("ifa_netmask", ctypes.POINTER(_SockAddr)),
+    ("ifa_ifu", _IfaIfu),
+    ("ifa_data", ctypes.c_void_p),
+]
+
+
 def _get_interface_addresses_native() -> List[str]:
-    """Zjistí IPv4 a IPv6 adresy rozhraní bez spouštění dalších procesů."""
+    """Return every usable IPv4 and IPv6 interface address without subprocesses."""
     addresses: List[str] = []
     seen: set[str] = set()
+    interfaces = ctypes.POINTER(_IfAddrs)()
 
     try:
-        import fcntl
+        libc = ctypes.CDLL(None, use_errno=True)
+        getifaddrs = libc.getifaddrs
+        getifaddrs.argtypes = [ctypes.POINTER(ctypes.POINTER(_IfAddrs))]
+        getifaddrs.restype = ctypes.c_int
+        freeifaddrs = libc.freeifaddrs
+        freeifaddrs.argtypes = [ctypes.POINTER(_IfAddrs)]
+        freeifaddrs.restype = None
 
-        interfaces = socket.if_nameindex()
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            for _index, interface in interfaces:
-                if interface == "lo":
+        if getifaddrs(ctypes.byref(interfaces)) != 0:
+            error_number = ctypes.get_errno()
+            raise OSError(error_number, os.strerror(error_number))
+
+        try:
+            interface = interfaces
+            while interface:
+                item = interface.contents
+                interface = item.ifa_next
+                if not item.ifa_addr or not item.ifa_flags & 0x1 or item.ifa_flags & 0x8:
                     continue
-                try:
-                    request = struct.pack("256s", interface.encode("utf-8"))
-                    response = fcntl.ioctl(sock.fileno(), 0x8915, request)
-                    address = str(ipaddress.IPv4Address(response[20:24]))
-                except (OSError, UnicodeError, ValueError):
+
+                parsed_address: ipaddress.IPv4Address | ipaddress.IPv6Address
+                family = item.ifa_addr.contents.sa_family
+                if family == socket.AF_INET:
+                    address_data = ctypes.cast(
+                        item.ifa_addr, ctypes.POINTER(_SockAddrIn)
+                    ).contents.sin_addr
+                    parsed_address = ipaddress.IPv4Address(bytes(address_data))
+                    if parsed_address.is_unspecified or parsed_address.is_loopback:
+                        continue
+                elif family == socket.AF_INET6:
+                    address_data = ctypes.cast(
+                        item.ifa_addr, ctypes.POINTER(_SockAddrIn6)
+                    ).contents.sin6_addr
+                    parsed_address = ipaddress.IPv6Address(bytes(address_data))
+                    if (
+                        parsed_address.is_unspecified
+                        or parsed_address.is_loopback
+                        or parsed_address.is_link_local
+                        or parsed_address.is_multicast
+                    ):
+                        continue
+                else:
                     continue
-                if address != "0.0.0.0" and address not in seen:
+
+                address = str(parsed_address)
+                if address not in seen:
                     addresses.append(address)
                     seen.add(address)
-    except (OSError, ImportError):
-        pass
-
-    try:
-        with open("/proc/net/if_inet6", "r", encoding="ascii") as address_file:
-            for line in address_file:
-                fields = line.split()
-                if len(fields) < 6 or fields[5] == "lo":
-                    continue
-                try:
-                    address = str(ipaddress.IPv6Address(bytes.fromhex(fields[0])))
-                except (ValueError, ipaddress.AddressValueError):
-                    continue
-                if address not in seen and address != "::":
-                    addresses.append(address)
-                    seen.add(address)
-    except (OSError, UnicodeError):
-        pass
+        finally:
+            freeifaddrs(interfaces)
+    except (AttributeError, OSError, ValueError):
+        return []
 
     return addresses
 
 
 def _get_default_gateway_native() -> Optional[str]:
-    """Vrátí výchozí IPv4 bránu z tabulky tras v procfs."""
+    """Return the default IPv4 gateway from the procfs route table."""
     candidates: List[Tuple[int, str]] = []
     try:
         with open("/proc/net/route", "r", encoding="ascii") as routes_file:
             next(routes_file, None)
             for line in routes_file:
                 fields = line.split()
-                if len(fields) < 8 or fields[1] != "00000000":
+                if (
+                    len(fields) < 8
+                    or fields[1] != "00000000"
+                    or fields[7] != "00000000"
+                ):
                     continue
                 try:
                     flags = int(fields[3], 16)
@@ -260,7 +327,8 @@ def _get_default_gateway_native() -> Optional[str]:
                     gateway_value = int(fields[2], 16)
                     if not flags & 0x1 or gateway_value == 0:
                         continue
-                    gateway_bytes = gateway_value.to_bytes(4, byteorder=sys.byteorder)
+                    # /proc/net/route ukládá IPv4 bránu v little-endian pořadí bajtů.
+                    gateway_bytes = gateway_value.to_bytes(4, byteorder="little")
                     candidates.append((metric, socket.inet_ntoa(gateway_bytes)))
                 except (OverflowError, ValueError):
                     continue
@@ -273,7 +341,7 @@ def _get_default_gateway_native() -> Optional[str]:
 
 
 def _parse_default_gateway(output: str) -> Optional[str]:
-    """Vytáhne IPv4 bránu z výstupu příkazu ip route."""
+    """Extract the IPv4 gateway from ``ip route`` output."""
     for line in output.splitlines():
         fields = line.split()
         if fields and fields[0] == "default" and "via" in fields:

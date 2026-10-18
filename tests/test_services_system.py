@@ -2,6 +2,8 @@
 
 import io
 import socket
+import ctypes
+import ipaddress
 import subprocess
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -201,38 +203,61 @@ def test_get_network_info_falls_back_to_host_commands():
 
 
 def test_native_interface_discovery_collects_ipv4_and_ipv6():
-    """Read interface addresses without spawning hostname or ip processes."""
-    from rpi_dashboard.services.system import _get_interface_addresses_native
+    """Read every usable interface address without spawning a subprocess."""
+    from rpi_dashboard.services import system
 
-    interface_addresses = {
-        "eth0": "192.168.0.100",
-        "tailscale0": "100.64.0.2",
-    }
-    sock = MagicMock()
-    sock.fileno.return_value = 3
-    sock.__enter__.return_value = sock
+    keepalive = []
+    entries = []
+    test_addresses = [
+        ("lo", 0x9, "127.0.0.1"),
+        ("eth0", 0x1, "192.168.0.100"),
+        ("eth0", 0x1, "192.168.0.101"),
+        ("tailscale0", 0x1, "100.64.0.2"),
+        ("wlan0", 0x0, "192.168.0.9"),
+        ("eth0", 0x1, "2001:db8::1"),
+        ("eth0", 0x1, "fe80::1234"),
+    ]
+    for name, flags, raw_address in test_addresses:
+        entry = system._IfAddrs()
+        entry.ifa_name = name.encode("ascii")
+        entry.ifa_flags = flags
+        if ":" in raw_address:
+            sockaddr = system._SockAddrIn6()
+            sockaddr.sin6_family = socket.AF_INET6
+            sockaddr.sin6_addr[:] = ipaddress.IPv6Address(raw_address).packed
+        else:
+            sockaddr = system._SockAddrIn()
+            sockaddr.sin_family = socket.AF_INET
+            sockaddr.sin_addr[:] = ipaddress.IPv4Address(raw_address).packed
+        entry.ifa_addr = ctypes.cast(
+            ctypes.pointer(sockaddr), ctypes.POINTER(system._SockAddr)
+        )
+        entries.append(entry)
+        keepalive.append(sockaddr)
 
-    def ioctl(_fd, _request, interface_request):
-        interface = interface_request.split(b"\0", 1)[0].decode()
-        if interface not in interface_addresses:
-            raise OSError("interface has no IPv4 address")
-        return bytes(20) + socket.inet_aton(interface_addresses[interface]) + bytes(232)
+    for current, following in zip(entries, entries[1:]):
+        current.ifa_next = ctypes.pointer(following)
 
-    proc_ipv6 = (
-        "00000000000000000000000000000001 01 80 10 80 _LOOPBACK_\n"
-        "20010db8000000000000000000000001 02 00 00 00 eth0\n"
-        "00000000000000000000000000000000 03 00 00 00 eth0\n"
-    )
-    proc_ipv6 = proc_ipv6.replace("_LOOPBACK_", "lo")
-    with patch("rpi_dashboard.services.system.socket.if_nameindex", return_value=[
-        (1, "lo"), (2, "eth0"), (3, "tailscale0"), (4, "wlan0")
-    ]):
-        with patch("rpi_dashboard.services.system.socket.socket", return_value=sock):
-            with patch("fcntl.ioctl", side_effect=ioctl):
-                with patch("builtins.open", mock_open(read_data=proc_ipv6)):
-                    result = _get_interface_addresses_native()
+    libc = MagicMock()
 
-    assert result == ["192.168.0.100", "100.64.0.2", "2001:db8::1"]
+    def populate_interface_list(output_pointer):
+        output = ctypes.cast(
+            output_pointer, ctypes.POINTER(ctypes.POINTER(system._IfAddrs))
+        )
+        output[0] = ctypes.pointer(entries[0])
+        return 0
+
+    libc.getifaddrs.side_effect = populate_interface_list
+    with patch("rpi_dashboard.services.system.ctypes.CDLL", return_value=libc):
+        result = system._get_interface_addresses_native()
+
+    libc.freeifaddrs.assert_called_once()
+    assert result == [
+        "192.168.0.100",
+        "192.168.0.101",
+        "100.64.0.2",
+        "2001:db8::1",
+    ]
 
 
 def test_native_default_gateway_uses_active_route_with_lowest_metric():
@@ -241,6 +266,7 @@ def test_native_default_gateway_uses_active_route_with_lowest_metric():
 
     routes = (
         "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n"
+        "vpn0 00000000 0201A8C0 0003 0 0 1 00800000 0 0 0\n"
         "eth0 00000000 0102A8C0 0003 0 0 100 00000000 0 0 0\n"
         "wlan0 00000000 0101A8C0 0003 0 0 10 00000000 0 0 0\n"
         "down0 00000000 0101A8C0 0002 0 0 1 00000000 0 0 0\n"
