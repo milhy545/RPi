@@ -6,10 +6,13 @@ Handles system stats, restart, and hardware monitoring.
 import json
 import os
 import math
+import ipaddress
 import shutil
 import signal
 import socket
 import subprocess
+import struct
+import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -167,12 +170,15 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
             names.add(f"{hn}.local")
     except Exception:
         pass
-    try:
-        for ip in subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split():
-            if ip:
-                ips.add(ip)
-    except Exception:
-        pass
+    interface_ips = _get_interface_addresses_native()
+    if not interface_ips:
+        try:
+            interface_ips = subprocess.check_output(
+                ["hostname", "-I"], text=True, timeout=2
+            ).split()
+        except Exception:
+            interface_ips = []
+    ips.update(ip for ip in interface_ips if ip)
     try:
         for flag in ("-4", "-6"):
             r = subprocess.run(["tailscale", "ip", flag], capture_output=True, text=True, timeout=3)
@@ -192,6 +198,89 @@ def dashboard_hostnames_and_ips() -> Tuple[List[str], List[str]]:
     except Exception:
         pass
     return sorted(names), sorted(ips)
+
+
+def _get_interface_addresses_native() -> List[str]:
+    """Zjistí IPv4 a IPv6 adresy rozhraní bez spouštění dalších procesů."""
+    addresses: List[str] = []
+    seen: set[str] = set()
+
+    try:
+        import fcntl
+
+        interfaces = socket.if_nameindex()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            for _index, interface in interfaces:
+                if interface == "lo":
+                    continue
+                try:
+                    request = struct.pack("256s", interface.encode("utf-8"))
+                    response = fcntl.ioctl(sock.fileno(), 0x8915, request)
+                    address = str(ipaddress.IPv4Address(response[20:24]))
+                except (OSError, UnicodeError, ValueError):
+                    continue
+                if address != "0.0.0.0" and address not in seen:
+                    addresses.append(address)
+                    seen.add(address)
+    except (OSError, ImportError):
+        pass
+
+    try:
+        with open("/proc/net/if_inet6", "r", encoding="ascii") as address_file:
+            for line in address_file:
+                fields = line.split()
+                if len(fields) < 6 or fields[5] == "lo":
+                    continue
+                try:
+                    address = str(ipaddress.IPv6Address(bytes.fromhex(fields[0])))
+                except (ValueError, ipaddress.AddressValueError):
+                    continue
+                if address not in seen and address != "::":
+                    addresses.append(address)
+                    seen.add(address)
+    except (OSError, UnicodeError):
+        pass
+
+    return addresses
+
+
+def _get_default_gateway_native() -> Optional[str]:
+    """Vrátí výchozí IPv4 bránu z tabulky tras v procfs."""
+    candidates: List[Tuple[int, str]] = []
+    try:
+        with open("/proc/net/route", "r", encoding="ascii") as routes_file:
+            next(routes_file, None)
+            for line in routes_file:
+                fields = line.split()
+                if len(fields) < 8 or fields[1] != "00000000":
+                    continue
+                try:
+                    flags = int(fields[3], 16)
+                    metric = int(fields[6])
+                    gateway_value = int(fields[2], 16)
+                    if not flags & 0x1 or gateway_value == 0:
+                        continue
+                    gateway_bytes = gateway_value.to_bytes(4, byteorder=sys.byteorder)
+                    candidates.append((metric, socket.inet_ntoa(gateway_bytes)))
+                except (OverflowError, ValueError):
+                    continue
+    except (OSError, UnicodeError):
+        pass
+
+    if not candidates:
+        return None
+    return min(candidates, key=lambda item: item[0])[1]
+
+
+def _parse_default_gateway(output: str) -> Optional[str]:
+    """Vytáhne IPv4 bránu z výstupu příkazu ip route."""
+    for line in output.splitlines():
+        fields = line.split()
+        if fields and fields[0] == "default" and "via" in fields:
+            gateway_index = fields.index("via") + 1
+            if gateway_index < len(fields):
+                return fields[gateway_index]
+    return None
 
 
 def get_system_stats() -> Dict[str, Any]:
@@ -455,28 +544,28 @@ def restart_rpi() -> Dict[str, Any]:
 
 def get_network_info() -> Dict[str, Any]:
     """Get network information."""
-    try:
-        # Get IP addresses
-        r = _run(["hostname", "-I"], t=3)
-        ips = r.stdout.strip().split()
+    errors: List[str] = []
+    ips = _get_interface_addresses_native()
+    gateway = _get_default_gateway_native()
 
-        # Get default gateway
-        r2 = _run(["ip", "route", "show", "default"], t=3)
-        gateway = None
-        for line in r2.stdout.split("\n"):
-            if "default via" in line:
-                parts = line.split()
-                idx = parts.index("via")
-                if idx + 1 < len(parts):
-                    gateway = parts[idx + 1]
-                break
+    if not ips:
+        try:
+            result = _run(["hostname", "-I"], t=3)
+            ips = result.stdout.strip().split()
+        except Exception as exc:
+            errors.append(str(exc))
 
-        return {
-            "ips": ips,
-            "gateway": gateway,
-        }
-    except Exception as e:
-        return {"ips": [], "gateway": None, "error": str(e)}
+    if gateway is None:
+        try:
+            result = _run(["ip", "route", "show", "default"], t=3)
+            gateway = _parse_default_gateway(result.stdout)
+        except Exception as exc:
+            errors.append(str(exc))
+
+    response: Dict[str, Any] = {"ips": ips, "gateway": gateway}
+    if errors:
+        response["error"] = "; ".join(errors)
+    return response
 
 
 def get_tailscale_status() -> Dict[str, Any]:

@@ -1,8 +1,9 @@
 """Tests for system service module."""
 
 import io
+import socket
 import subprocess
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 
 def test_get_cpu_usage():
@@ -170,13 +171,85 @@ def test_restart_dashboard():
 def test_get_network_info():
     """Test network info collection."""
     from rpi_dashboard.services.system import get_network_info
-    with patch("rpi_dashboard.services.system._run") as mock_run:
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="192.168.0.100\n"
-        )
-        result = get_network_info()
-        assert "ips" in result
+    with patch("rpi_dashboard.services.system._get_interface_addresses_native", return_value=["192.168.0.100"]):
+        with patch("rpi_dashboard.services.system._get_default_gateway_native", return_value="192.168.0.1"):
+            result = get_network_info()
+
+    assert result == {"ips": ["192.168.0.100"], "gateway": "192.168.0.1"}
+
+
+def test_get_network_info_falls_back_to_host_commands():
+    """Use the command fallbacks when native network discovery is unavailable."""
+    from rpi_dashboard.services.system import get_network_info
+
+    with patch("rpi_dashboard.services.system._get_interface_addresses_native", return_value=[]):
+        with patch("rpi_dashboard.services.system._get_default_gateway_native", return_value=None):
+            with patch(
+                "rpi_dashboard.services.system._run",
+                side_effect=[
+                    MagicMock(returncode=0, stdout="192.168.0.100 100.64.0.2\n"),
+                    MagicMock(returncode=0, stdout="default via 192.168.0.1 dev eth0\n"),
+                ],
+            ) as mock_run:
+                result = get_network_info()
+
+    assert result == {"ips": ["192.168.0.100", "100.64.0.2"], "gateway": "192.168.0.1"}
+    assert [call.args[0] for call in mock_run.call_args_list] == [
+        ["hostname", "-I"],
+        ["ip", "route", "show", "default"],
+    ]
+
+
+def test_native_interface_discovery_collects_ipv4_and_ipv6():
+    """Read interface addresses without spawning hostname or ip processes."""
+    from rpi_dashboard.services.system import _get_interface_addresses_native
+
+    interface_addresses = {
+        "eth0": "192.168.0.100",
+        "tailscale0": "100.64.0.2",
+    }
+    sock = MagicMock()
+    sock.fileno.return_value = 3
+    sock.__enter__.return_value = sock
+
+    def ioctl(_fd, _request, interface_request):
+        interface = interface_request.split(b"\0", 1)[0].decode()
+        if interface not in interface_addresses:
+            raise OSError("interface has no IPv4 address")
+        return bytes(20) + socket.inet_aton(interface_addresses[interface]) + bytes(232)
+
+    proc_ipv6 = (
+        "00000000000000000000000000000001 01 80 10 80 _LOOPBACK_\n"
+        "20010db8000000000000000000000001 02 00 00 00 eth0\n"
+        "00000000000000000000000000000000 03 00 00 00 eth0\n"
+    )
+    proc_ipv6 = proc_ipv6.replace("_LOOPBACK_", "lo")
+    with patch("rpi_dashboard.services.system.socket.if_nameindex", return_value=[
+        (1, "lo"), (2, "eth0"), (3, "tailscale0"), (4, "wlan0")
+    ]):
+        with patch("rpi_dashboard.services.system.socket.socket", return_value=sock):
+            with patch("fcntl.ioctl", side_effect=ioctl):
+                with patch("builtins.open", mock_open(read_data=proc_ipv6)):
+                    result = _get_interface_addresses_native()
+
+    assert result == ["192.168.0.100", "100.64.0.2", "2001:db8::1"]
+
+
+def test_native_default_gateway_uses_active_route_with_lowest_metric():
+    """Choose the active default route with the lowest metric."""
+    from rpi_dashboard.services.system import _get_default_gateway_native
+
+    routes = (
+        "Iface Destination Gateway Flags RefCnt Use Metric Mask MTU Window IRTT\n"
+        "eth0 00000000 0102A8C0 0003 0 0 100 00000000 0 0 0\n"
+        "wlan0 00000000 0101A8C0 0003 0 0 10 00000000 0 0 0\n"
+        "down0 00000000 0101A8C0 0002 0 0 1 00000000 0 0 0\n"
+        "none0 00000000 00000000 0003 0 0 0 00000000 0 0 0\n"
+    )
+    with patch("builtins.open", mock_open(read_data=routes)):
+        result = _get_default_gateway_native()
+
+    assert result == "192.168.1.1"
 
 
 def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
@@ -184,7 +257,7 @@ def test_dashboard_hostnames_and_ips_tolerate_tailscale_failures():
     from rpi_dashboard.services.system import dashboard_hostnames_and_ips
 
     with patch("rpi_dashboard.services.system.socket.gethostname", return_value="rpi-tv"):
-        with patch("rpi_dashboard.services.system.subprocess.check_output", return_value="192.168.0.100\n"):
+        with patch("rpi_dashboard.services.system._get_interface_addresses_native", return_value=["192.168.0.100"]):
             with patch(
                 "rpi_dashboard.services.system.subprocess.run",
                 side_effect=[
