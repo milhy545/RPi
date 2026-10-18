@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from rpi_dashboard.ci import rpi_guard
 
@@ -78,10 +78,27 @@ def test_process_scan_reads_proc_stat_and_cmdline_without_ps(monkeypatch) -> Non
     ]
 
 
-def test_process_scan_returns_empty_if_procfs_is_unavailable(monkeypatch) -> None:
-    def fail_listdir(_path: str) -> list[str]:
-        raise PermissionError("procfs unavailable")
+def test_process_scan_returns_empty_if_uptime_is_unavailable(monkeypatch) -> None:
+    mocked_listdir = Mock()
+    monkeypatch.setattr(rpi_guard.os, "listdir", mocked_listdir)
 
-    monkeypatch.setattr(rpi_guard.os, "listdir", fail_listdir)
     with patch("builtins.open", side_effect=OSError("procfs unavailable")):
         assert rpi_guard.RPiGuard()._get_processes() == []
+
+    mocked_listdir.assert_not_called()
+
+
+def test_process_scan_returns_empty_if_procfs_directory_is_unavailable(monkeypatch) -> None:
+    def open_uptime(path: str, *_args: Any, **_kwargs: Any) -> Any:
+        if path == "/proc/uptime":
+            return io.StringIO("20.00 0.00\n")
+        raise FileNotFoundError(path)
+
+    mocked_listdir = Mock(side_effect=PermissionError("procfs unavailable"))
+    monkeypatch.setattr(rpi_guard.os, "listdir", mocked_listdir)
+    monkeypatch.setattr(rpi_guard.os, "sysconf", lambda _name: 100)
+
+    with patch("builtins.open", side_effect=open_uptime):
+        assert rpi_guard.RPiGuard()._get_processes() == []
+
+    mocked_listdir.assert_called_once_with("/proc")
