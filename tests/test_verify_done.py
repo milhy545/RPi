@@ -48,6 +48,8 @@ def _run_verify(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
+    for key in ("GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_REF", "GITHUB_SHA"):
+        env.pop(key, None)
     env.update(
         {
             "RECEIPT_DIR": str(tmp_path / "receipts"),
@@ -122,6 +124,48 @@ def test_verify_done_accepts_detached_checkout_with_local_receipt(tmp_path: Path
                 "status": "done",
                 "commit_sha": sha,
                 "tree_hash": tree,
+                "source": "github-actions-pull-request",
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/1",
+            }
+        )
+    )
+
+    result = _run_verify(
+        repo,
+        tmp_path,
+        {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "pull_request",
+            "GITHUB_REF": "refs/pull/1/merge",
+            "GITHUB_SHA": sha,
+        },
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Detached GitHub Actions checkout matches GITHUB_SHA and GITHUB_REF" in result.stdout
+
+
+def test_verify_done_rejects_local_detached_checkout_without_push_proof(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "https://github.com/example/repo.git"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "checkout", "--detach"], check=True, capture_output=True)
+
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\nlocal detached checkout\n")
+    (receipt_dir / "matching.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
                 "ci_report": str(report),
                 "actions_url": "https://github.com/example/repo/actions/runs/1",
             }
@@ -130,8 +174,42 @@ def test_verify_done_accepts_detached_checkout_with_local_receipt(tmp_path: Path
 
     result = _run_verify(repo, tmp_path)
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "Detached checkout; exact ref identity was checked by the caller" in result.stdout
+    assert result.returncode == 1
+    assert "Detached checkout is not verified by GitHub Actions" in result.stderr
+
+
+def test_verify_done_fails_when_git_status_cannot_be_read(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    fake_git = tmp_path / "bin" / "git"
+    fake_git.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"${1:-}\" == status ]]; then exit 1; fi\n"
+        "exec /usr/bin/git \"$@\"\n"
+    )
+    fake_git.chmod(0o755)
+
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\nstatus failure\n")
+    (receipt_dir / "matching.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/1",
+            }
+        )
+    )
+
+    result = _run_verify(repo, tmp_path)
+
+    assert result.returncode == 1
+    assert "Cannot determine working tree status" in result.stderr
 
 
 def test_verify_done_rejects_pr_receipt_for_main_push(tmp_path: Path) -> None:
