@@ -7,6 +7,7 @@ import json
 import os
 import math
 import shutil
+import signal
 import socket
 import subprocess
 import time
@@ -368,7 +369,9 @@ def get_https_info() -> Dict[str, Any]:
 def restart_mpv() -> Dict[str, Any]:
     """Restart mpv player."""
     try:
-        _run(["pkill", "-f", "mpv"], t=3)
+        pid = _get_pid_by_name("mpv")
+        if pid.isdigit():
+            os.kill(int(pid), signal.SIGTERM)
         return {"ok": True, "message": "mpv restarted"}
     except Exception as e:
         return {"ok": False, "error": str(e)}

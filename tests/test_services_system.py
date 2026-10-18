@@ -1,7 +1,8 @@
 """Tests for system service module."""
 
+import io
 import subprocess
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_get_cpu_usage():
@@ -67,12 +68,59 @@ def test_get_system_stats():
 
 
 def test_restart_mpv():
-    """Test mpv restart."""
+    """Restartuje pouze proces s přesným názvem mpv."""
+    import signal
+
     from rpi_dashboard.services.system import restart_mpv
-    with patch("rpi_dashboard.services.system._run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0)
-        result = restart_mpv()
-        assert result["ok"] is True
+
+    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value="1234"):
+        with patch("rpi_dashboard.services.system.os.kill") as mock_kill:
+            with patch("rpi_dashboard.services.system._run") as mock_run:
+                result = restart_mpv()
+
+    mock_run.assert_not_called()
+    mock_kill.assert_called_once_with(1234, signal.SIGTERM)
+    assert result["ok"] is True
+
+
+def test_restart_mpv_does_not_signal_when_process_is_absent():
+    """Chybějící proces nesmí způsobit signál jinému procesu."""
+    from rpi_dashboard.services.system import restart_mpv
+
+    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value=""):
+        with patch("rpi_dashboard.services.system.os.kill") as mock_kill:
+            result = restart_mpv()
+
+    mock_kill.assert_not_called()
+    assert result["ok"] is True
+
+
+def test_restart_mpv_reports_signal_failures():
+    """Vrátí chybu systému při selhání signálu."""
+    from rpi_dashboard.services.system import restart_mpv
+
+    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value="1234"):
+        with patch("rpi_dashboard.services.system.os.kill", side_effect=PermissionError("denied")):
+            result = restart_mpv()
+
+    assert result == {"ok": False, "error": "denied"}
+
+
+def test_get_pid_by_name_uses_exact_comm_match():
+    """Za MPV nepovažuje wrappery ani příkazové řádky obsahující mpv."""
+    from rpi_dashboard.services.system import _get_pid_by_name
+
+    def open_comm(path, *_args, **_kwargs):
+        names = {"/proc/101/comm": "mpv-wrapper\n", "/proc/102/comm": "mpv\n"}
+        if path not in names:
+            raise FileNotFoundError(path)
+        return io.StringIO(names[path])
+
+    with patch("rpi_dashboard.services.system.os.listdir", return_value=["101", "102"]):
+        with patch("builtins.open", side_effect=open_comm):
+            result = _get_pid_by_name("mpv")
+
+    assert result == "102"
 
 
 def test_restart_dashboard():
