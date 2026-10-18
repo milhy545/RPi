@@ -33,6 +33,9 @@ If the base branch advanced and changed the tree, `verify-done.sh` may import a
 new local receipt only from a successful GitHub Actions `push` run for the exact
 `main` HEAD SHA and the repository `ci.yml` workflow. The workflow is local-only
 and does not upload artifacts.
+Local verification requires a `github-actions-main-push` receipt even when run
+from a feature branch; a pull-request receipt is accepted only inside the
+GitHub Actions `pull_request` checkout for its exact tested SHA.
 
 ### Rule 4: Never ignore error output
 If ANY of these fail, the agent must STOP and report:

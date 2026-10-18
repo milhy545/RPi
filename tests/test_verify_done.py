@@ -84,8 +84,17 @@ def test_verify_done_fails_explicitly_when_receipt_is_missing(tmp_path: Path) ->
     assert "No receipt found for HEAD=" in result.stderr
 
 
-def test_verify_done_accepts_matching_receipt_with_report_and_actions_url(tmp_path: Path) -> None:
+def test_verify_done_accepts_matching_main_receipt_with_report_and_actions_url(tmp_path: Path) -> None:
     repo, sha, tree = _verified_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(repo), "branch", "-m", "main"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "https://github.com/example/repo.git"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", sha], check=True)
     receipt_dir = tmp_path / "receipts"
     report_dir = tmp_path / "reports"
     receipt_dir.mkdir()
@@ -98,6 +107,7 @@ def test_verify_done_accepts_matching_receipt_with_report_and_actions_url(tmp_pa
                 "status": "done",
                 "commit_sha": sha,
                 "tree_hash": tree,
+                "source": "github-actions-main-push",
                 "ci_report": str(report),
                 "actions_url": "https://github.com/example/repo/actions/runs/1",
             }
@@ -108,6 +118,33 @@ def test_verify_done_accepts_matching_receipt_with_report_and_actions_url(tmp_pa
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "VERIFY-DONE: PASS" in result.stdout
+
+
+def test_verify_done_rejects_pr_receipt_on_local_feature_branch(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\nPR receipt must not prove main completion\n")
+    (receipt_dir / "pull-request.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
+                "source": "github-actions-pull-request",
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/1",
+            }
+        )
+    )
+
+    result = _run_verify(repo, tmp_path)
+
+    assert result.returncode == 1
+    assert "No receipt found for HEAD=" in result.stderr
 
 
 def test_verify_done_accepts_detached_checkout_with_local_receipt(tmp_path: Path) -> None:
