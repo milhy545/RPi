@@ -75,6 +75,49 @@ def test_aria_label_i18n_preserves_icon_button_content() -> None:
     assert "el.setAttribute('aria-label',ariaText(key,txt));return" in app_js
 
 
+def test_dashboard_accessible_names_are_localised_and_labels_are_associated() -> None:
+    """Ovládací prvky mají české i anglické názvy a svázané viditelné popisky."""
+    index_html = (REPO_ROOT / "rpi_dashboard/static/index.html").read_text()
+    app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
+    fallback = (REPO_ROOT / "webserver.py").read_text()
+
+    label_targets = (
+        "master-volume-slider",
+        "ta-lat-dlna-offset",
+        "login-role",
+        "login-password",
+        "feedback-type",
+        "feedback-desc",
+    )
+    for target in label_targets:
+        assert f'<label for="{target}"' in index_html
+        assert f'id="{target}"' in index_html
+
+    translations = {
+        "closeModal": ("Zavřít okno", "Close modal"),
+        "mediaUrl": ("Adresa média", "Media URL"),
+        "mediaQuality": ("Kvalita přehrávání", "Playback quality"),
+        "seekPosition": ("Pozice přehrávání", "Playback position"),
+        "ageCheckUrl": ("YouTube adresa pro kontrolu věku", "YouTube URL for age check"),
+        "wifiSsidLabel": ("Název Wi-Fi sítě", "Wi-Fi network name"),
+        "wifiPasswordLabel": ("Heslo Wi-Fi", "Wi-Fi password"),
+        "logServiceLabel": ("Služba pro zobrazení logů", "Log service"),
+        "logLinesLabel": ("Počet řádků logu", "Number of log lines"),
+    }
+    for key, (czech, english) in translations.items():
+        assert f'data-i18n-aria-label="{key}"' in index_html
+        assert f"{key}:'{czech}'" in app_js
+        assert f"{key}:'{english}'" in app_js
+        assert f"{key}:'{czech}'" in fallback
+        assert f"{key}:'{english}'" in fallback
+
+    assert "document.querySelectorAll('[data-i18n-aria-label]')" in app_js
+    assert "document.querySelectorAll('[data-i18n-aria-label]')" in fallback
+    assert "data-i18n-aria-label=" in fallback
+    assert 'for="feedback-type"' in fallback
+    assert 'for="feedback-desc"' in fallback
+
+
 def test_small_controls_have_touch_target_floor() -> None:
     """Small topbar/help controls should stay usable on touch screens."""
     main_css = (REPO_ROOT / "rpi_dashboard/static/css/main.css").read_text()
