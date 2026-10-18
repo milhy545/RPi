@@ -1,7 +1,60 @@
 """Tests for audio service module."""
 
-from unittest.mock import patch, MagicMock
+import io
 import json
+from unittest.mock import MagicMock, patch
+
+
+def test_gmrender_pid_reads_binary_proc_cmdline() -> None:
+    """Rozpozná gmediarender v binárním cmdline a přeskočí ostatní procesy."""
+    from rpi_dashboard.services import audio_dlna
+
+    cmdlines = {
+        "/proc/1/cmdline": b"/usr/lib/systemd/systemd\0",
+        "/proc/22/cmdline": b"/usr/bin/gmediarender\0-f\0Kitchen\0",
+    }
+
+    def open_cmdline(path: str, mode: str = "r", *_args, **_kwargs):
+        if mode != "rb" or path not in cmdlines:
+            raise FileNotFoundError(path)
+        return io.BytesIO(cmdlines[path])
+
+    with patch("rpi_dashboard.services.audio_dlna.os.listdir", return_value=["1", "22", "not-a-pid"]):
+        with patch("builtins.open", side_effect=open_cmdline):
+            result = audio_dlna._gmrender_pid()
+
+    assert result == 22
+
+
+def test_gmrender_running_uses_pid_lookup() -> None:
+    """Stav běhu využívá stejný zdroj PID."""
+    from rpi_dashboard.services import audio_dlna
+
+    with patch("rpi_dashboard.services.audio_dlna._gmrender_pid", return_value=22):
+        assert audio_dlna._gmrender_running() is True
+    with patch("rpi_dashboard.services.audio_dlna._gmrender_pid", return_value=None):
+        assert audio_dlna._gmrender_running() is False
+
+
+def test_dlna_status_scans_for_renderer_once() -> None:
+    """Status používá jedno zjištění PID pro stav i dobu běhu."""
+    from rpi_dashboard.services import audio_dlna
+
+    with patch("rpi_dashboard.services.audio_dlna._gmrender_pid", return_value=22) as pid_lookup:
+        with patch("rpi_dashboard.services.audio_dlna._gmrender_running", side_effect=AssertionError):
+            with patch("rpi_dashboard.services.audio_dlna._gmrender_uptime", return_value=60):
+                with patch("rpi_dashboard.services.audio_dlna.shutil.which", return_value="/usr/bin/gmediarender"):
+                    with patch(
+                        "rpi_dashboard.services.audio_dlna.subprocess.run",
+                        return_value=MagicMock(returncode=0),
+                    ):
+                        status = audio_dlna.dlna_renderer_status()
+
+    pid_lookup.assert_called_once_with()
+    assert status["running"] is True
+    assert status["pid"] == 22
+    assert status["uptime"] == 60
+    assert status["ready"] is True
 
 
 def test_classify_sink_hdmi():
