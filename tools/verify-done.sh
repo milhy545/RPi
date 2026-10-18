@@ -52,6 +52,9 @@ RECEIPT_EXACT_SHA=false
 if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
   EXPECTED_RECEIPT_SOURCE="github-actions-pull-request"
   RECEIPT_EXACT_SHA=true
+elif [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" ]]; then
+  EXPECTED_RECEIPT_SOURCE="github-actions-workflow"
+  RECEIPT_EXACT_SHA=true
 fi
 
 lookup_receipt() {

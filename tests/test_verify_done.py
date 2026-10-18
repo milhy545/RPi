@@ -189,6 +189,47 @@ def test_verify_done_accepts_detached_checkout_with_local_receipt(tmp_path: Path
     assert "Detached GitHub Actions checkout matches GITHUB_SHA and GITHUB_REF" in result.stdout
 
 
+def test_verify_done_accepts_exact_workflow_dispatch_receipt(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(repo), "checkout", "--detach"],
+        check=True,
+        capture_output=True,
+    )
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\nexact workflow-dispatch validation\n")
+    (receipt_dir / "workflow.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
+                "source": "github-actions-workflow",
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/2",
+            }
+        )
+    )
+
+    result = _run_verify(
+        repo,
+        tmp_path,
+        {
+            "GITHUB_ACTIONS": "true",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/feature/receipt-check",
+            "GITHUB_SHA": sha,
+        },
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Valid receipt for HEAD SHA" in result.stdout
+
+
 def test_verify_done_rejects_local_detached_checkout_without_push_proof(tmp_path: Path) -> None:
     repo, sha, tree = _verified_repo(tmp_path)
     subprocess.run(
