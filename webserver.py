@@ -21,6 +21,7 @@ from config import (
 from rpi_dashboard.api import middleware as api_middleware
 from rpi_dashboard.api.routes import get_route, get_post_route
 from rpi_dashboard.services import devices as devices_service
+from rpi_dashboard.services import system as system_service
 from rpi_dashboard.services import terminal as terminal_service
 from rpi_dashboard.services import audio_routing as audio_routing_service
 from rpi_dashboard.auth import (
@@ -2635,33 +2636,8 @@ def start_ws_server():
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
 def _dashboard_hostnames_and_ips():
-    names={"rpi-tv","rpi-tv.local","localhost"}
-    ips={"127.0.0.1"}
-    try:
-        hn=socket.gethostname().strip()
-        if hn:
-            names.add(hn); names.add(f"{hn}.local")
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    try:
-        for ip in subprocess.check_output(["hostname","-I"], text=True, timeout=2).split():
-            if ip: ips.add(ip)
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    try:
-        for flag in ("-4","-6"):
-            r=subprocess.run(["tailscale","ip",flag],capture_output=True,text=True,timeout=3)
-            if r.returncode==0:
-                for ip in r.stdout.split(): ips.add(ip)
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    try:
-        r=subprocess.run(["tailscale","status","--json"],capture_output=True,text=True,timeout=3)
-        if r.returncode==0:
-            d=json.loads(r.stdout or "{}")
-            dns=(d.get("Self") or {}).get("DNSName") or ""
-            if dns:
-                names.add(dns.rstrip("."))
-                names.add(dns.split(".")[0])
-    except Exception as e: print(f"[WARN] Swallowed exception: {type(e).__name__}: {e}", file=sys.stderr)
-    return sorted(names), sorted(ips)
+    """Vrátí hostnames a IP adresy certifikátu přes společnou službu."""
+    return system_service.dashboard_hostnames_and_ips()
 
 def _https_san():
     names, ips = _dashboard_hostnames_and_ips()
