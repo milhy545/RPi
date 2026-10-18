@@ -4,7 +4,7 @@
 
 - [x] Disable the repository's unconditional auto-merge workflow.
 - [x] Disable all auto-merge requests active in the open PR snapshot.
-- [x] Add `merge-approved` label gating, a label-removal revoke path, and focused workflow tests.
+- [x] Add `merge-approved` label gating, reconcile current label/draft state on every PR event, and test revocation.
 - [ ] Re-enable the workflow only after the gated version is on `main`.
 - [x] Repair the commit and receipt gates: prevent amend commits, reject runtime artifacts, and make missing receipts fail explicitly.
 - [x] Adapt GitHub CI to the repository's local-only Actions policy using direct Git fetch and repository scripts; keep the required `verify-done` context and import exact-main receipts from successful run metadata.
@@ -14,7 +14,7 @@
 - [x] Capture the initial open PR set and current GitHub `main` SHA.
 - [x] Preserve the four local-only commits and create a clean isolated worktree from GitHub `main`.
 - [ ] Record one disposition for every initial PR and recheck each PR before any close or merge.
-- [ ] Close unrelated-project PRs with `invalid` and a clear explanation.
+- [x] Close unrelated-project PRs #93 and #96 with `invalid` and a clear explanation.
 - [ ] Mark duplicates as `duplicate` only after naming the verified successor.
 
 ## Phase 3 — Consolidate and Verify Candidates
@@ -47,7 +47,7 @@
 
 | PRs | Topic | Planned handling |
 |---|---|---|
-| #93 | Unrelated application/repository files | Close as invalid after final diff check. |
+| #93 | Unrelated application/repository files | Closed as invalid after final diff check. |
 | #85 | Large sync bundle, app changes, and Conductor reports | Split; inspect failing Ruff and review findings; preserve valid reports. |
 | #92, #94–#95, #97–#102 | Accessibility | Consolidate into a bilingual, tested successor; include the active feedback modal template fix. |
 | #42–#43 | TUI Bluetooth event rendering | Keep valid DHCP and Wi-Fi details with a non-empty service fallback; consolidate. |
@@ -60,7 +60,7 @@
 | #62 | Dependency update | Preserve the pip bump in the corrected lockfile candidate; close as superseded only after that candidate merges. |
 | #66 | MPV process signalling | Verify exact process matching and safe signal target. |
 | #68 | Kodi port detection | Verify IPv4/IPv6 procfs parsing and call site. |
-| #96 | PR-agent workflow | Validate YAML, action pinning, token scope, and secret use; prefer the hardened replacement or close as superseded. |
+| #96 | PR-agent workflow | Closed as invalid: duplicate `runs-on`, unpinned third-party action, broad write permissions, and secret exposure. |
 
 ## Change Log
 
@@ -70,3 +70,5 @@
 - 2026-10-18: The first full run exposed a host-global `pip-audit` fallback. CI now syncs the locked project environment before auditing it. The project lock had 6 findings across `multidict 6.7.1`, `pip 26.1.2`, and `urllib3 2.7.0`; updated them to `6.9.1`, `26.2.1`, and `2.8.0`. Project-venv `pip-audit` reports no known vulnerabilities. Fixed two host-dependent Bluetooth tests and updated the receipt-contract test. Full CI is rerunning.
 - 2026-10-18: GitHub API reports that the repository permits local workflows/actions only; the existing CI invoked prohibited marketplace actions and failed before creating jobs. Replaced those steps with direct Git ref fetching and the locked local CI script, preserved the required `verify-done` check, removed artifact-action dependencies, and changed the RPi handoff to import a receipt from a successful exact-main run. Protected local receipt/report directories from handoff deletion.
 - 2026-10-18: First remote CI run confirmed checkout and full tests passed but exposed generated report files in two API integration tests and a detached-checkout assumption in `verify-done.sh`. Redirected test report output to `tmp_path`, kept clean-tree and receipt checks, and made branch tracking checks skip only on detached CI refs after the workflow verifies `GITHUB_SHA`.
+- 2026-10-18: Closed unrelated PRs #93 and #96 with the `invalid` label and an explanation after verifying their current diffs.
+- 2026-10-18: Current #103 review identified receipt provenance, PR-wide runtime-artifact scanning, missing hosted coverage enforcement, profile validation, and handoff idempotency issues. Fixed these locally, including exact-main receipt lookup, selective transfer of the exact RPi candidate receipt, required project-local quality/security tools, logged failure reports, and isolated report-path tests. The focused regression set passes (44 tests); the new remote CI and Kilo review are pending before merge.

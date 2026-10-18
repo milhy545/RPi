@@ -11,12 +11,6 @@ def isolated_report_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     repo_root.mkdir()
     handlers_path = Path(handlers.__file__)
     isolated_handlers_path = repo_root / "rpi_dashboard" / "api" / "handlers.py"
-    original_resolve = Path.resolve
-
-    def resolve_test_paths(path: Path, *args, **kwargs) -> Path:
-        if path == handlers_path:
-            return isolated_handlers_path
-        return original_resolve(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "resolve", resolve_test_paths)
+    isolated_handlers_path.parent.mkdir(parents=True)
+    monkeypatch.setattr(handlers, "__file__", str(isolated_handlers_path))
     return repo_root / "reports"

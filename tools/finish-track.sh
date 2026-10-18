@@ -30,6 +30,21 @@ if [[ -z "$(git status --porcelain)" ]]; then
   exit 1
 fi
 
+if [[ -n "${CI_PROFILE:-}" ]]; then
+  PROFILE="$CI_PROFILE"
+elif [[ "$HOSTNAME_LOWER" == *"rpi"* || "$ROOT" == *"/rpi-dashboard"* ]]; then
+  PROFILE="rpi-focused"
+else
+  PROFILE="milhy-full"
+fi
+case "$PROFILE" in
+  rpi-focused|rpi-candidate|milhy-full|github-safe) ;;
+  *)
+    echo "FATAL: unsupported CI profile '$PROFILE'; refusing to snapshot or commit changes." >&2
+    exit 2
+    ;;
+esac
+
 # Uchovej index, sledovane zmeny i untracked soubory jako obnovitelny snapshot.
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 if ! git stash push --include-untracked -m "pre-finish-track-$STAMP"; then
@@ -44,16 +59,8 @@ if ! git stash apply --index "$SNAPSHOT"; then
 fi
 echo "Safety snapshot retained: $SNAPSHOT"
 
-if [[ -n "${CI_PROFILE:-}" ]]; then
-  PROFILE="$CI_PROFILE"
-elif [[ "$HOSTNAME_LOWER" == *"rpi"* || "$ROOT" == *"/rpi-dashboard"* ]]; then
-  PROFILE="rpi-focused"
-else
-  PROFILE="milhy-full"
-fi
-
 echo "Running CI profile '$PROFILE' before commit creation."
-if ! CI_PROFILE="$PROFILE" tools/run-ci.sh --profile "$PROFILE"; then
+if ! tools/run-ci.sh --profile "$PROFILE"; then
   echo "FATAL: CI failed; no commit was created. Changes and safety snapshot are retained." >&2
   exit 1
 fi

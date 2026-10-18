@@ -44,6 +44,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+case "$PROFILE" in
+  rpi-focused|rpi-candidate|milhy-full|github-safe) ;;
+  *)
+    echo "ERROR: unknown CI profile '$PROFILE'." >&2
+    echo "Supported profiles: rpi-focused, rpi-candidate, milhy-full, github-safe." >&2
+    exit 2
+    ;;
+esac
+
 REPORT_DIR="${REPORT_DIR:-conductor/ci/reports}"
 mkdir -p "$REPORT_DIR"
 SHA="$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d-%H%M%S)"
@@ -87,6 +96,19 @@ optional_step() {
     if [[ "$STRICT_SECURITY_TOOLS" == "1" ]]; then
       FAILURES=$((FAILURES + 1))
     fi
+  fi
+}
+
+run_project_tool_step() {
+  local name="$1"
+  local tool="$2"
+  shift 2
+  local tool_path=".venv/bin/$tool"
+  if [[ -x "$tool_path" ]]; then
+    run_step "$name" "$tool_path" "$@"
+  else
+    run_step "$name" bash -c \
+      "echo 'Required project tool .venv/bin/$tool is unavailable.' >&2; exit 127"
   fi
 }
 
@@ -178,44 +200,28 @@ case "$PROFILE" in
         log "SKIP: project dependency sync (uv and .venv missing)"
       fi
 
-      _BANDIT="${BANDIT_CMD:-$(ls .venv/bin/bandit 2>/dev/null || true)}"
-      _PIP_AUDIT="${PIP_AUDIT_CMD:-$(ls .venv/bin/pip-audit 2>/dev/null || true)}"
-
-      if [[ -n "$_BANDIT" && -x "$_BANDIT" ]]; then
-        run_step "Bandit Python security scan (high severity gate)" "$_BANDIT" -q -lll -r . -x ./.venv,./__pycache__,./tests
-      else
-        append "## Bandit Python security scan (high severity gate)"
-        append "SKIP: bandit not found."
-        append ""
-      fi
-
-      if [[ -n "$_PIP_AUDIT" && -x "$_PIP_AUDIT" ]]; then
-        run_step "pip-audit dependency scan" "$_PIP_AUDIT" --skip-editable
-      else
-        append "## pip-audit dependency scan"
-        append "SKIP: pip-audit not found."
-        append ""
-      fi
+      run_project_tool_step \
+        "Bandit Python security scan (high severity gate)" \
+        bandit -q -lll -r . -x ./.venv,./__pycache__,./tests
+      run_project_tool_step "pip-audit dependency scan" pip-audit --skip-editable
     fi
 
     # Code quality gates: Ruff & Mypy
-    _RUFF="$(ls .venv/bin/ruff 2>/dev/null || true)"
-    if [[ -n "$_RUFF" && -x "$_RUFF" ]]; then
-      run_step "Ruff linter check" "$_RUFF" check .
-    fi
+    run_project_tool_step "Ruff linter check" ruff check .
+    run_project_tool_step "Mypy type checker" mypy --explicit-package-bases .
 
-    _MYPY="$(ls .venv/bin/mypy 2>/dev/null || true)"
-    if [[ -n "$_MYPY" && -x "$_MYPY" ]]; then
-      run_step "Mypy type checker" "$_MYPY" --explicit-package-bases .
+    PYTEST_ARGS=(-q)
+    if [[ "$PROFILE" == "github-safe" ]]; then
+      PYTEST_ARGS=(--cov=rpi_dashboard --cov-fail-under=69 -q)
     fi
 
     # Full pytest suite execution on Milhy-PC
     if [[ -n "$_UV" ]]; then
-      run_step "Run full pytest suite" "$_UV" run --locked --extra dev python -m pytest -q
+      run_step "Run full pytest suite" "$_UV" run --locked --extra dev python -m pytest "${PYTEST_ARGS[@]}"
     elif [[ -x .venv/bin/python ]]; then
-      run_step "Run full pytest suite" .venv/bin/python -m pytest -q
+      run_step "Run full pytest suite" .venv/bin/python -m pytest "${PYTEST_ARGS[@]}"
     else
-      run_step "Run full pytest suite" python3 -m pytest -q
+      run_step "Run full pytest suite" python3 -m pytest "${PYTEST_ARGS[@]}"
     fi
 
     # Remote Playwright E2E on Milhy-PC (required for milhy-full profile)

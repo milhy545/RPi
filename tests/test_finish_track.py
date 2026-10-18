@@ -132,3 +132,21 @@ def test_finish_track_requires_a_commit_message(repo_factory, tmp_path: Path) ->
     assert result.returncode == 2
     assert _git(repo, "rev-parse", "HEAD") == base_sha
     assert "Usage:" in result.stderr
+
+
+def test_finish_track_rejects_unknown_profile_before_snapshot(repo_factory, tmp_path: Path) -> None:
+    repo, base_sha = repo_factory()
+    ci_log = tmp_path / "ci.log"
+
+    result = _run(
+        repo,
+        ci_log,
+        "fix: reject unknown profile",
+        CI_PROFILE="github-sfae",
+    )
+
+    assert result.returncode == 2
+    assert _git(repo, "rev-parse", "HEAD") == base_sha
+    assert not ci_log.exists()
+    assert "pre-finish-track-" not in _git(repo, "stash", "list")
+    assert "unsupported CI profile" in result.stderr

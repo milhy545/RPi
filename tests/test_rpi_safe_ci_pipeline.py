@@ -937,12 +937,12 @@ def test_run_ci_emits_only_rpi_candidate_evidence_receipts():
     with open(run_ci_script, "r") as f:
         content = f.read()
 
-    # Completion receipts are created by GitHub Actions after exact-main CI.
+    # Potvrzovací receipts vytváří GitHub Actions po CI přesného commitu main.
     full_ci = content.split("milhy-full|github-safe)", 1)[1].split("rpi-candidate)", 1)[0]
     assert "Emitted milhy-full receipt" not in full_ci
     assert "RECEIPT_FILE" not in full_ci
 
-    # RPi candidate receipts are separate hardware-gate evidence.
+    # Kandidátní receipts RPi jsou samostatným důkazem hardwarové brány.
     assert "commit_sha" in content
     assert "tree_hash" in content
     assert "Emitted RPi candidate receipt" in content
@@ -956,7 +956,8 @@ def test_run_ci_audits_locked_project_environment_not_host_packages():
         content = f.read()
 
     assert 'sync --locked --extra dev' in content
-    assert 'ls .venv/bin/pip-audit' in content
+    assert 'local tool_path=".venv/bin/$tool"' in content
+    assert 'run_project_tool_step "pip-audit dependency scan" pip-audit --skip-editable' in content
     assert 'command -v pip-audit' not in content
     assert content.index('sync --locked --extra dev') < content.index('pip-audit dependency scan')
 

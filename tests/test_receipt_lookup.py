@@ -42,6 +42,91 @@ def test_receipt_with_different_tree_is_rejected(tmp_path: Path) -> None:
     assert _lookup(tmp_path, "head", "tree") == ""
 
 
+def test_source_filter_rejects_a_pr_receipt_for_main_ci(tmp_path: Path) -> None:
+    receipt = _receipt(tmp_path / "receipt.json", commit_sha="head", tree_hash="tree")
+    receipt.write_text(json.dumps({"commit_sha": "head", "tree_hash": "tree", "source": "github-actions-pull-request"}))
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(LOOKUP),
+            str(tmp_path),
+            "head",
+            "tree",
+            "--source",
+            "github-actions-main-push",
+            "--exact-sha",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == ""
+
+
+def test_source_filter_accepts_only_an_exact_main_receipt(tmp_path: Path) -> None:
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "commit_sha": "before-rebase",
+                "tree_hash": "tree",
+                "source": "github-actions-main-push",
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(LOOKUP),
+            str(tmp_path),
+            "after-rebase",
+            "tree",
+            "--source",
+            "github-actions-main-push",
+            "--exact-sha",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout == ""
+
+
+def test_source_filter_returns_exact_main_receipt(tmp_path: Path) -> None:
+    receipt = _receipt(tmp_path / "receipt.json", commit_sha="head", tree_hash="tree")
+    receipt.write_text(
+        json.dumps(
+            {
+                "commit_sha": "head",
+                "tree_hash": "tree",
+                "source": "github-actions-main-push",
+            }
+        )
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(LOOKUP),
+            str(tmp_path),
+            "head",
+            "tree",
+            "--source",
+            "github-actions-main-push",
+            "--exact-sha",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.strip() == str(receipt)
+
+
 def test_malformed_receipt_is_ignored(tmp_path: Path) -> None:
     (tmp_path / "z-malformed.json").write_text("not json")
     receipt = _receipt(tmp_path / "a-valid.json", commit_sha="head", tree_hash="tree")
