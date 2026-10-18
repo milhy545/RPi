@@ -853,11 +853,14 @@ class RPiDashboard(App):
         asyncio.create_task(self.update_settings_data())
 
     async def run_sys_cmd(self, cmd: str, timeout: float = 5.0) -> str:
-        """Helper to run a shell command asynchronously and return its output."""
+        """Spusti systémový příkaz asynchronně a vrátí jeho výstup."""
         import shlex
         try:
             shell_chars = set('|><&;*?$~()=\'\"\\\\')
-            use_shell = any(c in shell_chars for c in cmd) or cmd.startswith("export ") or cmd.startswith("source ")
+            stripped_cmd = cmd.lstrip()
+            use_shell = any(c in shell_chars for c in cmd) or stripped_cmd.startswith(
+                ("export ", "source ", "cd ")
+            )
 
             if use_shell:
                 proc = await asyncio.create_subprocess_shell(
@@ -866,8 +869,11 @@ class RPiDashboard(App):
                     stderr=asyncio.subprocess.PIPE
                 )
             else:
+                args = shlex.split(cmd)
+                if not args:
+                    return ""
                 proc = await asyncio.create_subprocess_exec(
-                    *shlex.split(cmd),
+                    *args,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
