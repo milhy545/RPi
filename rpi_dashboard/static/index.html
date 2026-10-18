@@ -96,10 +96,10 @@
             <h3 data-tip="sectionPlayer" style="display:none">Player help</h3>
             <div class="row">
                 <div class="url-wrap">
-                    <input id="url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()">
-                    <button class="url-paste" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button>
+                    <input id="url" data-i18n-aria-label="mediaUrl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube or direct URL..." oninput="schedulePreview()">
+                    <button class="url-paste" data-i18n-aria-label="pasteClipboard" data-i18n="pasteClipboard" data-i18n-attr="title" onclick="pasteClipboardUrl()" title="Paste clipboard" aria-label="Paste clipboard">📋</button>
                 </div>
-                <select id="qual" style="width:auto;min-width:88px">{{QUALITY_OPTIONS}}</select>
+                <select id="qual" data-i18n-aria-label="mediaQuality" style="width:auto;min-width:88px">{{QUALITY_OPTIONS}}</select>
             </div>
             <div id="player-preview"></div>
             <div class="row" style="margin-top:.3rem">
@@ -115,7 +115,7 @@
             <div style="margin-top:.4rem">
                 <div style="display:flex;align-items:center;gap:.4rem">
                     <span id="stime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
-                    <input type="range" id="sbar" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false">
+                    <input type="range" id="sbar" data-i18n-aria-label="seekPosition" min="0" max="100" value="0" step="0.1" style="flex:1;height:6px;accent-color:#58a6ff;cursor:pointer" oninput="seekTo(this.value)" ontouchstart="seeking=true" ontouchend="seeking=false">
                     <span id="dtime" style="font-size:.75rem;color:#8b949e;min-width:36px">0:00</span>
                 </div>
             </div>
@@ -135,7 +135,7 @@
             <h3 data-i18n="ytAge" data-tip="sectionAgeCookies">YouTube Age / Cookies</h3>
             <div class="media-meta" data-i18n="ytAgeDesc">Checks cookie freshness without exposing cookie values. Use this when age-restricted videos fail.</div>
             <div class="row" style="margin-top:.35rem">
-                <input id="yt-age-url" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube URL for age-check..." style="flex:1">
+                <input id="yt-age-url" data-i18n-aria-label="ageCheckUrl" data-i18n="inputUrl" data-i18n-attr="placeholder" placeholder="YouTube URL for age-check..." style="flex:1">
                 <button data-icon="🍪" data-i18n="cookieStatus" onclick="ytCookieStatus()">🍪 Cookie status</button>
                 <button data-icon="🔞" data-i18n="ageCheck" onclick="ytAgeCheck()">🔞 Age check</button>
             </div>
@@ -177,7 +177,7 @@
                 </div>
                 <div class="row" style="gap:.8rem;align-items:center;flex-wrap:wrap">
                     <div style="display:flex;align-items:center;gap:.5rem">
-                        <label style="font-size:.8rem;color:var(--app-muted);white-space:nowrap" data-i18n="masterVolume">🔊 Master</label>
+                        <label for="master-volume-slider" style="font-size:.8rem;color:var(--app-muted);white-space:nowrap" data-i18n="masterVolume">🔊 Master</label>
                         <input type="range" id="master-volume-slider" min="0" max="100" value="100" style="width:120px;accent-color:var(--app-cyan);cursor:pointer" oninput="masterVolChanged(this.value)">
                         <span id="master-volume-value" style="font-size:.75rem;min-width:32px;color:var(--app-muted)">100%</span>
                     </div>
@@ -212,7 +212,7 @@
                     <div style="font-size: 0.72rem; color: #8b949e;">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio.</div>
                 </div>
                 <div style="display:flex; gap:.4rem; align-items:center;">
-                    <label style="font-size:.72rem;color:#8b949e">Delay (ms):</label>
+                    <label for="ta-lat-dlna-offset" style="font-size:.72rem;color:#8b949e">Delay (ms):</label>
                     <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px; padding: 0.3rem; border: 1px solid #30363d; border-radius: 4px; background: #0d1117; color: var(--app-text)">
                     <button class="app-tab-btn" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)" data-icon="💾" style="padding: 0.4rem 0.8rem; border-radius: 6px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1);">Apply</button>
                 </div>
@@ -337,8 +337,8 @@
                     <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
                 </div>
                 <div class="row" style="margin-top:.35rem">
-                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
-                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <input id="wifi-ssid" data-i18n-aria-label="wifiSsidLabel" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n-aria-label="wifiPasswordLabel" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
                     <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
                 </div>
                 <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
@@ -371,8 +371,8 @@
                     <button onclick="wifiScan()">🔍 Scan Wi-Fi</button>
                 </div>
                 <div class="row" style="margin-top:.35rem">
-                    <input id="wifi-ssid" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
-                    <input id="wifi-pass" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
+                    <input id="wifi-ssid" data-i18n-aria-label="wifiSsidLabel" data-i18n="ssid" data-i18n-attr="placeholder" placeholder="SSID" style="flex:1">
+                    <input id="wifi-pass" data-i18n-aria-label="wifiPasswordLabel" data-i18n="password" data-i18n-attr="placeholder" type="password" placeholder="Password (kept in browser only)" style="flex:1">
                     <button data-i18n="connect" onclick="wifiConnect()">Connect</button>
                 </div>
                 <div id="wifi-list" class="media-meta" style="margin-top:.4rem">—</div>
@@ -422,7 +422,7 @@
                 </div>
                 <div class="row">
                     <button data-i18n="refresh" data-icon="🔄" onclick="logsRefresh()">🔄 Refresh</button>
-                    <select id="log-service" onchange="logsRefresh()" style="width:auto;min-width:180px">
+                    <select id="log-service" data-i18n-aria-label="logServiceLabel" onchange="logsRefresh()" style="width:auto;min-width:180px">
                         <option value="rpi-dashboard" data-i18n="logServiceDashboard">Dashboard</option>
                         <option value="mpv" data-i18n="logServiceMpv">MPV</option>
                         <option value="keys2mpv" data-i18n="logServiceKeys2mpv">Keys2MPV</option>
@@ -431,7 +431,7 @@
                         <option value="bluetooth" data-i18n="logServiceBluetooth">Bluetooth</option>
                         <option value="" data-i18n="logServiceAll">All (journalctl -u)</option>
                     </select>
-                    <input type="number" id="log-lines" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
+                    <input type="number" id="log-lines" data-i18n-aria-label="logLinesLabel" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
                     <button onclick="logsRefresh()" data-i18n="refresh">Refresh</button>
                 </div>
             </div>
@@ -463,19 +463,19 @@
     <!-- Login Modal -->
     <div id="login-modal" class="modal">
         <div class="modal-content" style="max-width: 350px;">
-            <button class="modal-close" onclick="closeLoginModal()">×</button>
+            <button class="modal-close" data-i18n-aria-label="closeModal" onclick="closeLoginModal()" aria-label="Close modal">×</button>
             <h3>🔒 Authentication Required</h3>
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Please authenticate to access expert features.</p>
             <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
                 <div style="margin-bottom: 0.8rem;">
-                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
+                    <label for="login-role" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
                     <select id="login-role" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem">
                         <option value="expert">Expert</option>
                         <option value="admin">Admin (Terminal)</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 1rem;">
-                    <label style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
+                    <label for="login-password" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
                     <input type="password" id="login-password" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem" required>
                 </div>
                 <button type="submit" class="btn-primary" style="width:100%; padding: 0.5rem; font-weight: bold;">Log In</button>
@@ -486,17 +486,17 @@
     <!-- Feedback Modal -->
     <div id="feedback-modal" class="modal">
         <div class="modal-content">
-            <button class="modal-close" onclick="closeFeedback()">×</button>
+            <button class="modal-close" data-i18n-aria-label="closeModal" onclick="closeFeedback()" aria-label="Close modal">×</button>
             <h3 data-i18n="feedbackTitle">💬 Submit Feedback</h3>
             <div>
-                <label data-i18n="feedbackTypeLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Type:</label>
+                <label for="feedback-type" data-i18n="feedbackTypeLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Type:</label>
                 <select id="feedback-type" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem">
                     <option value="bug" data-i18n="feedbackBug">Bug Report</option>
                     <option value="feature" data-i18n="feedbackFeature">Feature Request</option>
                 </select>
             </div>
             <div style="margin-top:.4rem">
-                <label data-i18n="feedbackDescLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Description:</label>
+                <label for="feedback-desc" data-i18n="feedbackDescLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Description:</label>
                 <textarea id="feedback-desc" data-i18n-attr="placeholder" placeholder="Please describe the issue or your feature request..." style="width:100%;height:100px;background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:.4rem;border-radius:.3rem;resize:vertical;box-sizing:border-box"></textarea>
             </div>
             <button onclick="submitFeedback()" style="width:100%;margin-top:.4rem" data-i18n="feedbackSubmit">Submit</button>
@@ -506,7 +506,7 @@
     <!-- Bluetooth Setup Wizard Modal -->
     <div id="bt-wizard-modal" class="modal">
         <div class="modal-content bt-wizard-card">
-            <button type="button" class="modal-close" onclick="btCloseWizard()">×</button>
+            <button type="button" class="modal-close" data-i18n-aria-label="closeModal" onclick="btCloseWizard()" aria-label="Close modal">×</button>
             <div class="bt-wizard-header" style="border-bottom:1px solid #30363d;padding-bottom:8px;margin-bottom:16px;">
                 <h3 style="margin:0;color:#f0f6fc;font-size:1.25rem;">🪄 Bluetooth Load-Balancing Wizard</h3>
                 <div class="bt-wizard-steps-indicator">
