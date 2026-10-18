@@ -492,8 +492,7 @@ def test_ci_agent_refuses_push_without_e2e_artifacts(tmp_path):
     with open(installer, "r") as f:
         content = f.read()
     assert "E2E_MANIFEST_DIR" in content
-    assert "EVIDENCE GATE" in content
-    assert "Playwright/E2E" in content
+    assert "No SHA-bound E2E manifest" in content
     assert "Push blocked" in content
 
 
@@ -713,43 +712,53 @@ def test_evidence_gate_blocks_malformed_manifest(tmp_path):
         assert True  # Schema validation blocks as expected
 
 
-def test_evidence_gate_blocks_github_safe_profile_skips_e2e(tmp_path):
-    """Verify github-safe profile skips E2E check but still requires RPi receipt."""
-    import json
+def test_evidence_gate_allows_github_safe_without_hardware_receipts(tmp_path):
+    """Ověř, že github-safe projde push gateway bez hardwarových receiptů."""
+    import shutil
 
-    source_sha = "11223344556677889900aabbccddeeff11223344"
+    repo = tmp_path / "repo"
+    tools_dir = repo / "tools"
+    tools_dir.mkdir(parents=True)
+    shutil.copy2(
+        os.path.join(os.path.dirname(__file__), "..", "tools", "ci-agent.sh"),
+        tools_dir / "ci-agent.sh",
+    )
+    (tools_dir / "run-ci.sh").write_text(
+        "#!/usr/bin/env bash\n"
+        "set -Eeuo pipefail\n"
+        "[[ \"${CI_PROFILE:-}\" == github-safe ]]\n"
+    )
+    (tools_dir / "run-ci.sh").chmod(0o755)
+    (repo / "README.md").write_text("gateway fixture\n")
+    subprocess.run(["git", "init", "--initial-branch=main", str(repo)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "CI Test"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "ci@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "fixture"], check=True, capture_output=True)
 
-    e2e_manifest_dir = tmp_path / "tests" / "e2e" / "results"
-    rpi_receipt_dir = tmp_path / "conductor" / "ci" / "receipts"
-    e2e_manifest_dir.mkdir(parents=True, exist_ok=True)
-    rpi_receipt_dir.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "BRANCH": "main",
+            "CI_PROFILE": "github-safe",
+            "NO_PUSH": "1",
+            "REPORT_DIR": str(tmp_path / "reports"),
+            "STATE_FILE": str(tmp_path / "gateway-state"),
+        }
+    )
+    result = subprocess.run(
+        ["bash", str(tools_dir / "ci-agent.sh")],
+        cwd=repo,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
-    # No E2E manifest for github-safe profile
-    e2e_manifest_path = e2e_manifest_dir / f"e2e-manifest-{source_sha}.json"
-    assert not e2e_manifest_path.exists()
-
-    # Create valid RPi receipt
-    receipt = {
-        "commit_sha": source_sha,
-        "tree_hash": "aabbccdd",
-        "profile": "rpi-candidate",
-        "host": "rpi",
-        "status": "done",
-        "timestamp": "2026-08-05T00:00:00+00:00"
-    }
-    rpi_receipt_path = rpi_receipt_dir / f"{source_sha}-receipt.json"
-    with open(rpi_receipt_path, "w") as f:
-        json.dump(receipt, f)
-
-    # For github-safe profile, the E2E check is skipped in ci-agent.sh:
-    # if [[ "$RESOLVED_CI_PROFILE" == "milhy-full" ]]; then ... fi
-    # So only RPi receipt is checked
-    resolved_profile = "github-safe"
-    if resolved_profile == "milhy-full":
-        assert False, "Should not check E2E for github-safe"
-    else:
-        # Only RPi receipt check applies
-        assert rpi_receipt_path.is_file()
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "No RPi candidate or remote E2E evidence is required for github-safe." in result.stdout
+    assert "Skipping git push" in result.stdout
+    assert not (repo / "conductor" / "ci" / "receipts").exists()
 
 
 def test_evidence_gate_allows_valid_exact_evidence(tmp_path):

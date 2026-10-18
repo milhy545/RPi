@@ -36,6 +36,9 @@ and does not upload artifacts.
 Local verification requires a `github-actions-main-push` receipt even when run
 from a feature branch; a pull-request receipt is accepted only inside the
 GitHub Actions `pull_request` checkout for its exact tested SHA.
+The Milhy-PC push gateway requires E2E and RPi candidate evidence for
+`milhy-full`; `github-safe` skips those hardware gates and still waits for the
+GitHub PR workflow before it reports success.
 
 ### Rule 4: Never ignore error output
 If ANY of these fail, the agent must STOP and report:

@@ -20,12 +20,11 @@ jobs:
           set -Eeuo pipefail
           git init --quiet .
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          target_ref="refs/remotes/ci/${GITHUB_RUN_ID}"
-          git fetch --no-tags --depth=2 origin "${GITHUB_REF}:${target_ref}"
+          git fetch --no-tags --depth=2 origin "$GITHUB_SHA"
           if [[ -n "$VERIFY_BASE_SHA" ]] && ! git cat-file -e "${VERIFY_BASE_SHA}^{commit}" 2>/dev/null; then
             git fetch --no-tags --depth=1 origin "$VERIFY_BASE_SHA"
           fi
-          git checkout --quiet --detach "$target_ref"
+          git checkout --quiet --detach "$GITHUB_SHA"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Run locked CI and receipt verification

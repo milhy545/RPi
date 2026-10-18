@@ -152,18 +152,18 @@ run_once() {
     return 1
   fi
 
-  # Milhy-PC gateway must use milhy-full profile (enforces full backend/lint/type/security/E2E)
-  # Resolve CI_PROFILE once to avoid unbound variable under set -u
+  # Brána Milhy-PC používá plné kontroly nebo bezpečný profil bez hardwarové brány.
+  # Vyřeš CI_PROFILE jednou, aby při set -u nevznikla neinicializovaná proměnná.
   RESOLVED_CI_PROFILE="${CI_PROFILE:-milhy-full}"
   if CI_PROFILE="$RESOLVED_CI_PROFILE" tools/run-ci.sh; then
     echo "CI passed for $source_sha under profile $RESOLVED_CI_PROFILE."
 
-    # EVIDENCE GATE: Verify schema-validated Playwright/E2E artifacts and RPi candidate evidence
+    # Hardwarový profil vyžaduje důkazy vázané na přesné SHA kandidáta.
     E2E_MANIFEST_DIR="tests/e2e/results"
     RPI_RECEIPT_DIR="conductor/ci/receipts"
 
-    # Check for SHA-bound E2E manifest (schema-validated)
     if [[ "$RESOLVED_CI_PROFILE" == "milhy-full" ]]; then
+      # Check for SHA-bound E2E manifest (schema-validated)
       E2E_MANIFEST="$E2E_MANIFEST_DIR/e2e-manifest-$source_sha.json"
       if [[ ! -f "$E2E_MANIFEST" ]]; then
         notify_fail "EVIDENCE GATE FAILED: No SHA-bound E2E manifest at $E2E_MANIFEST for SHA $source_sha. Push blocked."
@@ -175,20 +175,25 @@ run_once() {
         return 1
       fi
       echo "E2E evidence verified: $E2E_MANIFEST"
-    fi
 
-    # Check for exact-SHA RPi candidate evidence (schema-validated receipt)
-    RPI_RECEIPT="$RPI_RECEIPT_DIR/${source_sha}-receipt.json"
-    if [[ ! -f "$RPI_RECEIPT" ]]; then
-      notify_fail "EVIDENCE GATE FAILED: No exact-SHA RPi receipt at $RPI_RECEIPT for SHA $source_sha. Push blocked."
+      # Check for exact-SHA RPi candidate evidence (schema-validated receipt)
+      RPI_RECEIPT="$RPI_RECEIPT_DIR/${source_sha}-receipt.json"
+      if [[ ! -f "$RPI_RECEIPT" ]]; then
+        notify_fail "EVIDENCE GATE FAILED: No exact-SHA RPi receipt at $RPI_RECEIPT for SHA $source_sha. Push blocked."
+        return 1
+      fi
+      # Validate receipt schema: must have commit_sha, tree_hash, profile, host, status='done'
+      if ! python3 -c "import json, sys; r=json.load(open('$RPI_RECEIPT')); assert r.get('commit_sha')=='$source_sha' and r.get('status')=='done' and r.get('tree_hash') and r.get('profile') and r.get('host'); print('Receipt valid')" 2>/dev/null; then
+        notify_fail "EVIDENCE GATE FAILED: RPi receipt at $RPI_RECEIPT has invalid schema or wrong SHA/tree for $source_sha. Push blocked."
+        return 1
+      fi
+      echo "RPi candidate evidence verified: $RPI_RECEIPT"
+    elif [[ "$RESOLVED_CI_PROFILE" == "github-safe" ]]; then
+      echo "No RPi candidate or remote E2E evidence is required for github-safe."
+    else
+      notify_fail "Unsupported push-gateway CI profile: $RESOLVED_CI_PROFILE"
       return 1
     fi
-    # Validate receipt schema: must have commit_sha, tree_hash, profile, host, status='done'
-    if ! python3 -c "import json, sys; r=json.load(open('$RPI_RECEIPT')); assert r.get('commit_sha')=='$source_sha' and r.get('status')=='done' and r.get('tree_hash') and r.get('profile') and r.get('host'); print('Receipt valid')" 2>/dev/null; then
-      notify_fail "EVIDENCE GATE FAILED: RPi receipt at $RPI_RECEIPT has invalid schema or wrong SHA/tree for $source_sha. Push blocked."
-      return 1
-    fi
-    echo "RPi candidate evidence verified: $RPI_RECEIPT"
 
     NO_PUSH="${NO_PUSH:-0}"
     if [[ "$NO_PUSH" == "1" || "$NO_PUSH" == "true" ]]; then
