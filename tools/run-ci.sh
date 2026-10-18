@@ -145,9 +145,9 @@ case "$PROFILE" in
 
     # Run focused RPi-safe tests (bounded, no browser/heavy suite)
     if [[ -f "$HOME/.local/bin/uv" ]]; then
-      run_step "Run focused RPi safe CI tests" "$HOME/.local/bin/uv" run --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
+      run_step "Run focused RPi safe CI tests" "$HOME/.local/bin/uv" run --locked --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
     elif command -v uv >/dev/null 2>&1; then
-      run_step "Run focused RPi safe CI tests" uv run --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
+      run_step "Run focused RPi safe CI tests" uv run --locked --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
     elif [[ -x .venv/bin/pytest ]]; then
       run_step "Run focused RPi safe CI tests" .venv/bin/pytest tests/test_rpi_safe_ci_pipeline.py -q
     else
@@ -163,8 +163,25 @@ case "$PROFILE" in
     if [[ "${EXTENDED_CI:-1}" == "1" ]]; then
       optional_step shellcheck "ShellCheck shell scripts" bash -lc 'shopt -s nullglob; shellcheck *.sh provisioning/*.sh tools/*.sh'
       optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source . -c .gitleaks.toml
-      _BANDIT="${BANDIT_CMD:-$(ls .venv/bin/bandit 2>/dev/null || command -v bandit 2>/dev/null || true)}"
-      _PIP_AUDIT="${PIP_AUDIT_CMD:-$(ls .venv/bin/pip-audit 2>/dev/null || command -v pip-audit 2>/dev/null || true)}"
+
+      # Bezpečnostní audit musí běžet ve virtuálním prostředí projektu, ne nad globálními balíky hostu.
+      _UV="${UV_CMD:-}"
+      if [[ -z "$_UV" && -x "$HOME/.local/bin/uv" ]]; then
+        _UV="$HOME/.local/bin/uv"
+      elif [[ -z "$_UV" ]]; then
+        _UV="$(command -v uv || true)"
+      fi
+      if [[ -n "$_UV" ]]; then
+        run_step "Sync locked project development dependencies" "$_UV" sync --locked --extra dev
+      elif [[ ! -x .venv/bin/python ]]; then
+        append "## Sync locked project development dependencies"
+        append "SKIP: uv and the project virtual environment are unavailable."
+        append ""
+        log "SKIP: project dependency sync (uv and .venv missing)"
+      fi
+
+      _BANDIT="${BANDIT_CMD:-$(ls .venv/bin/bandit 2>/dev/null || true)}"
+      _PIP_AUDIT="${PIP_AUDIT_CMD:-$(ls .venv/bin/pip-audit 2>/dev/null || true)}"
 
       if [[ -n "$_BANDIT" && -x "$_BANDIT" ]]; then
         run_step "Bandit Python security scan (high severity gate)" "$_BANDIT" -q -lll -r . -x ./.venv,./__pycache__,./tests
@@ -184,53 +201,27 @@ case "$PROFILE" in
     fi
 
     # Code quality gates: Ruff & Mypy
-    _RUFF="$(command -v ruff || ls .venv/bin/ruff 2>/dev/null || true)"
+    _RUFF="$(ls .venv/bin/ruff 2>/dev/null || true)"
     if [[ -n "$_RUFF" && -x "$_RUFF" ]]; then
       run_step "Ruff linter check" "$_RUFF" check .
     fi
 
-    _MYPY="$(command -v mypy || ls .venv/bin/mypy 2>/dev/null || true)"
+    _MYPY="$(ls .venv/bin/mypy 2>/dev/null || true)"
     if [[ -n "$_MYPY" && -x "$_MYPY" ]]; then
       run_step "Mypy type checker" "$_MYPY" --explicit-package-bases .
     fi
 
     # Full pytest suite execution on Milhy-PC
     if [[ -f "$HOME/.local/bin/uv" ]]; then
-      run_step "Run full pytest suite" "$HOME/.local/bin/uv" run --extra dev pytest -q
+      run_step "Run full pytest suite" "$HOME/.local/bin/uv" run --locked --extra dev pytest -q
     elif command -v uv >/dev/null 2>&1; then
-      run_step "Run full pytest suite" uv run --extra dev pytest -q
+      run_step "Run full pytest suite" uv run --locked --extra dev pytest -q
     elif [[ -x .venv/bin/pytest ]]; then
       run_step "Run full pytest suite" .venv/bin/pytest -q
     elif command -v pytest >/dev/null 2>&1; then
       run_step "Run full pytest suite" pytest -q
     else
       run_step "Run full pytest suite" python3 -m pytest -q
-    fi
-
-    # Emit milhy-full receipt if all tests pass
-    if [[ $FAILURES -eq 0 ]]; then
-      CURRENT_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-      CURRENT_TREE="$(git write-tree 2>/dev/null || echo unknown)"
-      RECEIPT_DIR="conductor/ci/receipts"
-      RECEIPT_FILE="$RECEIPT_DIR/${CURRENT_SHA}-receipt.json"
-      mkdir -p "$RECEIPT_DIR"
-      python3 -c "
-import json, datetime
-receipt = {
-  'commit_sha': '$CURRENT_SHA',
-  'tree_hash': '$CURRENT_TREE',
-  'profile': 'milhy-full',
-  'host': '$(hostname)',
-  'status': 'done',
-  'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-  'ci_report': '$REPORT',
-  'actions_url': '',
-  'evidence': {'e2e': 'pending', 'rpi_gate': {'status': 'N/A'}}
-}
-with open('$RECEIPT_FILE', 'w') as f:
-  json.dump(receipt, f, indent=2)
-print('Emitted milhy-full receipt: $RECEIPT_FILE')
-" 2>/dev/null || echo "WARN: Failed to emit receipt"
     fi
 
     # Remote Playwright E2E on Milhy-PC (required for milhy-full profile)

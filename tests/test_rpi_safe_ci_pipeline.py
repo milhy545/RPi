@@ -931,22 +931,34 @@ def test_run_ci_fails_milhy_full_without_playwright():
     assert "Required for milhy-full profile" in content
 
 
-def test_run_ci_emits_sha_bound_receipts():
-    """Verify run-ci.sh emits SHA-bound receipts for milhy-full and rpi-candidate."""
+def test_run_ci_emits_only_rpi_candidate_evidence_receipts():
+    """Local full CI must not mint completion receipts before GitHub validation."""
     run_ci_script = os.path.join(os.path.dirname(__file__), "..", "tools", "run-ci.sh")
     with open(run_ci_script, "r") as f:
         content = f.read()
 
-    # Verify receipt emission for milhy-full
-    assert "Emitted milhy-full receipt" in content
+    # Completion receipts are created by GitHub Actions after exact-main CI.
+    full_ci = content.split("milhy-full|github-safe)", 1)[1].split("rpi-candidate)", 1)[0]
+    assert "Emitted milhy-full receipt" not in full_ci
+    assert "RECEIPT_FILE" not in full_ci
+
+    # RPi candidate receipts are separate hardware-gate evidence.
     assert "commit_sha" in content
     assert "tree_hash" in content
-    # Check for profile field in the receipt (it's in the python3 -c string)
-    assert "'profile': 'milhy-full'" in content or '"profile": "milhy-full"' in content
-
-    # Verify receipt emission for rpi-candidate
     assert "Emitted RPi candidate receipt" in content
     assert "'profile': 'rpi-candidate'" in content or '"profile": "rpi-candidate"' in content
+
+
+def test_run_ci_audits_locked_project_environment_not_host_packages():
+    """Security audits must inspect the locked project venv, not global site-packages."""
+    run_ci_script = os.path.join(os.path.dirname(__file__), "..", "tools", "run-ci.sh")
+    with open(run_ci_script, "r") as f:
+        content = f.read()
+
+    assert 'sync --locked --extra dev' in content
+    assert 'ls .venv/bin/pip-audit' in content
+    assert 'command -v pip-audit' not in content
+    assert content.index('sync --locked --extra dev') < content.index('pip-audit dependency scan')
 
 
 def test_run_ci_emits_e2e_manifest_on_success():

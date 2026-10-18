@@ -12,19 +12,23 @@ tools/verify-done.sh
 ```
 
 ### Rule 2: Never commit without CI passing
-`tools/finish-track.sh` enforces this automatically:
-- CI runs BEFORE commit is created
-- If CI fails, no commit is made
-- The agent must not bypass this by running `git commit` directly
+`tools/finish-track.sh` enforces the local commit gate:
+- It retains a safety snapshot and runs the selected CI profile before staging a commit.
+- If CI fails or runtime artifacts are staged, no commit is made.
+- It creates a new commit; it never amends the current commit.
+- The agent must not bypass this by running `git commit` directly.
+- It does not push or create a completion receipt. Push and merge remain on the Milhy-PC gateway, and exact-main completion evidence comes from GitHub Actions.
 
 ### Rule 3: Never skip the receipt
-An atomic receipt is written ONLY on full pipeline success:
+An atomic completion receipt is written ONLY by successful GitHub Actions CI for the exact `main` push:
 ```
-conductor/ci/receipts/{sha}-{timestamp}.json
+conductor/ci/receipts/{sha}-{timestamp}-github-main.json
 ```
 No receipt for the exact commit SHA or identical Git tree = pipeline incomplete
 = agent must not claim done. The tree identity fallback exists only because
-GitHub rebase can rewrite commit metadata after the receipt is issued.
+GitHub rebase can rewrite commit metadata after the receipt is issued. An RPi
+candidate receipt is hardware-gate evidence only and does not complete this
+requirement.
 If the base branch advanced and changed the tree, `verify-done.sh` may import a
 new receipt only from a successful GitHub Actions `push` run for the exact
 `main` HEAD SHA and the repository `ci.yml` workflow.
@@ -35,6 +39,7 @@ If ANY of these fail, the agent must STOP and report:
 - `git commit` fails
 - `rsync` to Milhy-PC fails
 - Milhy-PC CI agent fails
+- required GitHub Actions PR or main check fails
 - `tools/verify-done.sh` exit code != 0
 
 ### Rule 5: Never commit runtime artifacts
@@ -59,7 +64,7 @@ If something goes wrong, this stash can be restored.
 - `rpi-focused`: RPi unit/syntax checks (no full pytest or browser runs).
 - `milhy-full`: Milhy-PC full pytest, Ruff, mypy, security tools, and remote browser E2E.
 - `rpi-candidate`: Non-mutating hardware smoke on staged SHA candidate on RPi.
-- `github-safe`: Gateway verification prior to Milhy-PC push to GitHub.
+- `github-safe`: Full local static and unit checks for changes validated by GitHub Actions that do not need hardware or remote-browser evidence.
 
 ### Rule 9: Non-disruptive RPi hardware guard
 - Exact process matching for `mpv`, `steamlink`, `moonlight`, TUI mode (excludes substring scripts like `keys2mpv.py`).
@@ -75,17 +80,20 @@ If something goes wrong, this stash can be restored.
 ## VERIFICATION WORKFLOW
 
 ```
-Agent completes work
+Agent completes work on a candidate branch
   ↓
 tools/finish-track.sh "message"
   ↓
   ├── stash snapshot created
-  ├── CI runs (must PASS)
-  ├── commit created
-  ├── rsync to Milhy-PC
-  ├── Milhy-PC CI runs
-  ├── Milhy-PC pushes to GitHub
-  └── atomic receipt written
+  ├── selected local CI runs (must PASS)
+  ├── runtime artifact gate
+  └── new commit created (no amend, push, or completion receipt)
+  ↓
+Milhy-PC gateway pushes the candidate branch after required candidate evidence
+  ↓
+GitHub PR checks and review pass; maintainer merges through branch protection
+  ↓
+GitHub Actions push CI for exact main SHA creates receipt/report artifacts
   ↓
 tools/verify-done.sh
   ↓
@@ -106,12 +114,12 @@ EXIT 1 = agent MUST NOT say "done"
 
 | What fails | Receipt created? | Agent action |
 |---|---|---|
-| CI fails | NO | Fix CI, retry |
-| git commit fails | NO | Check staged files, retry |
-| rsync fails | NO | Check network, retry |
-| Milhy-PC CI fails | NO | Check Milhy-PC, fix, retry |
-| verify-done.sh fails | NO | Check which check failed, fix |
-| Everything passes | YES | Agent may say "done" |
+| Local CI or artifact gate fails | NO | Fix the change and retry; preserve the safety snapshot. |
+| git commit fails | NO | Check staged files and preserve the working tree. |
+| RPi candidate evidence or remote E2E fails | NO push | Report the exact gate; do not push the candidate. |
+| GitHub PR check or review fails | NO merge | Resolve the finding and wait for checks to rerun. |
+| Exact-main CI or receipt validation fails | NO completion | Inspect the exact SHA and Actions artifact; repair or rerun CI. |
+| Everything passes and `verify-done.sh` exits 0 | YES | Agent may claim completion. |
 
 ## ANTI-LIABILITY CLAUSE
 

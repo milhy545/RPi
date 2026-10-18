@@ -93,17 +93,31 @@ def test_ci_rpi_workflow_is_separate_and_self_hosted() -> None:
 def test_auto_merge_uses_safe_target_event_without_checkout() -> None:
     workflow = _workflow("auto-merge.yml")
     event = workflow["on"]["pull_request_target"]
-    job = workflow["jobs"]["queue-auto-merge"]
+    jobs = workflow["jobs"]
+    queue_job = jobs["queue-auto-merge"]
+    revoke_job = jobs["revoke-auto-merge"]
 
-    assert event["types"] == ["opened", "synchronize", "reopened", "ready_for_review"]
+    assert event["types"] == [
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+        "labeled",
+        "unlabeled",
+        "converted_to_draft",
+    ]
     assert workflow["permissions"] == {
         "contents": "write",
         "pull-requests": "write",
     }
-    assert all("uses" not in step for step in job["steps"])
-    assert job["steps"][0]["run"] == (
+    assert "contains(github.event.pull_request.labels.*.name, 'merge-approved')" in queue_job["if"]
+    assert "github.event.pull_request.draft == false" in queue_job["if"]
+    assert all("uses" not in step for step in queue_job["steps"] + revoke_job["steps"])
+    assert queue_job["steps"][0]["run"] == (
         'gh pr merge "$PR_URL" --auto --rebase --delete-branch'
     )
+    assert "github.event.label.name == 'merge-approved'" in revoke_job["if"]
+    assert 'gh pr merge "$PR_URL" --disable-auto' in revoke_job["steps"][0]["run"]
 
 
 def test_ci_agent_selects_only_complete_report_for_exact_commit(tmp_path: Path) -> None:
