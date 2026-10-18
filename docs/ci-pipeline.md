@@ -28,6 +28,8 @@ Automatic rebase merging is allowed only when a maintainer applies the `merge-ap
 
 The GitHub Actions CI workflow creates an ephemeral receipt and report while it verifies each run. For completion, a successful `ci.yml` push run for the exact `main` commit is required. `tools/verify-done.sh` checks the current commit and tree, creates a local receipt and report from the matching successful `main` push run when needed, then checks the working tree and gateway state. The workflow does not upload artifacts.
 
+GitHub runners use detached checkouts. The workflow first confirms that `HEAD` equals `GITHUB_SHA`; `verify-done.sh` then skips only branch-tracking checks for that detached run and still requires a clean tree and matching receipt.
+
 Run the verifier from a clean checkout of the exact `main` commit:
 
 ```bash

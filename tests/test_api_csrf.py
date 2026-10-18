@@ -19,7 +19,7 @@ def _patch_pbkdf2(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("rpi_dashboard.auth.secrets.token_bytes", lambda size: b"\x01" * size)
 
 @pytest.fixture
-def test_server(tmp_path, monkeypatch):
+def test_server(tmp_path, monkeypatch, isolated_report_storage):
     """Start a ThreadingHTTPServer with mocked stores and provisioned expert."""
     _patch_pbkdf2(monkeypatch)
 
@@ -104,7 +104,7 @@ def test_wifi_connect_requires_csrf(test_server):
         status, body = _post(f"{test_server}/wifi/connect", session_cookie=session, csrf_token=csrf, data={"ssid": "test"})
         assert status == 200
 
-def test_basic_csrf_origin_defense(test_server):
+def test_basic_csrf_origin_defense(test_server, isolated_report_storage):
     # /report is a Basic mutating route, doesn't require session but enforces Origin defense
     req = urllib.request.Request(f"{test_server}/report", method="POST", data=json.dumps({"type": "bug", "description": "test"}).encode())
     req.add_header("Origin", "http://evil.com")
@@ -123,6 +123,7 @@ def test_basic_csrf_origin_defense(test_server):
     except urllib.error.HTTPError as e:
         status = e.code
     assert status in (200, 201)
+    assert len(list(isolated_report_storage.glob("report_*.json"))) == 1
 
 def _get(
     url: str,

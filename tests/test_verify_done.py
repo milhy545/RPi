@@ -91,3 +91,35 @@ def test_verify_done_accepts_matching_receipt_with_report_and_actions_url(tmp_pa
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "VERIFY-DONE: PASS" in result.stdout
+
+
+def test_verify_done_accepts_detached_checkout_with_local_receipt(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin", "https://github.com/example/repo.git"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo), "checkout", "--detach"], check=True, capture_output=True)
+
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\ndetached CI checkout\n")
+    (receipt_dir / "matching.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/1",
+            }
+        )
+    )
+
+    result = _run_verify(repo, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Detached checkout; exact ref identity was checked by the caller" in result.stdout

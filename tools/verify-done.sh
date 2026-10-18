@@ -34,9 +34,10 @@ fi
 
 # ─── Check 2: Working tree cleanliness ──────────────────────────────────────
 echo "=== Check 2: Working tree ==="
-DIRTY="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
-if [[ "$DIRTY" -gt 0 ]]; then
-  err "Working tree has $DIRTY uncommitted changes"
+DIRTY_STATUS="$(git status --short --untracked-files=all 2>/dev/null || true)"
+if [[ -n "$DIRTY_STATUS" ]]; then
+  err "Working tree has uncommitted changes:"
+  printf '%s\n' "$DIRTY_STATUS" >&2
 else
   ok "Working tree is clean"
 fi
@@ -134,6 +135,8 @@ fi
 echo "=== Check 6: GitHub remote ==="
 if ! git remote get-url origin >/dev/null 2>&1; then
   skip "No origin remote configured"
+elif [[ -z "$BRANCH" ]]; then
+  skip "Detached checkout; exact ref identity was checked by the caller"
 else
   REMOTE_PUSHED="$(git log "origin/$BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
   if [[ "$REMOTE_PUSHED" -eq 0 ]]; then

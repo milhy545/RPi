@@ -28,6 +28,8 @@ Automatické sloučení rebase je povolené pouze po přidání štítku `merge-
 
 GitHub Actions CI vytváří dočasný receipt a report během ověřování každého běhu. Pro dokončení je nutný úspěšný běh `ci.yml` po pushi přesného commitu `main`. `tools/verify-done.sh` ověří současný commit a strom, podle potřeby vytvoří lokální receipt a report z odpovídajícího úspěšného běhu push CI na `main` a zkontroluje pracovní strom i stav gateway. Workflow artefakty nenahrává.
 
+GitHub runner používá detached checkout. Workflow nejdříve ověří, že `HEAD` odpovídá `GITHUB_SHA`; `verify-done.sh` pak v tomto detached běhu přeskočí pouze kontrolu tracking větve a dál vyžaduje čistý strom i odpovídající receipt.
+
 Spusť ověření v čistém checkoutu přesného commitu `main`:
 
 ```bash
