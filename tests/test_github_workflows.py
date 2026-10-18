@@ -22,20 +22,21 @@ def test_ci_approves_pull_requests_only_after_verification() -> None:
     assert "workflow_dispatch" in workflow["on"]
 
     jobs = workflow["jobs"]
-    assert list(jobs) == ["local-sync", "verify-done"]
-    assert jobs["local-sync"]["uses"] == "./.github/workflows/ci-fast.yml"
+    assert list(jobs) == ["verify-done"]
 
     verify = jobs["verify-done"]
     assert verify["name"] == "verify-done"
-    assert verify["needs"] == "local-sync"
     assert verify["runs-on"] == "ubuntu-latest"
+    assert workflow["permissions"] == {"contents": "read"}
     assert [step["name"] for step in verify["steps"]] == [
-        "Checkout branch",
-        "Download CI receipt",
-        "Download CI report",
-        "Verify completion receipt",
+        "Checkout tested revision with Git",
+        "Run locked CI and receipt verification",
     ]
-    assert verify["steps"][-1]["run"] == "tools/verify-done.sh"
+    checkout = verify["steps"][0]["run"]
+    assert "git fetch --no-tags --depth=1 origin" in checkout
+    assert '"${GITHUB_REF}:${target_ref}"' in checkout
+    assert 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in checkout
+    assert verify["steps"][-1]["run"] == "tools/github-actions-ci.sh"
 
 
 def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
@@ -49,34 +50,35 @@ def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
     assert jobs["local-sync"]["runs-on"] == "ubuntu-latest"
 
     steps = jobs["local-sync"]["steps"]
-    assert [step["name"] for step in steps[:5]] == [
-        "Checkout",
-        "Setup Python",
-        "Create virtual environment",
-        "Install dependencies",
-        "Python compile",
+    assert [step["name"] for step in steps] == [
+        "Checkout tested revision with Git",
+        "Run locked CI and receipt verification",
     ]
-    assert steps[-2]["name"] == "Upload receipt"
-    assert steps[-1]["name"] == "Upload CI report"
+    assert steps[-1]["run"] == "tools/github-actions-ci.sh"
+    assert '"$UV_CMD" sync --locked --extra dev' in (
+        Path(__file__).parents[1] / "tools" / "github-actions-ci.sh"
+    ).read_text()
 
 
 def test_ci_fast_workflow_enforces_quality_and_security_gates() -> None:
-    workflow = _workflow("ci-fast.yml")
-    steps = workflow["jobs"]["local-sync"]["steps"]
-    commands = {step["name"]: step.get("run", "") for step in steps}
+    run_ci = (Path(__file__).parents[1] / "tools" / "run-ci.sh").read_text()
 
-    assert commands["Ruff lint"] == ".venv/bin/ruff check ."
-    assert commands["Mypy type check"] == (
-        ".venv/bin/mypy --explicit-package-bases ."
-    )
-    assert "--cov-fail-under=69" in commands["Run pytest with coverage gate"]
-    assert "--cov-report=xml" in commands["Run pytest with coverage gate"]
-    assert commands["Bandit high-severity scan"] == (
-        ".venv/bin/bandit -q -lll -r . -x ./.venv,./__pycache__,./tests"
-    )
-    assert commands["Dependency vulnerability audit"] == (
-        ".venv/bin/pip-audit --skip-editable"
-    )
+    assert 'run_step "Ruff linter check" "$_RUFF" check .' in run_ci
+    assert 'run_step "Mypy type checker" "$_MYPY" --explicit-package-bases .' in run_ci
+    assert "--locked --extra dev python -m pytest -q" in run_ci
+    assert 'run_step "Bandit Python security scan (high severity gate)"' in run_ci
+    assert 'run_step "pip-audit dependency scan"' in run_ci
+
+
+def test_workflows_do_not_use_external_actions_under_local_only_policy() -> None:
+    for workflow_path in WORKFLOWS.glob("*.yml"):
+        workflow = _workflow(workflow_path.name)
+        for job in workflow.get("jobs", {}).values():
+            if "uses" in job:
+                assert job["uses"].startswith("./"), workflow_path.name
+            for step in job.get("steps", []):
+                if "uses" in step:
+                    assert step["uses"].startswith("./"), workflow_path.name
 
 
 def test_ci_rpi_workflow_is_separate_and_self_hosted() -> None:

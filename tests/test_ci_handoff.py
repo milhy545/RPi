@@ -24,47 +24,37 @@ def _run_handoff_command(repo: Path, command: str, env: dict[str, str] | None = 
 
 
 def _prepare_repo(root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
     (root / "conductor" / "ci" / "receipts").mkdir(parents=True, exist_ok=True)
     (root / "conductor" / "ci" / "reports").mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "--initial-branch=main", str(root)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.email", "ci@example.invalid"], check=True)
+    subprocess.run(["git", "-C", str(root), "config", "user.name", "CI Test"], check=True)
+    (root / "README.md").write_text("handoff test\n")
+    subprocess.run(["git", "-C", str(root), "add", "README.md"], check=True)
+    subprocess.run(["git", "-C", str(root), "commit", "-m", "test"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(root), "remote", "add", "origin", "https://github.com/example/repo.git"],
+        check=True,
+    )
     return root
 
 
-def test_download_ci_artifacts_for_sha_copies_receipt_and_report(tmp_path: Path) -> None:
+def test_import_main_receipt_for_sha_creates_local_receipt_and_report(tmp_path: Path) -> None:
     repo = _prepare_repo(tmp_path / "repo")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    sha = "a" * 40
+    sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
 
     gh = fake_bin / "gh"
     gh.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
-  *'run list'*)
+  *'actions/runs?head_sha='*)
     cat <<'JSON'
-[{"databaseId": 123, "headSha": "__SHA__", "headBranch": "main", "event": "push", "status": "completed", "conclusion": "success"}]
+{"workflow_runs":[{"head_sha":"__SHA__","head_branch":"main","event":"push","status":"completed","conclusion":"success","path":".github/workflows/ci.yml","html_url":"https://github.com/example/repo/actions/runs/123"}]}
 JSON
-    ;;
-  *'run download'*)
-    dest=""
-    while [[ $# -gt 0 ]]; do
-      case "$1" in
-        -D)
-          dest="$2"
-          shift 2
-          ;;
-        *)
-          shift
-          ;;
-      esac
-    done
-    mkdir -p "$dest/ci-receipt" "$dest/ci-report-ubuntu"
-    cat > "$dest/ci-receipt/__SHA__-github-main.json" <<'JSON'
-{"status":"done","commit_sha":"__SHA__","tree_hash":"tree","ci_report":"report.md","actions_url":"https://example.invalid"}
-JSON
-    cat > "$dest/ci-report-ubuntu/__SHA__-github-main.md" <<'MD'
-PASS
-MD
     ;;
   *)
     echo "unexpected gh call: $*" >&2
@@ -77,19 +67,23 @@ esac
 
     result = _run_handoff_command(
         repo,
-        f'source "{HANDOFF_SCRIPT}" && download_ci_artifacts_for_sha "{sha}"',
-        env={"PATH": f"{fake_bin}:{os.environ['PATH']}", "ROOT": str(repo)},
+        f'source "{HANDOFF_SCRIPT}" && import_main_receipt_for_sha "{sha}"',
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "ROOT": str(repo),
+            "IMPORT_MAIN_RECEIPT_SCRIPT": str(PROJECT_ROOT / "tools" / "import_main_receipt.py"),
+        },
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Downloaded CI artifacts for" in result.stdout
+    assert "Imported local CI receipt for exact main commit" in result.stdout
     receipt = next((repo / "conductor" / "ci" / "receipts").glob(f"{sha}-*.json"))
-    report = next((repo / "conductor" / "ci" / "reports").glob(f"{sha}-*.md"))
-    assert receipt.read_text().startswith('{"status":"done"')
-    assert report.read_text().strip() == "PASS"
+    report = next((repo / "conductor" / "ci" / "reports").glob(f"{sha[:7]}-*.md"))
+    assert '"source": "github-actions-main-push"' in receipt.read_text()
+    assert report.read_text().startswith("PASS: GitHub Actions push CI")
 
 
-def test_download_ci_artifacts_for_sha_skips_when_already_synced(tmp_path: Path) -> None:
+def test_import_main_receipt_for_sha_skips_when_already_present(tmp_path: Path) -> None:
     repo = _prepare_repo(tmp_path / "repo")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -102,7 +96,7 @@ def test_download_ci_artifacts_for_sha_skips_when_already_synced(tmp_path: Path)
     gh.write_text(
         """#!/usr/bin/env bash
 set -euo pipefail
-echo 'gh should not be called when artifacts already exist' >&2
+echo 'gh should not be called when receipt and report already exist' >&2
 exit 1
 """
     )
@@ -110,9 +104,16 @@ exit 1
 
     result = _run_handoff_command(
         repo,
-        f'source "{HANDOFF_SCRIPT}" && download_ci_artifacts_for_sha "{sha}"',
+        f'source "{HANDOFF_SCRIPT}" && import_main_receipt_for_sha "{sha}"',
         env={"PATH": f"{fake_bin}:{os.environ['PATH']}", "ROOT": str(repo)},
     )
 
     assert result.returncode == 0, result.stderr
     assert "already present locally" in result.stdout
+
+
+def test_handoff_protects_local_receipts_and_reports_from_rsync_delete() -> None:
+    script = HANDOFF_SCRIPT.read_text()
+
+    assert "--exclude 'conductor/ci/reports/'" in script
+    assert "--exclude 'conductor/ci/receipts/'" in script

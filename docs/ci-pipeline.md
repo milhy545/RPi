@@ -18,13 +18,15 @@ If CI fails, no commit is created. The worktree and safety snapshot remain avail
 
 ## 3. Validate and Merge a Pull Request
 
-Push feature branches only from Milhy-PC. For changes that affect runtime behaviour, complete the staged-RPi hardware guard and remote E2E evidence required by the execution profile before the gateway push. Open or update a pull request and wait for the required `local-sync / Local Sync (Ubuntu)`, `verify-done`, and review checks. Merge one reviewed PR at a time using the repository's rebase policy.
+Push feature branches only from Milhy-PC. For changes that affect runtime behaviour, complete the staged-RPi hardware guard and remote E2E evidence required by the execution profile before the gateway push. Open or update a pull request and wait for the required `verify-done` and review checks. Merge one reviewed PR at a time using the repository's rebase policy.
+
+The repository Actions policy allows local workflows only. CI fetches the tested ref with Git and runs repository scripts directly; it must not use marketplace actions.
 
 Automatic rebase merging is allowed only when a maintainer applies the `merge-approved` label. Removing that label or converting the pull request to a draft revokes a queued auto-merge request.
 
 ## 4. Exact-SHA Completion Receipt
 
-The GitHub Actions CI workflow creates the authoritative receipt and report artifacts. A successful push CI run for the exact `main` commit is required for completion. `tools/verify-done.sh` checks the current commit and tree, imports the matching successful `main` push artifact when needed, validates the receipt and report, and checks the working tree and gateway state.
+The GitHub Actions CI workflow creates an ephemeral receipt and report while it verifies each run. For completion, a successful `ci.yml` push run for the exact `main` commit is required. `tools/verify-done.sh` checks the current commit and tree, creates a local receipt and report from the matching successful `main` push run when needed, then checks the working tree and gateway state. The workflow does not upload artifacts.
 
 Run the verifier from a clean checkout of the exact `main` commit:
 
@@ -50,16 +52,16 @@ An absent or invalid receipt is a failure. A local commit or a green pull-reques
 | Runtime artifact is staged | Not created | No | Remove it from the proposed commit without deleting user data. |
 | RPi guard or remote E2E fails | May exist on a feature branch | No gateway push or merge | Preserve the candidate and report the exact failing evidence gate. |
 | Required GitHub check or review fails | May exist on a feature branch | No merge | Resolve the finding and wait for new checks. |
-| Exact-main receipt is missing or invalid | Existing main commit remains | No completion claim | Inspect the exact Actions run and artifact; rerun or import only a successful exact-SHA main push. |
+| Exact-main receipt is missing or invalid | Existing main commit remains | No completion claim | Inspect the exact Actions run; rerun or import only a successful exact-SHA main push. |
 
 ## 7. File Reference
 
 - `tools/finish-track.sh` — safety snapshot, local CI gate, artifact check, and non-amending commit.
 - `tools/run-ci.sh` — profile-specific local validation.
 - `tools/ci-agent.sh` — Milhy-PC gateway checks and evidence-gated push.
-- `tools/trigger-ci-handoff.sh` — RPi-to-Milhy-PC handoff and exact-main artifact retrieval.
+- `tools/trigger-ci-handoff.sh` — RPi-to-Milhy-PC handoff and exact-main receipt import.
 - `tools/verify-done.sh` — mandatory exact-receipt and worktree check.
-- `tools/receipt_lookup.py` and `tools/import_main_receipt.py` — receipt matching and exact-main artifact import.
+- `tools/receipt_lookup.py` and `tools/import_main_receipt.py` — receipt matching and exact-main run import.
 - `.github/workflows/ci.yml` — pull-request and main-branch CI.
 - `.github/workflows/auto-merge.yml` — explicit `merge-approved` auto-merge gate.
 - `conductor/ci/SAFETY-RULES.md` — binding execution and evidence rules.

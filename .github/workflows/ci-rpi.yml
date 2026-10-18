@@ -77,12 +77,17 @@ jobs:
         run: |
           free -h
 
-      - name: Upload RPi logs
+      - name: Summarise RPi log paths
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rpi-hardware-logs
-          path: /home/milhy777/rpi-dashboard/conductor/ci/reports/*.md
+        run: |
+          shopt -s nullglob
+          reports=(/home/milhy777/rpi-dashboard/conductor/ci/reports/*.md)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "No RPi CI reports were created." >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'RPi CI reports on the runner:\n' >> "$GITHUB_STEP_SUMMARY"
+            printf -- '- `%s`\n' "${reports[@]}" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   verify:
     name: Verify Done (RPi)
@@ -99,12 +104,17 @@ jobs:
           git pull origin main
           ./tools/verify-done.sh
 
-      - name: Upload final receipt
+      - name: Summarise final receipt paths
         if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: final-receipt
-          path: conductor/ci/receipts/*.json
+        run: |
+          shopt -s nullglob
+          receipts=(/home/milhy777/rpi-dashboard/conductor/ci/receipts/*.json)
+          if [ "${#receipts[@]}" -eq 0 ]; then
+            echo "No final receipts were found on the runner." >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf 'Final receipts on the runner:\n' >> "$GITHUB_STEP_SUMMARY"
+            printf -- '- `%s`\n' "${receipts[@]}" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   status:
     name: Pipeline Status

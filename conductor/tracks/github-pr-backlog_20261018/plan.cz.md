@@ -7,6 +7,7 @@
 - [x] Přidat podmínku štítku `merge-approved`, cestu pro zrušení po odebrání štítku a cílené testy workflow.
 - [ ] Workflow znovu zapnout až po nasazení nové verze na `main`.
 - [x] Opravit bránu commitů a receiptů: zakázat amend commity, odmítat runtime artefakty a jasně selhat při chybějícím receipt.
+- [x] Přizpůsobit GitHub CI politice lokálních Actions přes přímý Git fetch a lokální skripty; zachovat povinný check `verify-done` a importovat receipt přesných main commitů z metadat úspěšného běhu.
 
 ## Fáze 2 — Zaznamenat a roztřídit frontu
 
@@ -67,3 +68,4 @@
 - 2026-10-18: Implementována brána auto-merge s explicitním štítkem a zahájena oprava lokálního kontraktu commitů/receiptů; testy a CI ještě čekají.
 - 2026-10-18: Přidány regresní testy helperu commitů, chybějícího/platného receipt a schválení/zrušení workflow; 21 cílených testů, ShellCheck, shell syntax i parsování YAML prochází. Plné lokální CI ještě čeká.
 - 2026-10-18: První plný běh odhalil, že `pip-audit` kontroloval globální balíky hostu. CI nyní před auditem synchronizuje zamčené prostředí projektu. V locku bylo 6 nálezů v balících `multidict 6.7.1`, `pip 26.1.2` a `urllib3 2.7.0`; aktualizováno na `6.9.1`, `26.2.1` a `2.8.0`. `pip-audit` v prostředí projektu nyní hlásí nula známých zranitelností. Opraveny dva testy závislé na Bluetooth adaptéru hostitele a test receipt kontraktu. Plná CI se opakuje.
+- 2026-10-18: GitHub API potvrzuje, že repozitář povoluje pouze lokální workflow/akce; dosavadní CI volalo zakázané marketplace akce a končilo před vytvořením jobů. Tyto kroky nahrazeny přímým stažením Git refu a lokálním CI skriptem, povinný check `verify-done` zůstal zachován. Odstraněna závislost na artifact akcích, handoff nově importuje receipt z úspěšného běhu pro přesný `main` commit a chrání lokální adresáře receiptů/reportů před mazáním při synchronizaci.

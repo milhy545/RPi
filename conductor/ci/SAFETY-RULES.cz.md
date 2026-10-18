@@ -31,7 +31,7 @@ conductor/ci/receipts/{sha}-{timestamp}-github-main.json
 
 Bez receipt pro přesné SHA nebo totožný Git strom je pipeline nedokončená a agent nesmí tvrdit, že je hotovo. Shoda podle stromu je povolena proto, že GitHub rebase může změnit metadata commitu. Receipt z kontroly RPi kandidáta je pouze důkaz hardwarové brány a nenahrazuje completion receipt.
 
-Pokud se změnil základní commit a tím i strom, `verify-done.sh` může importovat receipt pouze z úspěšného GitHub Actions běhu workflow `ci.yml` typu push pro přesné SHA větve `main`.
+Pokud se změnil základní commit a tím i strom, `verify-done.sh` může vytvořit nový lokální receipt pouze z úspěšného GitHub Actions běhu workflow `ci.yml` typu push pro přesné SHA větve `main`. Workflow používá pouze lokální kroky a nenahrává artefakty.
 
 ### Pravidlo 4: Nikdy neignorovat chyby
 
