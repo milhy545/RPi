@@ -84,15 +84,11 @@ def test_get_audio_state_not_rate_limited(monkeypatch):
 
 # ── POST tests ─────────────────────────────────────────────────────
 
-def test_post_rate_limited(monkeypatch):
+def test_post_rate_limited(isolated_report_storage):
     """Second rapid POST /report within the rate window returns 429."""
-    def fake_save_report(report: dict, client_ip: str) -> str:
-        """Matches real _save_report(report, client_ip) signature."""
-        return "fake_report.json"
-    monkeypatch.setattr(webserver, "_save_report", fake_save_report)
-
     payload = {"type": "bug", "description": "rate‑limit test"}
     s1 = post("/report", payload)
     s2 = post("/report", payload)
     assert s1 == 201, f"First POST failed with {s1}"
     assert s2 == 429, f"Second POST not rate‑limited, got {s2}"
+    assert len(list(isolated_report_storage.glob("report_*.json"))) == 1
