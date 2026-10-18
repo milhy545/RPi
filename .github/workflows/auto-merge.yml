@@ -2,7 +2,7 @@ name: Queue PR Auto-Merge
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled, converted_to_draft]
 
 permissions:
   contents: write
@@ -13,11 +13,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  queue-auto-merge:
-    if: github.event.pull_request.draft == false
+  revoke-auto-merge:
+    if: >-
+      github.event.action == 'converted_to_draft' ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'merge-approved')
     runs-on: ubuntu-latest
     steps:
-      - name: Enable rebase auto-merge
+      - name: Revoke auto-merge when approval is removed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          enabled="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [[ "$enabled" == "true" ]]; then
+            gh pr merge "$PR_URL" --disable-auto
+          else
+            echo "No active auto-merge request to revoke."
+          fi
+
+  queue-auto-merge:
+    if: >-
+      github.event.action != 'unlabeled' &&
+      github.event.action != 'converted_to_draft' &&
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'merge-approved')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Queue rebase auto-merge after explicit approval
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}

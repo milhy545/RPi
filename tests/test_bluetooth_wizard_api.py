@@ -6,6 +6,7 @@ from rpi_dashboard.services.bluetooth import (
     reset_all_devices,
     set_phone_role,
 )
+from rpi_dashboard.services.bluetooth import capabilities
 from rpi_dashboard.services.bluetooth.capabilities import (
     detect_adapter_bus_type,
     recommend_adapter_topology,
@@ -17,8 +18,16 @@ from rpi_dashboard.api.handlers import (
 )
 
 
-def test_detect_adapter_bus_type_conventions():
+def test_detect_adapter_bus_type_conventions(monkeypatch):
     """USB vs UART bus type detection should handle path and index conventions correctly."""
+    class MissingSysfsPath:
+        def __init__(self, _path):
+            pass
+
+        def exists(self):
+            return False
+
+    monkeypatch.setattr(capabilities, "Path", MissingSysfsPath)
     assert detect_adapter_bus_type(1, "/org/bluez/hci1") == "usb"
     assert detect_adapter_bus_type(0, "/org/bluez/hci0") == "uart"
     assert detect_adapter_bus_type(None, "/org/bluez/hci_usb1") == "usb"

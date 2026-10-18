@@ -1,4 +1,7 @@
-from rpi_dashboard.services.bluetooth.capabilities import recommend_adapter_topology, detect_adapter_bus_type
+from rpi_dashboard.services.bluetooth.capabilities import (
+    detect_adapter_bus_type,
+    recommend_adapter_topology,
+)
 
 def test_detect_adapter_bus_type_path_fallback():
     assert detect_adapter_bus_type(None, "/org/bluez/hci0") == "uart"
@@ -8,8 +11,18 @@ def test_detect_adapter_bus_type_path_fallback():
 
 def test_recommend_adapter_topology():
     adapters = [
-        {"id": "adapter-0", "index": 0, "bluez_path": "/org/bluez/hci0"},
-        {"id": "adapter-1", "index": 1, "bluez_path": "/org/bluez/hci1"},
+        {
+            "id": "adapter-0",
+            "index": 0,
+            "bluez_path": "/org/bluez/hci0",
+            "hardware": {"bus_type": "uart"},
+        },
+        {
+            "id": "adapter-1",
+            "index": 1,
+            "bluez_path": "/org/bluez/hci1",
+            "hardware": {"bus_type": "usb"},
+        },
     ]
     rec = recommend_adapter_topology(adapters)
     assert rec["ok"] is True

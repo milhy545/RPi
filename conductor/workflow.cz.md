@@ -31,4 +31,4 @@
 
 - **Větve**: `main` (stabilní/produkční), `feat/*` nebo `fix/*` vývojové větve.
 - **Formát commitů**: Conventional Commits (`type(scope): message`).
-- **Bezpečnostní brány**: `tools/finish-track.sh` vytvoří zálohu `pre-finish-track-{timestamp}`, spustí CI, commitne, synchronizuje zrcadlo a vygeneruje receipt. `tools/verify-done.sh` ověří receipt a přesnou SHA vazbu před tvrzením o dokončení.
+- **Bezpečnostní brány**: `tools/finish-track.sh` zachová snapshot `pre-finish-track-{timestamp}`, spustí vybraný lokální CI profil, odmítne runtime artefakty a vytvoří nový commit až po úspěchu CI. Nikdy neupravuje současný commit, nepushuje ani nevytváří completion receipt. Autoritativní receipt pro přesný `main` vytváří GitHub Actions a `tools/verify-done.sh` jej ověří před tvrzením o dokončení.

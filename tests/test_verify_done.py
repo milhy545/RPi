@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+
+
+SOURCE_ROOT = Path(__file__).parents[1]
+
+
+def _verified_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "--initial-branch", "feature/receipt-check", str(repo)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    for key, value in (("user.name", "CI Test"), ("user.email", "ci@example.invalid")):
+        subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
+    tools = repo / "tools"
+    tools.mkdir()
+    for name in ("verify-done.sh", "receipt_lookup.py", "import_main_receipt.py"):
+        shutil.copy2(SOURCE_ROOT / "tools" / name, tools / name)
+    (repo / "source.txt").write_text("verified\n")
+    subprocess.run(["git", "-C", str(repo), "add", "source.txt", "tools"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-m", "fixture"], check=True)
+    sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    tree = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True).strip()
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_ssh = fake_bin / "ssh"
+    fake_ssh.write_text("#!/usr/bin/env sh\nexit 255\n")
+    fake_ssh.chmod(0o755)
+    return repo, sha, tree
+
+
+def _run_verify(repo: Path, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "RECEIPT_DIR": str(tmp_path / "receipts"),
+            "REPORT_DIR": str(tmp_path / "reports"),
+            "MILHY_PC_HOST": "unreachable-test-host",
+            "PATH": f"{tmp_path / 'bin'}{os.pathsep}{env['PATH']}",
+        }
+    )
+    return subprocess.run(
+        ["bash", str(repo / "tools" / "verify-done.sh")],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_verify_done_fails_explicitly_when_receipt_is_missing(tmp_path: Path) -> None:
+    repo, _, _ = _verified_repo(tmp_path)
+
+    result = _run_verify(repo, tmp_path)
+
+    assert result.returncode == 1
+    assert "No receipt found for HEAD=" in result.stderr
+
+
+def test_verify_done_accepts_matching_receipt_with_report_and_actions_url(tmp_path: Path) -> None:
+    repo, sha, tree = _verified_repo(tmp_path)
+    receipt_dir = tmp_path / "receipts"
+    report_dir = tmp_path / "reports"
+    receipt_dir.mkdir()
+    report_dir.mkdir()
+    report = report_dir / "pass.md"
+    report.write_text("PASS\nexact commit verification\n")
+    (receipt_dir / "matching.json").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "commit_sha": sha,
+                "tree_hash": tree,
+                "ci_report": str(report),
+                "actions_url": "https://github.com/example/repo/actions/runs/1",
+            }
+        )
+    )
+
+    result = _run_verify(repo, tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "VERIFY-DONE: PASS" in result.stdout

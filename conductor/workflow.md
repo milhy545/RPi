@@ -31,4 +31,4 @@
 
 - **Branches**: `main` (stable/deployable), `feat/*` or `fix/*` feature branches.
 - **Commit Format**: Conventional Commits (`type(scope): message`).
-- **Safety Gates**: `tools/finish-track.sh` creates safety snapshot `pre-finish-track-{timestamp}`, runs CI, commits, syncs mirror, and generates atomic receipt. `tools/verify-done.sh` verifies receipt and exact SHA binding before any completion claim.
+- **Safety Gates**: `tools/finish-track.sh` retains a `pre-finish-track-{timestamp}` snapshot, runs the selected local CI profile, rejects runtime artifacts, and creates a new commit only after CI passes. It never amends, pushes, or writes a completion receipt. GitHub Actions creates the authoritative exact-main receipt; `tools/verify-done.sh` validates it before any completion claim.
