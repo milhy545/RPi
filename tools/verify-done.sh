@@ -34,12 +34,15 @@ fi
 
 # ─── Check 2: Working tree cleanliness ──────────────────────────────────────
 echo "=== Check 2: Working tree ==="
-DIRTY_STATUS="$(git status --short --untracked-files=all 2>/dev/null || true)"
-if [[ -n "$DIRTY_STATUS" ]]; then
-  err "Working tree has uncommitted changes:"
-  printf '%s\n' "$DIRTY_STATUS" >&2
+if DIRTY_STATUS="$(git status --short --untracked-files=all 2>/dev/null)"; then
+  if [[ -n "$DIRTY_STATUS" ]]; then
+    err "Working tree has uncommitted changes:"
+    printf '%s\n' "$DIRTY_STATUS" >&2
+  else
+    ok "Working tree is clean"
+  fi
 else
-  ok "Working tree is clean"
+  err "Cannot determine working tree status"
 fi
 
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
@@ -149,10 +152,14 @@ fi
 
 # ─── Check 6: GitHub remote state ───────────────────────────────────────────
 echo "=== Check 6: GitHub remote ==="
-if ! git remote get-url origin >/dev/null 2>&1; then
+if [[ -z "$BRANCH" ]]; then
+  if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_SHA:-}" == "$HEAD_SHA" && -n "${GITHUB_REF:-}" ]]; then
+    skip "Detached GitHub Actions checkout matches GITHUB_SHA and GITHUB_REF"
+  else
+    err "Detached checkout is not verified by GitHub Actions; pushed state cannot be confirmed"
+  fi
+elif ! git remote get-url origin >/dev/null 2>&1; then
   skip "No origin remote configured"
-elif [[ -z "$BRANCH" ]]; then
-  skip "Detached checkout; exact ref identity was checked by the caller"
 else
   REMOTE_PUSHED="$(git log "origin/$BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
   if [[ "$REMOTE_PUSHED" -eq 0 ]]; then
@@ -165,11 +172,20 @@ fi
 # ─── Check 7: No runtime artifacts in last commit ───────────────────────────
 echo "=== Check 7: Runtime artifacts ==="
 if [[ -n "${VERIFY_BASE_SHA:-}" && "$VERIFY_BASE_SHA" != "0000000000000000000000000000000000000000" ]]; then
-  ARTIFACTS_IN_RANGE="$(git diff --name-only "$VERIFY_BASE_SHA" HEAD 2>/dev/null || true)"
+  if ! ARTIFACTS_IN_RANGE="$(git diff --name-only "$VERIFY_BASE_SHA" HEAD 2>/dev/null)"; then
+    err "Cannot inspect runtime artifacts between $VERIFY_BASE_SHA and HEAD"
+    ARTIFACTS_IN_RANGE=""
+  fi
 elif git rev-parse --verify 'HEAD^' >/dev/null 2>&1; then
-  ARTIFACTS_IN_RANGE="$(git diff --name-only HEAD^ HEAD 2>/dev/null || true)"
+  if ! ARTIFACTS_IN_RANGE="$(git diff --name-only HEAD^ HEAD 2>/dev/null)"; then
+    err "Cannot inspect runtime artifacts in the HEAD commit"
+    ARTIFACTS_IN_RANGE=""
+  fi
 else
-  ARTIFACTS_IN_RANGE="$(git diff-tree --root --no-commit-id --name-only -r HEAD 2>/dev/null || true)"
+  if ! ARTIFACTS_IN_RANGE="$(git diff-tree --root --no-commit-id --name-only -r HEAD 2>/dev/null)"; then
+    err "Cannot inspect runtime artifacts in the root commit"
+    ARTIFACTS_IN_RANGE=""
+  fi
 fi
 ARTIFACTS_IN_COMMIT="$(printf '%s\n' "$ARTIFACTS_IN_RANGE" | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
 if [[ -n "$ARTIFACTS_IN_COMMIT" ]]; then
