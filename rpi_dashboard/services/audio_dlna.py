@@ -74,17 +74,7 @@ def _stop_pa_dlna() -> None:
 
 
 def _gmrender_running() -> bool:
-    try:
-        for pid in os.listdir("/proc"):
-            if pid.isdigit():
-                try:
-                    with open(f"/proc/{pid}/cmdline", "rb") as f:
-                        cmd = b" ".join(f.read().split(b"\0")).decode(errors="ignore")
-                        if "gmediarender" in cmd:
-                            return True
-                except (IOError, OSError): pass
-    except OSError: pass
-    return False
+    return _gmrender_pid() is not None
 
 
 def _gmrender_pid() -> Optional[int]:
@@ -180,8 +170,8 @@ def audio_select_dlna_renderer(name: str, location: str, usn: str = "") -> Dict[
 
 def dlna_renderer_status() -> Dict[str, Any]:
     """Get DLNA renderer status."""
-    running = _gmrender_running()
     pid = _gmrender_pid()
+    running = pid is not None
     uptime = _gmrender_uptime(pid) if pid else None
     installed = bool(shutil.which("gmediarender"))
     pw_ok = False
