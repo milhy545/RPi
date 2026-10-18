@@ -4,7 +4,7 @@
 
 - [x] Vypnout původní bezpodmínečný auto-merge workflow.
 - [x] Vypnout všechny požadavky na auto-merge aktivní v počátečním seznamu PR.
-- [x] Přidat podmínku štítku `merge-approved`, cestu pro zrušení po odebrání štítku a cílené testy workflow.
+- [x] Přidat podmínku štítku `merge-approved`, při každé události PR znovu ověřit štítek i stav draftu a otestovat zrušení auto-merge.
 - [ ] Workflow znovu zapnout až po nasazení nové verze na `main`.
 - [x] Opravit bránu commitů a receiptů: zakázat amend commity, odmítat runtime artefakty a jasně selhat při chybějícím receipt.
 - [x] Přizpůsobit GitHub CI politice lokálních Actions přes přímý Git fetch a lokální skripty; zachovat povinný check `verify-done` a importovat receipt přesných main commitů z metadat úspěšného běhu.
@@ -14,7 +14,7 @@
 - [x] Zachytit počáteční seznam otevřených PR a aktuální SHA GitHub `main`.
 - [x] Zachovat čtyři lokální commity a vytvořit čistý izolovaný worktree z GitHub `main`.
 - [ ] Zaznamenat rozhodnutí pro každé původní PR a před uzavřením nebo sloučením jej znovu ověřit.
-- [ ] Po závěrečné kontrole diffu uzavřít PR z jiných projektů jako `invalid` s jasným vysvětlením.
+- [x] Po závěrečné kontrole diffu uzavřít PR #93 a #96 z jiných projektů jako `invalid` s jasným vysvětlením.
 - [ ] Duplicitní PR označit jako `duplicate` až po uvedení ověřeného nástupce.
 
 ## Fáze 3 — Sloučit změny a ověřit kandidáty
@@ -47,7 +47,7 @@
 
 | PR | Téma | Plán |
 |---|---|---|
-| #93 | Nesouvisející aplikační/repozitářové soubory | Po poslední kontrole diffu uzavřít jako neplatné. |
+| #93 | Nesouvisející aplikační/repozitářové soubory | Po poslední kontrole diffu uzavřen jako neplatný. |
 | #85 | Velký sync balík, změny aplikace a Conductor reporty | Rozdělit; prověřit Ruff a review; zachovat platné reporty. |
 | #92, #94–#95, #97–#102 | Přístupnost | Sloučit do přeloženého a otestovaného nástupce včetně aktivní feedback šablony. |
 | #42–#43 | Vykreslování Bluetooth událostí v TUI | Zachovat platná DHCP/Wi-Fi data a neprázdný fallback služby. |
@@ -60,7 +60,7 @@
 | #62 | Aktualizace závislosti | Zachovat upgrade pipu v opraveném lockfile; jako nahrazené uzavřít až po sloučení nástupce. |
 | #66 | Signalizace MPV procesu | Ověřit přesné nalezení procesu a bezpečný cíl signálu. |
 | #68 | Detekce Kodi portu | Ověřit IPv4/IPv6 procfs parsing a místo volání. |
-| #96 | PR-agent workflow | Prověřit YAML, připnutí akcí, rozsah tokenu a tajné údaje; použít zabezpečenou náhradu nebo uzavřít jako nahrazené. |
+| #96 | PR-agent workflow | Uzavřen jako neplatný: duplicitní `runs-on`, nepřipnutá akce třetí strany, široká oprávnění pro zápis a předání tajného klíče. |
 
 ## Záznam změn
 
@@ -70,3 +70,5 @@
 - 2026-10-18: První plný běh odhalil, že `pip-audit` kontroloval globální balíky hostu. CI nyní před auditem synchronizuje zamčené prostředí projektu. V locku bylo 6 nálezů v balících `multidict 6.7.1`, `pip 26.1.2` a `urllib3 2.7.0`; aktualizováno na `6.9.1`, `26.2.1` a `2.8.0`. `pip-audit` v prostředí projektu nyní hlásí nula známých zranitelností. Opraveny dva testy závislé na Bluetooth adaptéru hostitele a test receipt kontraktu. Plná CI se opakuje.
 - 2026-10-18: GitHub API potvrzuje, že repozitář povoluje pouze lokální workflow/akce; dosavadní CI volalo zakázané marketplace akce a končilo před vytvořením jobů. Tyto kroky nahrazeny přímým stažením Git refu a lokálním CI skriptem, povinný check `verify-done` zůstal zachován. Odstraněna závislost na artifact akcích, handoff nově importuje receipt z úspěšného běhu pro přesný `main` commit a chrání lokální adresáře receiptů/reportů před mazáním při synchronizaci.
 - 2026-10-18: První vzdálená CI potvrdila správné stažení checkoutu i průchod celé testovací sady, ale odhalila generované reporty ve dvou API integračních testech a předpoklad pojmenované větve ve `verify-done.sh`. Výstup testů byl přesměrován do `tmp_path`; kontrola čistého stromu i receipt zůstala. Kontrola tracking větve se přeskočí pouze u detached CI refu, jehož SHA workflow předem ověřilo.
+- 2026-10-18: Nesouvisející PR #93 a #96 byly po kontrole aktuálního diffu uzavřeny se štítkem `invalid` a vysvětlením.
+- 2026-10-18: Aktuální review #103 našlo problémy s původem receiptů, kontrolou runtime artefaktů v celém PR diffu, coverage v hosted CI, validací profilů a opakovaným importem receiptů. Opravy jsou lokálně hotové: přesný receipt z main push, selektivní přenos RPi kandidátního receipt, povinné projektové nástroje, výpis reportu při chybě a izolované testovací cesty reportů. Cílená sada prochází (44 testů); nová vzdálená CI a review Kilo ještě čekají před sloučením.

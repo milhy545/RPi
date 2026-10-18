@@ -23,8 +23,34 @@ IMPORT_MAIN_RECEIPT_SCRIPT="${IMPORT_MAIN_RECEIPT_SCRIPT:-$ROOT/tools/import_mai
 
 has_local_ci_artifacts_for_sha() {
   local sha="$1"
-  [[ -n "$(find "$RECEIPT_DIR" -maxdepth 1 -type f -name "${sha}-*.json" 2>/dev/null | head -n 1)" ]] \
-    && [[ -n "$(find "$REPORT_DIR" -maxdepth 1 -type f -name "${sha}-*.md" 2>/dev/null | head -n 1)" ]]
+  python3 - "$RECEIPT_DIR" "$ROOT" "$sha" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+receipt_dir, repo_root, expected_sha = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+for receipt_path in sorted(receipt_dir.glob(f"{expected_sha}-*.json"), reverse=True):
+    try:
+        receipt = json.loads(receipt_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        continue
+    if receipt.get("commit_sha") != expected_sha or receipt.get("source") != "github-actions-main-push":
+        continue
+    report_value = receipt.get("ci_report")
+    if not isinstance(report_value, str) or not report_value:
+        continue
+    report_path = Path(report_value)
+    if not report_path.is_absolute():
+        report_path = repo_root / report_path
+    try:
+        report_text = report_path.read_text()
+    except OSError:
+        continue
+    if any(line.startswith("PASS") for line in report_text.splitlines()):
+        print(receipt_path)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 sync_repo_to_milhy_pc() {
@@ -41,7 +67,18 @@ sync_repo_to_milhy_pc() {
   fi
 
   echo "Syncing $head_sha to $MILHY_PC_HOST:$MILHY_PC_REPO"
-  rsync -a --delete "${RSYNC_EXCLUDES[@]}" "$ROOT/" "$MILHY_PC_HOST:$MILHY_PC_REPO/"
+  local candidate_receipt="conductor/ci/receipts/${head_sha}-receipt.json"
+  local rsync_includes=()
+  if [[ -f "$ROOT/$candidate_receipt" ]]; then
+    rsync_includes+=(
+      --include='/conductor/'
+      --include='/conductor/ci/'
+      --include='/conductor/ci/receipts/'
+      --include="/$candidate_receipt"
+    )
+  fi
+
+  rsync -a --delete "${rsync_includes[@]}" "${RSYNC_EXCLUDES[@]}" "$ROOT/" "$MILHY_PC_HOST:$MILHY_PC_REPO/"
   printf '%s\n' "$head_sha" > "$STATE_FILE"
   echo "Handoff queued for $head_sha"
 }
@@ -50,7 +87,7 @@ import_main_receipt_for_sha() {
   local head_sha="$1"
 
   if has_local_ci_artifacts_for_sha "$head_sha"; then
-    echo "CI receipt and report for $head_sha already present locally."
+    echo "Exact-main CI receipt and its report for $head_sha already present locally."
     return 0
   fi
 

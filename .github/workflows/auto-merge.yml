@@ -10,38 +10,32 @@ permissions:
 
 concurrency:
   group: auto-merge-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  revoke-auto-merge:
-    if: >-
-      github.event.action == 'converted_to_draft' ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'merge-approved')
+  reconcile-auto-merge:
     runs-on: ubuntu-latest
     steps:
-      - name: Revoke auto-merge when approval is removed
+      - name: Reconcile auto-merge with current approval state
         env:
           GH_TOKEN: ${{ github.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
-          set -euo pipefail
-          enabled="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')"
-          if [[ "$enabled" == "true" ]]; then
+          set -Eeuo pipefail
+          pr_data="$(gh pr view "$PR_URL" --json state,isDraft,labels,autoMergeRequest)"
+          state="$(jq -r '.state' <<<"$pr_data")"
+          draft="$(jq -r '.isDraft' <<<"$pr_data")"
+          approved="$(jq -r '[.labels[].name] | index("merge-approved") != null' <<<"$pr_data")"
+          auto_merge="$(jq -r '.autoMergeRequest != null' <<<"$pr_data")"
+
+          if [[ "$state" == "OPEN" && "$draft" == "false" && "$approved" == "true" ]]; then
+            if [[ "$auto_merge" != "true" ]]; then
+              gh pr merge "$PR_URL" --auto --rebase --delete-branch
+            else
+              echo "Auto-merge is already queued for this approved pull request."
+            fi
+          elif [[ "$auto_merge" == "true" ]]; then
             gh pr merge "$PR_URL" --disable-auto
           else
-            echo "No active auto-merge request to revoke."
+            echo "Current pull request state does not authorize auto-merge."
           fi
-
-  queue-auto-merge:
-    if: >-
-      github.event.action != 'unlabeled' &&
-      github.event.action != 'converted_to_draft' &&
-      github.event.pull_request.draft == false &&
-      contains(github.event.pull_request.labels.*.name, 'merge-approved')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Queue rebase auto-merge after explicit approval
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge "$PR_URL" --auto --rebase --delete-branch

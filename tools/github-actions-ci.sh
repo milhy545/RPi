@@ -31,7 +31,20 @@ export UV_CMD="$UV_ENV/bin/uv"
 export CI_PROFILE="${CI_PROFILE:-github-safe}"
 
 "$UV_CMD" sync --locked --extra dev --python "$PYTHON_PATH"
-tools/run-ci.sh
+if tools/run-ci.sh; then
+  :
+else
+  ci_status=$?
+  short_sha="$(git rev-parse --short HEAD)"
+  reports=("conductor/ci/reports/${short_sha}-"*.md)
+  if [[ -f "${reports[-1]}" ]]; then
+    echo "CI failed; printing captured report ${reports[-1]}:"
+    cat "${reports[-1]}"
+  else
+    echo "CI failed with status $ci_status and produced no report under conductor/ci/reports/." >&2
+  fi
+  exit "$ci_status"
+fi
 python3 scripts/create_receipt.py
 tools/verify-done.sh
 

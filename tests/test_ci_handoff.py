@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -87,10 +88,19 @@ def test_import_main_receipt_for_sha_skips_when_already_present(tmp_path: Path) 
     repo = _prepare_repo(tmp_path / "repo")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    sha = "b" * 40
-
-    (repo / "conductor" / "ci" / "receipts" / f"{sha}-cached.json").write_text("{}")
-    (repo / "conductor" / "ci" / "reports" / f"{sha}-cached.md").write_text("PASS\n")
+    sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    report = repo / "conductor" / "ci" / "reports" / f"{sha[:7]}-cached.md"
+    report.write_text("PASS\n")
+    receipt = repo / "conductor" / "ci" / "receipts" / f"{sha}-cached.json"
+    receipt.write_text(
+        json.dumps(
+            {
+                "commit_sha": sha,
+                "source": "github-actions-main-push",
+                "ci_report": str(report.relative_to(repo)),
+            }
+        )
+    )
 
     gh = fake_bin / "gh"
     gh.write_text(
@@ -110,6 +120,47 @@ exit 1
 
     assert result.returncode == 0, result.stderr
     assert "already present locally" in result.stdout
+
+
+def test_handoff_selectively_includes_exact_rpi_candidate_receipt(tmp_path: Path) -> None:
+    repo = _prepare_repo(tmp_path / "repo")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    args_file = tmp_path / "rsync-args.txt"
+    fake_rsync = fake_bin / "rsync"
+    fake_rsync.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$RSYNC_ARGS_FILE\"\n"
+    )
+    fake_rsync.chmod(0o755)
+    sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    receipt = repo / "conductor" / "ci" / "receipts" / f"{sha}-receipt.json"
+    receipt.write_text('{"commit_sha":"' + sha + '"}\n')
+
+    result = _run_handoff_command(
+        repo,
+        f'source "{HANDOFF_SCRIPT}" && sync_repo_to_milhy_pc "{sha}"',
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "ROOT": str(repo),
+            "STATE_FILE": str(tmp_path / "handoff-state"),
+            "RSYNC_ARGS_FILE": str(args_file),
+            "MILHY_PC_HOST": "test-host",
+            "MILHY_PC_REPO": "/tmp/rpi-test",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    args = args_file.read_text().splitlines()
+    assert f"--include=/conductor/ci/receipts/{sha}-receipt.json" in args
+    assert any(
+        args[index] == "--exclude" and args[index + 1] == "conductor/ci/receipts/"
+        for index in range(len(args) - 1)
+    )
+    assert any(
+        args[index] == "--exclude" and args[index + 1] == "conductor/ci/reports/"
+        for index in range(len(args) - 1)
+    )
 
 
 def test_handoff_protects_local_receipts_and_reports_from_rsync_delete() -> None:

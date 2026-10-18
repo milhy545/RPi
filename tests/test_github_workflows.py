@@ -33,9 +33,12 @@ def test_ci_approves_pull_requests_only_after_verification() -> None:
         "Run locked CI and receipt verification",
     ]
     checkout = verify["steps"][0]["run"]
-    assert "git fetch --no-tags --depth=1 origin" in checkout
+    assert "git fetch --no-tags --depth=2 origin" in checkout
     assert '"${GITHUB_REF}:${target_ref}"' in checkout
     assert 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in checkout
+    assert "VERIFY_BASE_SHA" in verify["steps"][0]["env"]
+    assert '"$VERIFY_BASE_SHA" "$GITHUB_SHA"' not in checkout
+    assert "VERIFY_BASE_SHA" in verify["steps"][-1]["env"]
     assert verify["steps"][-1]["run"] == "tools/github-actions-ci.sh"
 
 
@@ -54,6 +57,8 @@ def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
         "Checkout tested revision with Git",
         "Run locked CI and receipt verification",
     ]
+    assert "--depth=2" in steps[0]["run"]
+    assert "VERIFY_BASE_SHA" in steps[0]["env"]
     assert steps[-1]["run"] == "tools/github-actions-ci.sh"
     assert '"$UV_CMD" sync --locked --extra dev' in (
         Path(__file__).parents[1] / "tools" / "github-actions-ci.sh"
@@ -63,11 +68,12 @@ def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
 def test_ci_fast_workflow_enforces_quality_and_security_gates() -> None:
     run_ci = (Path(__file__).parents[1] / "tools" / "run-ci.sh").read_text()
 
-    assert 'run_step "Ruff linter check" "$_RUFF" check .' in run_ci
-    assert 'run_step "Mypy type checker" "$_MYPY" --explicit-package-bases .' in run_ci
-    assert "--locked --extra dev python -m pytest -q" in run_ci
-    assert 'run_step "Bandit Python security scan (high severity gate)"' in run_ci
-    assert 'run_step "pip-audit dependency scan"' in run_ci
+    assert 'run_project_tool_step "Ruff linter check" ruff check .' in run_ci
+    assert 'run_project_tool_step "Mypy type checker" mypy --explicit-package-bases .' in run_ci
+    assert '--locked --extra dev python -m pytest "${PYTEST_ARGS[@]}"' in run_ci
+    assert '"Bandit Python security scan (high severity gate)"' in run_ci
+    assert 'run_project_tool_step "pip-audit dependency scan" pip-audit --skip-editable' in run_ci
+    assert "--cov=rpi_dashboard --cov-fail-under=69" in run_ci
 
 
 def test_workflows_do_not_use_external_actions_under_local_only_policy() -> None:
@@ -96,8 +102,7 @@ def test_auto_merge_uses_safe_target_event_without_checkout() -> None:
     workflow = _workflow("auto-merge.yml")
     event = workflow["on"]["pull_request_target"]
     jobs = workflow["jobs"]
-    queue_job = jobs["queue-auto-merge"]
-    revoke_job = jobs["revoke-auto-merge"]
+    reconcile_job = jobs["reconcile-auto-merge"]
 
     assert event["types"] == [
         "opened",
@@ -112,14 +117,14 @@ def test_auto_merge_uses_safe_target_event_without_checkout() -> None:
         "contents": "write",
         "pull-requests": "write",
     }
-    assert "contains(github.event.pull_request.labels.*.name, 'merge-approved')" in queue_job["if"]
-    assert "github.event.pull_request.draft == false" in queue_job["if"]
-    assert all("uses" not in step for step in queue_job["steps"] + revoke_job["steps"])
-    assert queue_job["steps"][0]["run"] == (
-        'gh pr merge "$PR_URL" --auto --rebase --delete-branch'
-    )
-    assert "github.event.label.name == 'merge-approved'" in revoke_job["if"]
-    assert 'gh pr merge "$PR_URL" --disable-auto' in revoke_job["steps"][0]["run"]
+    assert workflow["concurrency"]["cancel-in-progress"] == "false"
+    assert all("uses" not in step for step in reconcile_job["steps"])
+    run_script = reconcile_job["steps"][0]["run"]
+    assert "gh pr view \"$PR_URL\" --json state,isDraft,labels,autoMergeRequest" in run_script
+    assert 'index("merge-approved") != null' in run_script
+    assert '"$draft" == "false"' in run_script
+    assert 'gh pr merge "$PR_URL" --auto --rebase --delete-branch' in run_script
+    assert 'gh pr merge "$PR_URL" --disable-auto' in run_script
 
 
 def test_ci_agent_selects_only_complete_report_for_exact_commit(tmp_path: Path) -> None:

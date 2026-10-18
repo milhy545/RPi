@@ -44,11 +44,27 @@ fi
 
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
 echo "=== Check 3: Receipt for HEAD ==="
-RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
-if [[ -z "$RECEIPT" && "$BRANCH" == "main" ]]; then
+EXPECTED_RECEIPT_SOURCE=""
+if [[ "$BRANCH" == "main" || ( "${GITHUB_EVENT_NAME:-}" == "push" && "${GITHUB_REF:-}" == "refs/heads/main" ) ]]; then
+  EXPECTED_RECEIPT_SOURCE="github-actions-main-push"
+elif [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+  EXPECTED_RECEIPT_SOURCE="github-actions-pull-request"
+fi
+
+lookup_receipt() {
+  if [[ -n "$EXPECTED_RECEIPT_SOURCE" ]]; then
+    python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE" \
+      --source "$EXPECTED_RECEIPT_SOURCE" --exact-sha
+  else
+    python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE"
+  fi
+}
+
+RECEIPT="$(lookup_receipt)"
+if [[ -z "$RECEIPT" && "$EXPECTED_RECEIPT_SOURCE" == "github-actions-main-push" ]]; then
   echo "No local source receipt matches; checking exact-main GitHub push CI..."
   if python3 tools/import_main_receipt.py "$RECEIPT_DIR" "$REPORT_DIR" "$HEAD_SHA" "$HEAD_TREE"; then
-    RECEIPT="$(python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE")"
+    RECEIPT="$(lookup_receipt)"
   fi
 fi
 if [[ -z "$RECEIPT" ]]; then
@@ -148,9 +164,16 @@ fi
 
 # ─── Check 7: No runtime artifacts in last commit ───────────────────────────
 echo "=== Check 7: Runtime artifacts ==="
-ARTIFACTS_IN_COMMIT="$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
+if [[ -n "${VERIFY_BASE_SHA:-}" && "$VERIFY_BASE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+  ARTIFACTS_IN_RANGE="$(git diff --name-only "$VERIFY_BASE_SHA" HEAD 2>/dev/null || true)"
+elif git rev-parse --verify 'HEAD^' >/dev/null 2>&1; then
+  ARTIFACTS_IN_RANGE="$(git diff --name-only HEAD^ HEAD 2>/dev/null || true)"
+else
+  ARTIFACTS_IN_RANGE="$(git diff-tree --root --no-commit-id --name-only -r HEAD 2>/dev/null || true)"
+fi
+ARTIFACTS_IN_COMMIT="$(printf '%s\n' "$ARTIFACTS_IN_RANGE" | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
 if [[ -n "$ARTIFACTS_IN_COMMIT" ]]; then
-  err "Runtime artifacts found in HEAD commit:"
+  err "Runtime artifacts found in the verified commit range:"
   echo "$ARTIFACTS_IN_COMMIT" >&2
 else
   ok "No runtime artifacts in HEAD commit"
