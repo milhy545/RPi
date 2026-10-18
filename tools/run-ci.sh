@@ -20,6 +20,12 @@ if [[ $IS_RPI -eq 1 ]]; then
 fi
 
 PROFILE="${CI_PROFILE:-$DEFAULT_PROFILE}"
+_UV="${UV_CMD:-}"
+if [[ -z "$_UV" && -x "$HOME/.local/bin/uv" ]]; then
+  _UV="$HOME/.local/bin/uv"
+elif [[ -z "$_UV" ]]; then
+  _UV="$(command -v uv || true)"
+fi
 
 # Parse command line flags
 while [[ $# -gt 0 ]]; do
@@ -144,12 +150,10 @@ case "$PROFILE" in
     append "## Execution Profile: rpi-focused"
 
     # Run focused RPi-safe tests (bounded, no browser/heavy suite)
-    if [[ -f "$HOME/.local/bin/uv" ]]; then
-      run_step "Run focused RPi safe CI tests" "$HOME/.local/bin/uv" run --locked --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
-    elif command -v uv >/dev/null 2>&1; then
-      run_step "Run focused RPi safe CI tests" uv run --locked --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -q
-    elif [[ -x .venv/bin/pytest ]]; then
-      run_step "Run focused RPi safe CI tests" .venv/bin/pytest tests/test_rpi_safe_ci_pipeline.py -q
+    if [[ -n "$_UV" ]]; then
+      run_step "Run focused RPi safe CI tests" "$_UV" run --locked --extra dev python -m pytest tests/test_rpi_safe_ci_pipeline.py -q
+    elif [[ -x .venv/bin/python ]]; then
+      run_step "Run focused RPi safe CI tests" .venv/bin/python -m pytest tests/test_rpi_safe_ci_pipeline.py -q
     else
       run_step "Run focused RPi safe CI tests" python3 -m pytest tests/test_rpi_safe_ci_pipeline.py -q
     fi
@@ -165,12 +169,6 @@ case "$PROFILE" in
       optional_step gitleaks "Gitleaks secret scan" gitleaks detect --no-git --redact --source . -c .gitleaks.toml
 
       # Bezpečnostní audit musí běžet ve virtuálním prostředí projektu, ne nad globálními balíky hostu.
-      _UV="${UV_CMD:-}"
-      if [[ -z "$_UV" && -x "$HOME/.local/bin/uv" ]]; then
-        _UV="$HOME/.local/bin/uv"
-      elif [[ -z "$_UV" ]]; then
-        _UV="$(command -v uv || true)"
-      fi
       if [[ -n "$_UV" ]]; then
         run_step "Sync locked project development dependencies" "$_UV" sync --locked --extra dev
       elif [[ ! -x .venv/bin/python ]]; then
@@ -212,14 +210,10 @@ case "$PROFILE" in
     fi
 
     # Full pytest suite execution on Milhy-PC
-    if [[ -f "$HOME/.local/bin/uv" ]]; then
-      run_step "Run full pytest suite" "$HOME/.local/bin/uv" run --locked --extra dev pytest -q
-    elif command -v uv >/dev/null 2>&1; then
-      run_step "Run full pytest suite" uv run --locked --extra dev pytest -q
-    elif [[ -x .venv/bin/pytest ]]; then
-      run_step "Run full pytest suite" .venv/bin/pytest -q
-    elif command -v pytest >/dev/null 2>&1; then
-      run_step "Run full pytest suite" pytest -q
+    if [[ -n "$_UV" ]]; then
+      run_step "Run full pytest suite" "$_UV" run --locked --extra dev python -m pytest -q
+    elif [[ -x .venv/bin/python ]]; then
+      run_step "Run full pytest suite" .venv/bin/python -m pytest -q
     else
       run_step "Run full pytest suite" python3 -m pytest -q
     fi
@@ -279,12 +273,10 @@ with open('$E2E_MANIFEST_DIR/$CURRENT_SHA.json', 'w') as f:
     run_step "RPi Hardware & Playback Guard Check" python3 -c "from rpi_dashboard.ci.rpi_guard import RPiGuard; g = RPiGuard(); st = g.check_status(sustained_cpu_samples=3); print('RPi Status:', st); exit(1 if st['busy'] else 0)"
 
     # Execute focused safe tests on RPi candidate
-    if [[ -f "$HOME/.local/bin/uv" ]]; then
-      run_step "Run focused RPi safe CI tests" "$HOME/.local/bin/uv" run --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -v
-    elif command -v uv >/dev/null 2>&1; then
-      run_step "Run focused RPi safe CI tests" uv run --extra dev pytest tests/test_rpi_safe_ci_pipeline.py -v
-    elif [[ -x .venv/bin/pytest ]]; then
-      run_step "Run focused RPi safe CI tests" env PYTHONPATH=".:${PYTHONPATH:-}" .venv/bin/pytest tests/test_rpi_safe_ci_pipeline.py -v
+    if [[ -n "$_UV" ]]; then
+      run_step "Run focused RPi safe CI tests" "$_UV" run --extra dev python -m pytest tests/test_rpi_safe_ci_pipeline.py -v
+    elif [[ -x .venv/bin/python ]]; then
+      run_step "Run focused RPi safe CI tests" env PYTHONPATH=".:${PYTHONPATH:-}" .venv/bin/python -m pytest tests/test_rpi_safe_ci_pipeline.py -v
     else
       run_step "Run focused RPi safe CI tests" env PYTHONPATH=".:${PYTHONPATH:-}" python3 -m pytest tests/test_rpi_safe_ci_pipeline.py -v
     fi

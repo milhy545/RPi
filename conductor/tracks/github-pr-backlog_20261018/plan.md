@@ -7,6 +7,7 @@
 - [x] Add `merge-approved` label gating, a label-removal revoke path, and focused workflow tests.
 - [ ] Re-enable the workflow only after the gated version is on `main`.
 - [x] Repair the commit and receipt gates: prevent amend commits, reject runtime artifacts, and make missing receipts fail explicitly.
+- [x] Adapt GitHub CI to the repository's local-only Actions policy using direct Git fetch and repository scripts; keep the required `verify-done` context and import exact-main receipts from successful run metadata.
 
 ## Phase 2 — Record and Triage the Backlog
 
@@ -67,3 +68,4 @@
 - 2026-10-18: Implemented the explicit-label workflow gate and began repairing the local commit/receipt contract; tests and CI are pending.
 - 2026-10-18: Added regression coverage for the commit helper, missing/valid receipts, and workflow approval/revocation; 21 targeted tests, ShellCheck, shell syntax, and YAML parsing pass. Full local CI remains pending.
 - 2026-10-18: The first full run exposed a host-global `pip-audit` fallback. CI now syncs the locked project environment before auditing it. The project lock had 6 findings across `multidict 6.7.1`, `pip 26.1.2`, and `urllib3 2.7.0`; updated them to `6.9.1`, `26.2.1`, and `2.8.0`. Project-venv `pip-audit` reports no known vulnerabilities. Fixed two host-dependent Bluetooth tests and updated the receipt-contract test. Full CI is rerunning.
+- 2026-10-18: GitHub API reports that the repository permits local workflows/actions only; the existing CI invoked prohibited marketplace actions and failed before creating jobs. Replaced those steps with direct Git ref fetching and the locked local CI script, preserved the required `verify-done` check, removed artifact-action dependencies, and changed the RPi handoff to import a receipt from a successful exact-main run. Protected local receipt/report directories from handoff deletion.

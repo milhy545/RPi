@@ -30,8 +30,9 @@ GitHub rebase can rewrite commit metadata after the receipt is issued. An RPi
 candidate receipt is hardware-gate evidence only and does not complete this
 requirement.
 If the base branch advanced and changed the tree, `verify-done.sh` may import a
-new receipt only from a successful GitHub Actions `push` run for the exact
-`main` HEAD SHA and the repository `ci.yml` workflow.
+new local receipt only from a successful GitHub Actions `push` run for the exact
+`main` HEAD SHA and the repository `ci.yml` workflow. The workflow is local-only
+and does not upload artifacts.
 
 ### Rule 4: Never ignore error output
 If ANY of these fail, the agent must STOP and report:
