@@ -24,12 +24,12 @@ skip(){ echo "SKIP: $*"; }
 echo "=== Check 1: Git status ==="
 HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 HEAD_TREE="$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo unknown)"
-BRANCH="$(git branch --show-current 2>/dev/null || echo detached)"
+CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo unknown)"
 
 if [[ "$HEAD_SHA" == "unknown" ]]; then
   err "Cannot determine HEAD SHA"
 else
-  ok "HEAD=$HEAD_SHA branch=$BRANCH"
+  ok "HEAD=$HEAD_SHA branch=$CURRENT_BRANCH"
 fi
 
 # ─── Check 2: Working tree cleanliness ──────────────────────────────────────
@@ -47,19 +47,20 @@ fi
 
 # ─── Check 3: Receipt exists for current HEAD ───────────────────────────────
 echo "=== Check 3: Receipt for HEAD ==="
-EXPECTED_RECEIPT_SOURCE=""
-if [[ "$BRANCH" == "main" || ( "${GITHUB_EVENT_NAME:-}" == "push" && "${GITHUB_REF:-}" == "refs/heads/main" ) ]]; then
-  EXPECTED_RECEIPT_SOURCE="github-actions-main-push"
-elif [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+EXPECTED_RECEIPT_SOURCE="github-actions-main-push"
+RECEIPT_EXACT_SHA=false
+if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
   EXPECTED_RECEIPT_SOURCE="github-actions-pull-request"
+  RECEIPT_EXACT_SHA=true
 fi
 
 lookup_receipt() {
-  if [[ -n "$EXPECTED_RECEIPT_SOURCE" ]]; then
+  if [[ "$RECEIPT_EXACT_SHA" == true ]]; then
     python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE" \
       --source "$EXPECTED_RECEIPT_SOURCE" --exact-sha
   else
-    python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE"
+    python3 tools/receipt_lookup.py "$RECEIPT_DIR" "$HEAD_SHA" "$HEAD_TREE" \
+      --source "$EXPECTED_RECEIPT_SOURCE"
   fi
 }
 
@@ -152,7 +153,7 @@ fi
 
 # ─── Check 6: GitHub remote state ───────────────────────────────────────────
 echo "=== Check 6: GitHub remote ==="
-if [[ -z "$BRANCH" ]]; then
+if [[ -z "$CURRENT_BRANCH" ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" && "${GITHUB_SHA:-}" == "$HEAD_SHA" && -n "${GITHUB_REF:-}" ]]; then
     skip "Detached GitHub Actions checkout matches GITHUB_SHA and GITHUB_REF"
   else
@@ -161,11 +162,11 @@ if [[ -z "$BRANCH" ]]; then
 elif ! git remote get-url origin >/dev/null 2>&1; then
   skip "No origin remote configured"
 else
-  REMOTE_PUSHED="$(git log "origin/$BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
+  REMOTE_PUSHED="$(git log "origin/$CURRENT_BRANCH"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')"
   if [[ "$REMOTE_PUSHED" -eq 0 ]]; then
-    ok "HEAD is pushed to origin/$BRANCH"
+    ok "HEAD is pushed to origin/$CURRENT_BRANCH"
   else
-    err "HEAD has $REMOTE_PUSHED unpushed commit(s) to origin/$BRANCH"
+    err "HEAD has $REMOTE_PUSHED unpushed commit(s) to origin/$CURRENT_BRANCH"
   fi
 fi
 
@@ -187,10 +188,10 @@ else
     ARTIFACTS_IN_RANGE=""
   fi
 fi
-ARTIFACTS_IN_COMMIT="$(printf '%s\n' "$ARTIFACTS_IN_RANGE" | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
-if [[ -n "$ARTIFACTS_IN_COMMIT" ]]; then
+ARTIFACTS_IN_RANGE="$(printf '%s\n' "$ARTIFACTS_IN_RANGE" | grep -v '\.gitkeep$' | grep -v 'conductor/ci/receipts/.*\.json$' | grep -E '\.(pyc)$|__pycache__|\.forensics/|playback-memory\.json|yt-cookies\.txt|conductor/ci/reports/|conductor/ci/receipts/' || true)"
+if [[ -n "$ARTIFACTS_IN_RANGE" ]]; then
   err "Runtime artifacts found in the verified commit range:"
-  echo "$ARTIFACTS_IN_COMMIT" >&2
+  echo "$ARTIFACTS_IN_RANGE" >&2
 else
   ok "No runtime artifacts in HEAD commit"
 fi

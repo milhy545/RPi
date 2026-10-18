@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -136,6 +137,8 @@ def test_handoff_selectively_includes_exact_rpi_candidate_receipt(tmp_path: Path
     sha = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     receipt = repo / "conductor" / "ci" / "receipts" / f"{sha}-receipt.json"
     receipt.write_text('{"commit_sha":"' + sha + '"}\n')
+    other_receipt = repo / "conductor" / "ci" / "receipts" / "unrelated-receipt.json"
+    other_receipt.write_text('{"commit_sha":"unrelated"}\n')
 
     result = _run_handoff_command(
         repo,
@@ -152,13 +155,13 @@ def test_handoff_selectively_includes_exact_rpi_candidate_receipt(tmp_path: Path
 
     assert result.returncode == 0, result.stderr
     args = args_file.read_text().splitlines()
-    assert f"--include=/conductor/ci/receipts/{sha}-receipt.json" in args
+    candidate_filter = f"--include=/conductor/ci/receipts/{sha}-receipt.json"
+    receipt_exclude_filter = "--exclude=/conductor/ci/receipts/***"
+    assert candidate_filter in args
+    assert args.index(candidate_filter) < args.index(receipt_exclude_filter)
+    assert not any("unrelated-receipt.json" in arg for arg in args)
     assert any(
-        args[index] == "--exclude" and args[index + 1] == "conductor/ci/receipts/"
-        for index in range(len(args) - 1)
-    )
-    assert any(
-        args[index] == "--exclude" and args[index + 1] == "conductor/ci/reports/"
+        args[index] == "--exclude" and args[index + 1] == "/conductor/ci/reports/"
         for index in range(len(args) - 1)
     )
 
@@ -166,5 +169,54 @@ def test_handoff_selectively_includes_exact_rpi_candidate_receipt(tmp_path: Path
 def test_handoff_protects_local_receipts_and_reports_from_rsync_delete() -> None:
     script = HANDOFF_SCRIPT.read_text()
 
-    assert "--exclude 'conductor/ci/reports/'" in script
-    assert "--exclude 'conductor/ci/receipts/'" in script
+    assert "--exclude '/conductor/ci/reports/'" in script
+    assert "--exclude='/conductor/ci/receipts/***'" in script
+
+
+def test_rsync_handoff_filter_keeps_only_candidate_and_preserves_local_files(tmp_path: Path) -> None:
+    rsync = shutil.which("rsync")
+    assert rsync is not None, "rsync is required to validate the CI handoff filters"
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source_receipts = source / "conductor" / "ci" / "receipts"
+    destination_receipts = destination / "conductor" / "ci" / "receipts"
+    source_reports = source / "conductor" / "ci" / "reports"
+    destination_reports = destination / "conductor" / "ci" / "reports"
+    source_receipts.mkdir(parents=True)
+    destination_receipts.mkdir(parents=True)
+    source_reports.mkdir(parents=True)
+    destination_reports.mkdir(parents=True)
+
+    candidate = "a" * 40 + "-receipt.json"
+    (source_receipts / candidate).write_text("candidate\n")
+    (source_receipts / "unrelated-receipt.json").write_text("unrelated\n")
+    (destination_receipts / "local-only-receipt.json").write_text("local\n")
+    (source_reports / "generated.md").write_text("source report\n")
+    (destination_reports / "local-only.md").write_text("local report\n")
+
+    result = subprocess.run(
+        [
+            rsync,
+            "-a",
+            "--delete",
+            "--dry-run",
+            "--itemize-changes",
+            "--include=/conductor/",
+            "--include=/conductor/ci/",
+            "--include=/conductor/ci/receipts/",
+            f"--include=/conductor/ci/receipts/{candidate}",
+            "--exclude=/conductor/ci/receipts/***",
+            "--exclude=/conductor/ci/reports/",
+            f"{source}/",
+            f"{destination}/",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert candidate in result.stdout
+    assert "unrelated-receipt.json" not in result.stdout
+    assert "local-only-receipt.json" not in result.stdout
+    assert "generated.md" not in result.stdout
+    assert "local-only.md" not in result.stdout

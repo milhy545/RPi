@@ -33,6 +33,8 @@ Bez receipt pro přesné SHA nebo totožný Git strom je pipeline nedokončená 
 
 Pokud se změnil základní commit a tím i strom, `verify-done.sh` může vytvořit nový lokální receipt pouze z úspěšného GitHub Actions běhu workflow `ci.yml` typu push pro přesné SHA větve `main`. Workflow používá pouze lokální kroky a nenahrává artefakty.
 
+Lokální ověření vyžaduje receipt `github-actions-main-push` i při spuštění z feature větve. Receipt z pull requestu se přijímá pouze uvnitř checkoutu GitHub Actions události `pull_request` a jen pro přesné testované SHA.
+
 ### Pravidlo 4: Nikdy neignorovat chyby
 
 Pokud selže některý z těchto kroků, agent se musí zastavit a oznámit přesnou chybu:

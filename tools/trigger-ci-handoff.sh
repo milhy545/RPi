@@ -12,8 +12,7 @@ RSYNC_EXCLUDES=(
   --exclude '__pycache__/'
   --exclude '*.pyc'
   --exclude '.forensics/'
-  --exclude 'conductor/ci/reports/'
-  --exclude 'conductor/ci/receipts/'
+  --exclude '/conductor/ci/reports/'
   --exclude 'playback-memory.json'
   --exclude 'yt-cookies.txt'
 )
@@ -68,17 +67,18 @@ sync_repo_to_milhy_pc() {
 
   echo "Syncing $head_sha to $MILHY_PC_HOST:$MILHY_PC_REPO"
   local candidate_receipt="conductor/ci/receipts/${head_sha}-receipt.json"
-  local rsync_includes=()
+  local receipt_filters=(--exclude='/conductor/ci/receipts/***')
   if [[ -f "$ROOT/$candidate_receipt" ]]; then
-    rsync_includes+=(
+    receipt_filters=(
       --include='/conductor/'
       --include='/conductor/ci/'
       --include='/conductor/ci/receipts/'
       --include="/$candidate_receipt"
+      --exclude='/conductor/ci/receipts/***'
     )
   fi
 
-  rsync -a --delete "${rsync_includes[@]}" "${RSYNC_EXCLUDES[@]}" "$ROOT/" "$MILHY_PC_HOST:$MILHY_PC_REPO/"
+  rsync -a --delete "${receipt_filters[@]}" "${RSYNC_EXCLUDES[@]}" "$ROOT/" "$MILHY_PC_HOST:$MILHY_PC_REPO/"
   printf '%s\n' "$head_sha" > "$STATE_FILE"
   echo "Handoff queued for $head_sha"
 }
