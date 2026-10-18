@@ -3,7 +3,7 @@
 
 <!-- Register new tracks below. Format: - [ ] **Track: <id>** — <description> | [Plan](./tracks/<id>/plan.md) -->
 
-- [ ] **Track: github-pr-backlog_20261018** — Triage, consolidate, verify, and sequentially merge the open GitHub pull requests | [Plan](./tracks/github-pr-backlog_20261018/plan.md)
+- [~] **Track: github-pr-backlog_20261018** — Triage, consolidate, verify, and sequentially merge the open GitHub pull requests | [Plan](./tracks/github-pr-backlog_20261018/plan.md)
 
 - [x] **Track: rpi-safe-ci-workflow_20260805** — Safe RPi / Milhy-PC / Jules Validation Pipeline & Execution Profiles | [Plan](./tracks/rpi-safe-ci-workflow_20260805/plan.md)
 

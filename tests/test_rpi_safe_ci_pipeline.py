@@ -736,7 +736,14 @@ def test_evidence_gate_allows_github_safe_without_hardware_receipts(tmp_path):
     subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
     subprocess.run(["git", "-C", str(repo), "commit", "-m", "fixture"], check=True, capture_output=True)
 
+    hostname_dir = tmp_path / "bin"
+    hostname_dir.mkdir()
+    hostname = hostname_dir / "hostname"
+    hostname.write_text("#!/usr/bin/env sh\nprintf '%s\\n' 'Milhy-PC'\n")
+    hostname.chmod(0o755)
+
     environment = os.environ.copy()
+    environment["PATH"] = f"{hostname_dir}{os.pathsep}{environment.get('PATH', '')}"
     environment.update(
         {
             "BRANCH": "main",
@@ -759,6 +766,18 @@ def test_evidence_gate_allows_github_safe_without_hardware_receipts(tmp_path):
     assert "No RPi candidate or remote E2E evidence is required for github-safe." in result.stdout
     assert "Skipping git push" in result.stdout
     assert not (repo / "conductor" / "ci" / "receipts").exists()
+
+    hostname.write_text("#!/usr/bin/env sh\nprintf '%s\\n' 'RPi'\n")
+    rpi_result = subprocess.run(
+        ["bash", str(tools_dir / "ci-agent.sh")],
+        cwd=repo,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert rpi_result.returncode == 1
+    assert "RPi host is forbidden from executing git push" in rpi_result.stdout
 
 
 def test_evidence_gate_allows_valid_exact_evidence(tmp_path):
