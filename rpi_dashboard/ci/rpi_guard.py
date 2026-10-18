@@ -186,17 +186,74 @@ class RPiGuard:
     def _get_processes(self) -> List[Dict[str, Any]]:
         if self.proc_provider:
             return self.proc_provider()
+
         try:
-            res = subprocess.run(
-                ["ps", "-eo", "pid,ppid,pcpu,comm,args"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return parse_proc_ps_output(res.stdout)
-        except Exception:
-            processes: List[Dict[str, Any]] = []
-            return processes
+            with open("/proc/uptime", "r", encoding="ascii") as uptime_file:
+                system_uptime = float(uptime_file.read().split()[0])
+        except (OSError, ValueError, IndexError):
+            return []
+
+        try:
+            clock_ticks = int(os.sysconf(os.sysconf_names["SC_CLK_TCK"]))
+        except (KeyError, OSError, ValueError):
+            clock_ticks = 100
+        if clock_ticks <= 0:
+            clock_ticks = 100
+
+        try:
+            pid_entries = os.listdir("/proc")
+        except OSError:
+            return []
+
+        processes: List[Dict[str, Any]] = []
+        for pid_entry in pid_entries:
+            if not pid_entry.isdigit():
+                continue
+
+            try:
+                pid = int(pid_entry)
+                with open(f"/proc/{pid_entry}/stat", "r", encoding="utf-8") as stat_file:
+                    stat_content = stat_file.read()
+
+                comm_start = stat_content.find("(")
+                comm_end = stat_content.rfind(")")
+                if comm_start < 0 or comm_end <= comm_start:
+                    continue
+                fields = stat_content[comm_end + 1 :].split()
+                if len(fields) < 20:
+                    continue
+
+                ppid = int(fields[1])
+                user_ticks = int(fields[11])
+                system_ticks = int(fields[12])
+                start_ticks = int(fields[19])
+                elapsed_seconds = system_uptime - start_ticks / clock_ticks
+                pcpu = 0.0
+                if elapsed_seconds > 0:
+                    pcpu = 100.0 * ((user_ticks + system_ticks) / clock_ticks) / elapsed_seconds
+
+                comm = stat_content[comm_start + 1 : comm_end]
+                try:
+                    with open(f"/proc/{pid_entry}/cmdline", "rb") as cmdline_file:
+                        cmdline = cmdline_file.read().replace(b"\0", b" ").decode(
+                            "utf-8", errors="replace"
+                        ).strip()
+                except OSError:
+                    cmdline = ""
+
+                processes.append(
+                    {
+                        "pid": pid,
+                        "ppid": ppid,
+                        "pcpu": pcpu,
+                        "comm": comm,
+                        "args": cmdline or f"[{comm}]",
+                    }
+                )
+            except (OSError, ValueError, IndexError, UnicodeError):
+                continue
+
+        return processes
 
     def _get_ram_free_mb(self) -> float:
         if self.ram_provider:
