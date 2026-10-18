@@ -35,6 +35,8 @@ Pokud se změnil základní commit a tím i strom, `verify-done.sh` může vytvo
 
 Lokální ověření vyžaduje receipt `github-actions-main-push` i při spuštění z feature větve. Receipt z pull requestu se přijímá pouze uvnitř checkoutu GitHub Actions události `pull_request` a jen pro přesné testované SHA.
 
+Push gateway na Milhy-PC vyžaduje E2E a RPi kandidátní receipt pro `milhy-full`. Profil `github-safe` tyto hardwarové brány přeskočí, ale před potvrzením úspěchu stále vyčká na GitHub PR workflow.
+
 ### Pravidlo 4: Nikdy neignorovat chyby
 
 Pokud selže některý z těchto kroků, agent se musí zastavit a oznámit přesnou chybu:

@@ -33,8 +33,9 @@ def test_ci_approves_pull_requests_only_after_verification() -> None:
         "Run locked CI and receipt verification",
     ]
     checkout = verify["steps"][0]["run"]
-    assert "git fetch --no-tags --depth=2 origin" in checkout
-    assert '"${GITHUB_REF}:${target_ref}"' in checkout
+    assert 'git fetch --no-tags --depth=2 origin "$GITHUB_SHA"' in checkout
+    assert 'git checkout --quiet --detach "$GITHUB_SHA"' in checkout
+    assert "${GITHUB_REF}:" not in checkout
     assert 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' in checkout
     assert "VERIFY_BASE_SHA" in verify["steps"][0]["env"]
     assert '"$VERIFY_BASE_SHA" "$GITHUB_SHA"' not in checkout
@@ -58,6 +59,8 @@ def test_ci_fast_workflow_contains_the_previous_local_sync_checks() -> None:
         "Run locked CI and receipt verification",
     ]
     assert "--depth=2" in steps[0]["run"]
+    assert 'origin "$GITHUB_SHA"' in steps[0]["run"]
+    assert '"${GITHUB_REF}:"' not in steps[0]["run"]
     assert "VERIFY_BASE_SHA" in steps[0]["env"]
     assert steps[-1]["run"] == "tools/github-actions-ci.sh"
     assert '"$UV_CMD" sync --locked --extra dev' in (
