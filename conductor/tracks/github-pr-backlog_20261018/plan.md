@@ -8,6 +8,7 @@
 - [ ] Re-enable the workflow only after the gated version is on `main`.
 - [x] Repair the commit and receipt gates: prevent amend commits, reject runtime artifacts, and make missing receipts fail explicitly.
 - [x] Adapt GitHub CI to the repository's local-only Actions policy using direct Git fetch and repository scripts; keep the required `verify-done` context and import exact-main receipts from successful run metadata.
+- [x] Configure GitHub CodeQL default setup for Actions, JavaScript/TypeScript, and Python after the active `main` ruleset blocked merging while CodeQL was unconfigured; verify analysis on the exact PR revision before merging.
 
 ## Phase 2 — Record and Triage the Backlog
 
@@ -78,3 +79,4 @@
 - 2026-10-18: Follow-up review found that `github-safe` could not pass the Milhy-PC gateway without a hardware receipt and that Actions checked out a moving event ref before comparing it with immutable `GITHUB_SHA`. The gateway now requires E2E/RPi evidence only for `milhy-full`, and both CI workflows fetch and check out the event SHA directly. Regression coverage exercises the real no-push gateway path without hardware artifacts. Full CI and hosted reviews are pending.
 - 2026-10-18: The focused gateway, workflow, verifier, and handoff set passes (69 tests) after setting the repository `PYTHONPATH`; full `github-safe` and fresh hosted reviews remain required.
 - 2026-10-18: The gateway's feature-branch CI dispatch uses `workflow_dispatch`, whose receipt source is distinct from both PR and main-push receipts. `verify-done.sh` now accepts that receipt only for the exact SHA inside the matching Actions event; local completion still requires main-push provenance. A dedicated regression test is added; focused and full CI are pending.
+- 2026-10-18: GitHub's active `main` ruleset blocked #103 because the required CodeQL tool was not configured. Enabled GitHub default CodeQL setup for Actions, JavaScript/TypeScript, and Python without weakening branch rules; the initial scan is running, and PR-revision analysis must pass before merge.

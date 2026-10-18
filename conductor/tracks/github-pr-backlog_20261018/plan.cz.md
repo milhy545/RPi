@@ -8,6 +8,7 @@
 - [ ] Workflow znovu zapnout až po nasazení nové verze na `main`.
 - [x] Opravit bránu commitů a receiptů: zakázat amend commity, odmítat runtime artefakty a jasně selhat při chybějícím receipt.
 - [x] Přizpůsobit GitHub CI politice lokálních Actions přes přímý Git fetch a lokální skripty; zachovat povinný check `verify-done` a importovat receipt přesných main commitů z metadat úspěšného běhu.
+- [x] Po blokaci merge aktivním rulesetem `main` zapnout GitHub CodeQL default setup pro Actions, JavaScript/TypeScript a Python; před sloučením ověřit analýzu přesné revize PR.
 
 ## Fáze 2 — Zaznamenat a roztřídit frontu
 
@@ -78,3 +79,4 @@
 - 2026-10-18: Následné review zjistilo, že `github-safe` nemohl projít gateway Milhy-PC bez hardwarového receipt a že Actions nejprve stahovaly pohyblivý ref a až poté jej porovnávaly s neměnným `GITHUB_SHA`. Gateway nyní vyžaduje E2E/RPi důkazy jen pro `milhy-full`; oba CI workflow stahují a checkoutují přímo SHA události. Regresní test spouští reálnou cestu gateway bez pushnutí a bez hardwarových artefaktů. Plná CI a hosted review ještě čekají.
 - 2026-10-18: Cílená sada gateway, workflow, verifieru a handoffu prochází (69 testů) po nastavení projektového `PYTHONPATH`; stále je nutné zopakovat plné `github-safe` a nové hosted review.
 - 2026-10-18: CI dispatch gateway pro feature větev používá `workflow_dispatch` a jeho receipt má jiný zdroj než PR nebo main-push. `verify-done.sh` jej nyní přijme jen pro přesné SHA v odpovídající události Actions; lokální dokončení stále vyžaduje původ main-push. Přibyl samostatný regresní test; cílená a plná CI ještě čekají.
+- 2026-10-18: Aktivní ruleset GitHub `main` blokoval #103, protože požadovaný nástroj CodeQL nebyl nastaven. Zapnuli jsme GitHub default setup pro Actions, JavaScript/TypeScript a Python bez oslabení pravidel větve; běží úvodní scan a před merge je nutné ověřit analýzu revize PR.
