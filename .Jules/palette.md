@@ -5,3 +5,7 @@
 ## 2026-06-20 - Redesigned Audio Mixer with animated lines and a11y improvements
 **Learning:** Found that static dashed lines in the audio mixer were difficult to read. Also discovered that screen readers couldn't understand the `<svg>` visualization of active routes.
 **Action:** Replaced static lines with flowing animated `<path>` elements. Added a `sr-only` class text summary element that accurately reads out all active paths. Ensure `aria-hidden="true"` is applied on purely decorative SVG representations so screen readers do not try to parse complex nodes.
+
+## 2025-02-14 - Dashboard Accessibility Enhancement
+**Learning:** Found multiple `<label>` elements missing the `for` attribute and `<input>`/`<select>`/`<button>` elements lacking `aria-label`s. In vanilla HTML/JS projects without a framework's built-in a11y checks, this is a common anti-pattern that makes form elements and icon-only buttons unreadable for screen readers. Explicit ID linking and aria labels are essential.
+**Action:** Always ensure `for` attributes on `<label>` elements exactly match the `id` of their target inputs. For elements without visible labels, provide a descriptive `aria-label`.
