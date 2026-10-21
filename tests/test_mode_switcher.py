@@ -174,19 +174,28 @@ async def test_launch_suspend_exception_other(mode_switcher, mock_app):
 
 @pytest.mark.asyncio
 async def test_watchdog_timeout(mode_switcher):
+    watchdog_fired = asyncio.Event()
+
     with patch("subprocess.Popen") as mock_popen:
         mock_process = Mock()
+
         def mock_wait():
             import time
+
             time.sleep(0.5)
+
             return 0
+
         mock_process.wait.side_effect = mock_wait
         mock_process.poll.return_value = None
         mock_popen.return_value = mock_process
 
-        mode_switcher._teardown_active_process = AsyncMock()
+        async def record_watchdog() -> None:
+            watchdog_fired.set()
+
+        mode_switcher._teardown_active_process = AsyncMock(side_effect=record_watchdog)
         task = asyncio.create_task(mode_switcher.launch(["echo", "test"], timeout=0.1))
-        await asyncio.sleep(0.2)
+        await asyncio.wait_for(watchdog_fired.wait(), timeout=2)
         mode_switcher._teardown_active_process.assert_called_once()
         assert any("Watchdog fired" in log for log in mode_switcher.log_buffer.get_lines())
 
