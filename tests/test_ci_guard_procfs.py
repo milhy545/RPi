@@ -78,6 +78,39 @@ def test_process_scan_reads_proc_stat_and_cmdline_without_ps(monkeypatch) -> Non
     ]
 
 
+def test_process_scan_keeps_process_with_invalid_utf8_name(monkeypatch) -> None:
+    stat_bytes = _stat_line(606, "worker", 1, 100, 0, 1000).encode().replace(
+        b"worker", b"work\xffr"
+    )
+
+    def open_proc(path: str, mode: str = "r", *_args: Any, **kwargs: Any) -> Any:
+        if path == "/proc/uptime":
+            return io.StringIO("20.00 0.00\n")
+        if path == "/proc/606/stat":
+            return io.TextIOWrapper(
+                io.BytesIO(stat_bytes), encoding=kwargs["encoding"], errors=kwargs.get("errors")
+            )
+        if path == "/proc/606/cmdline" and mode == "rb":
+            return io.BytesIO(b"worker\0")
+        raise AssertionError(f"Unexpected procfs read: {path} ({mode})")
+
+    monkeypatch.setattr(rpi_guard.os, "listdir", lambda _path: ["606"])
+    monkeypatch.setattr(rpi_guard.os, "sysconf", lambda _name: 100)
+
+    with patch("builtins.open", side_effect=open_proc):
+        processes = rpi_guard.RPiGuard()._get_processes()
+
+    assert processes == [
+        {
+            "pid": 606,
+            "ppid": 1,
+            "pcpu": 10.0,
+            "comm": "work\ufffdr",
+            "args": "worker",
+        }
+    ]
+
+
 def test_process_scan_returns_empty_if_uptime_is_unavailable(monkeypatch) -> None:
     mocked_listdir = Mock()
     monkeypatch.setattr(rpi_guard.os, "listdir", mocked_listdir)
