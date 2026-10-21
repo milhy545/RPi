@@ -195,7 +195,7 @@ class RPiGuard:
 
         try:
             clock_ticks = int(os.sysconf("SC_CLK_TCK"))
-        except (KeyError, OSError, ValueError):
+        except (OSError, ValueError):
             clock_ticks = 100
         if clock_ticks <= 0:
             clock_ticks = 100
