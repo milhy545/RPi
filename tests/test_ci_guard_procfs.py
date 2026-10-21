@@ -102,3 +102,77 @@ def test_process_scan_returns_empty_if_procfs_directory_is_unavailable(monkeypat
         assert rpi_guard.RPiGuard()._get_processes() == []
 
     mocked_listdir.assert_called_once_with("/proc")
+
+
+def test_process_scan_handles_invalid_entries_and_unreadable_cmdline(monkeypatch) -> None:
+    valid_stat = _stat_line(405, "fresh process", 1, 10, 5, 2500)
+
+    def open_proc(path: str, mode: str = "r", *_args: Any, **_kwargs: Any) -> Any:
+        if path == "/proc/uptime":
+            return io.StringIO("20.00 0.00\n")
+        if path == "/proc/401/stat":
+            return io.StringIO("401 malformed stat")
+        if path == "/proc/402/stat":
+            return io.StringIO("402 no opening parenthesis")
+        if path == "/proc/403/stat":
+            return io.StringIO("403 (short) S 1 2")
+        if path == "/proc/404/stat":
+            raise FileNotFoundError(path)
+        if path == "/proc/405/stat":
+            return io.StringIO(valid_stat)
+        if path == "/proc/405/cmdline" and mode == "rb":
+            raise PermissionError(path)
+        raise AssertionError(f"Unexpected procfs read: {path} ({mode})")
+
+    monkeypatch.setattr(
+        rpi_guard.os,
+        "listdir",
+        lambda path: ["self", "401", "402", "403", "404", "405"],
+    )
+    monkeypatch.setattr(
+        rpi_guard.os,
+        "sysconf",
+        Mock(side_effect=OSError("clock tick rate unavailable")),
+    )
+
+    with patch("builtins.open", side_effect=open_proc):
+        processes = rpi_guard.RPiGuard()._get_processes()
+
+    assert processes == [
+        {
+            "pid": 405,
+            "ppid": 1,
+            "pcpu": 0.0,
+            "comm": "fresh process",
+            "args": "[fresh process]",
+        }
+    ]
+
+
+def test_process_scan_uses_default_clock_rate_when_sysconf_is_nonpositive(monkeypatch) -> None:
+    stat_entry = _stat_line(501, "worker", 1, 10, 5, 100)
+
+    def open_proc(path: str, mode: str = "r", *_args: Any, **_kwargs: Any) -> Any:
+        if path == "/proc/uptime":
+            return io.StringIO("20.00 0.00\n")
+        if path == "/proc/501/stat":
+            return io.StringIO(stat_entry)
+        if path == "/proc/501/cmdline" and mode == "rb":
+            return io.BytesIO(b"worker\0--safe\0")
+        raise AssertionError(f"Unexpected procfs read: {path} ({mode})")
+
+    monkeypatch.setattr(rpi_guard.os, "listdir", lambda _path: ["501"])
+    monkeypatch.setattr(rpi_guard.os, "sysconf", lambda _name: 0)
+
+    with patch("builtins.open", side_effect=open_proc):
+        processes = rpi_guard.RPiGuard()._get_processes()
+
+    assert processes == [
+        {
+            "pid": 501,
+            "ppid": 1,
+            "pcpu": 15.0 / 19.0,
+            "comm": "worker",
+            "args": "worker --safe",
+        }
+    ]
