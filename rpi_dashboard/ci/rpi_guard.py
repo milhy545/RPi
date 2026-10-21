@@ -212,7 +212,9 @@ class RPiGuard:
 
             try:
                 pid = int(pid_entry)
-                with open(f"/proc/{pid_entry}/stat", "r", encoding="utf-8") as stat_file:
+                with open(
+                    f"/proc/{pid_entry}/stat", "r", encoding="utf-8", errors="replace"
+                ) as stat_file:
                     stat_content = stat_file.read()
 
                 comm_start = stat_content.find("(")
