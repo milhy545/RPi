@@ -82,7 +82,7 @@ Object.assign(I18N.cz,{bluetooth:'Bluetooth',audioDesc:'Hlavní směrování zvu
 Object.assign(I18N.en,{bluetooth:'Bluetooth',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust in Bluetooth, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust in Bluetooth for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.'});
 
 Object.assign(I18N.cz,{audioDelay:'Zpoždění zvuku (ms):',logLinesTitle:'Počet řádků k načtení',loginRoleLabel:'Role:',loginPasswordLabel:'Heslo:'});
-Object.assign(I18N.en,{logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:'});
+Object.assign(I18N.en,{audioDelay:'Audio delay (ms):',logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:'});
 
 const HELPERS={
 cz:{
