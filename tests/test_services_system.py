@@ -68,42 +68,73 @@ def test_get_system_stats():
 
 
 def test_restart_mpv():
-    """Restartuje pouze proces s přesným názvem mpv."""
+    """Signal every dashboard-owned mpv process and report their PIDs."""
     import signal
 
     from rpi_dashboard.services.system import restart_mpv
 
-    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value="1234"):
+    with patch(
+        "rpi_dashboard.services.system._get_dashboard_mpv_pids",
+        return_value=[1234, 5678],
+    ):
         with patch("rpi_dashboard.services.system.os.kill") as mock_kill:
             with patch("rpi_dashboard.services.system._run") as mock_run:
                 result = restart_mpv()
 
     mock_run.assert_not_called()
-    mock_kill.assert_called_once_with(1234, signal.SIGTERM)
+    assert [invocation.args for invocation in mock_kill.call_args_list] == [
+        (1234, signal.SIGTERM),
+        (5678, signal.SIGTERM),
+    ]
     assert result["ok"] is True
+    assert result["signalled_pids"] == [1234, 5678]
 
 
 def test_restart_mpv_does_not_signal_when_process_is_absent():
     """Chybějící proces nesmí způsobit signál jinému procesu."""
     from rpi_dashboard.services.system import restart_mpv
 
-    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value=""):
+    with patch("rpi_dashboard.services.system._get_dashboard_mpv_pids", return_value=[]):
         with patch("rpi_dashboard.services.system.os.kill") as mock_kill:
             result = restart_mpv()
 
     mock_kill.assert_not_called()
-    assert result["ok"] is True
+    assert result == {"ok": False, "error": "mpv process not found"}
 
 
 def test_restart_mpv_reports_signal_failures():
     """Vrátí chybu systému při selhání signálu."""
     from rpi_dashboard.services.system import restart_mpv
 
-    with patch("rpi_dashboard.services.system._get_pid_by_name", return_value="1234"):
+    with patch("rpi_dashboard.services.system._get_dashboard_mpv_pids", return_value=[1234]):
         with patch("rpi_dashboard.services.system.os.kill", side_effect=PermissionError("denied")):
             result = restart_mpv()
 
-    assert result == {"ok": False, "error": "denied"}
+    assert result == {"ok": False, "error": "1234: denied", "signalled_pids": []}
+
+
+def test_get_dashboard_mpv_pids_requires_exact_process_and_socket_match():
+    """Ignore unrelated mpv processes and keep every dashboard IPC match."""
+    from rpi_dashboard.services.system import _get_dashboard_mpv_pids
+
+    process_data = {
+        "/proc/101/comm": "mpv\n",
+        "/proc/101/cmdline": b"mpv\0--input-ipc-server=/tmp/rpi-mpv.sock\0",
+        "/proc/102/comm": "mpv\n",
+        "/proc/102/cmdline": b"mpv\0--input-ipc-server=/tmp/other.sock\0",
+        "/proc/103/comm": "mpv-wrapper\n",
+        "/proc/103/cmdline": b"mpv-wrapper\0--input-ipc-server=/tmp/rpi-mpv.sock\0",
+        "/proc/104/comm": "mpv\n",
+        "/proc/104/cmdline": b"mpv\0--input-ipc-server\0/tmp/rpi-mpv.sock\0",
+    }
+
+    def open_process_file(path: str, mode: str = "r", *_args, **_kwargs):
+        contents = process_data[path]
+        return io.BytesIO(contents) if mode == "rb" else io.StringIO(contents)
+
+    with patch("rpi_dashboard.services.system.os.listdir", return_value=["104", "103", "102", "101"]):
+        with patch("builtins.open", side_effect=open_process_file):
+            assert _get_dashboard_mpv_pids() == [101, 104]
 
 
 def test_get_pid_by_name_uses_exact_comm_match():
