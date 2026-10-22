@@ -2150,7 +2150,7 @@ def page():
 </div></div>
 <div id="feedback-modal" class="modal">
   <div class="modal-content">
-<button class="modal-close" data-i18n-aria-label="closeModal" onclick="closeFeedback()" aria-label="Close modal">×</button>
+    <button class="modal-close" data-i18n-aria-label="closeModal" onclick="closeFeedback()" aria-label="Close modal">×</button>
     <h3 data-i18n="feedbackTitle">💬 Submit Feedback</h3>
     <div>
       <label for="feedback-type" data-i18n="feedbackTypeLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:#8b949e">Type:</label>

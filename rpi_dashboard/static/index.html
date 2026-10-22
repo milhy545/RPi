@@ -212,7 +212,7 @@
                     <div style="font-size: 0.72rem; color: #8b949e;">Applies mpv audio-delay in milliseconds for DLNA sync. Positive delays audio.</div>
                 </div>
                 <div style="display:flex; gap:.4rem; align-items:center;">
-                    <label for="ta-lat-dlna-offset" style="font-size:.72rem;color:#8b949e">Delay (ms):</label>
+                    <label for="ta-lat-dlna-offset" data-i18n="audioDelay" style="font-size:.72rem;color:#8b949e">Audio delay (ms):</label>
                     <input type="number" id="ta-lat-dlna-offset" value="0" min="-5000" max="5000" step="50" style="width:80px; padding: 0.3rem; border: 1px solid #30363d; border-radius: 4px; background: #0d1117; color: var(--app-text)">
                     <button class="app-tab-btn" onclick="taSetLatency('dlna_output_offset_ms',$('#ta-lat-dlna-offset').value)" data-icon="💾" style="padding: 0.4rem 0.8rem; border-radius: 6px; background: #238636; color: #fff; border: 1px solid rgba(240,246,252,0.1);">Apply</button>
                 </div>
@@ -431,7 +431,7 @@
                         <option value="bluetooth" data-i18n="logServiceBluetooth">Bluetooth</option>
                         <option value="" data-i18n="logServiceAll">All (journalctl -u)</option>
                     </select>
-                    <input type="number" id="log-lines" data-i18n-aria-label="logLinesLabel" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
+                    <input type="number" id="log-lines" data-i18n-aria-label="logLinesLabel" data-i18n="logLinesTitle" data-i18n-attr="title" value="100" min="10" max="1000" step="10" style="width:80px" title="Lines to fetch">
                     <button onclick="logsRefresh()" data-i18n="refresh">Refresh</button>
                 </div>
             </div>
@@ -468,14 +468,14 @@
             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Please authenticate to access expert features.</p>
             <form id="login-form" onsubmit="event.preventDefault(); submitLogin();">
                 <div style="margin-bottom: 0.8rem;">
-                    <label for="login-role" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
+                    <label for="login-role" data-i18n="loginRoleLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Role:</label>
                     <select id="login-role" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem">
                         <option value="expert">Expert</option>
                         <option value="admin">Admin (Terminal)</option>
                     </select>
                 </div>
                 <div style="margin-bottom: 1rem;">
-                    <label for="login-password" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
+                    <label for="login-password" data-i18n="loginPasswordLabel" style="display:block;margin-bottom:.2rem;font-size:.85rem;color:var(--text-muted)">Password:</label>
                     <input type="password" id="login-password" style="width:100%;background:var(--bg-dark);border:1px solid var(--border-color);color:var(--text-main);padding:.4rem;border-radius:.3rem" required>
                 </div>
                 <button type="submit" class="btn-primary" style="width:100%; padding: 0.5rem; font-weight: bold;">Log In</button>
