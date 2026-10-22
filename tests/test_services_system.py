@@ -126,15 +126,19 @@ def test_get_dashboard_mpv_pids_requires_exact_process_and_socket_match():
         "/proc/103/cmdline": b"mpv-wrapper\0--input-ipc-server=/tmp/rpi-mpv.sock\0",
         "/proc/104/comm": "mpv\n",
         "/proc/104/cmdline": b"mpv\0--input-ipc-server\0/tmp/rpi-mpv.sock\0",
+        "/proc/105/comm": "mpv\n",
+        "/proc/105/cmdline": b"mpv\0--input-ipc-server=/tmp/mpv-socket\0",
+        "/proc/106/comm": "mpv\n",
+        "/proc/106/cmdline": b"mpv\0--input-ipc-server\0/tmp/mpv-socket\0",
     }
 
     def open_process_file(path: str, mode: str = "r", *_args, **_kwargs):
         contents = process_data[path]
         return io.BytesIO(contents) if mode == "rb" else io.StringIO(contents)
 
-    with patch("rpi_dashboard.services.system.os.listdir", return_value=["104", "103", "102", "101"]):
+    with patch("rpi_dashboard.services.system.os.listdir", return_value=["106", "105", "104", "103", "102", "101"]):
         with patch("builtins.open", side_effect=open_process_file):
-            assert _get_dashboard_mpv_pids() == [101, 104]
+            assert _get_dashboard_mpv_pids() == [101, 104, 105, 106]
 
 
 def test_get_pid_by_name_uses_exact_comm_match():

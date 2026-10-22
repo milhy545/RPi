@@ -27,6 +27,45 @@ def test_static_app_js_has_valid_syntax() -> None:
     assert result.returncode == 0
 
 
+def test_restart_mpv_feedback_uses_error_state() -> None:
+    """Both WebUI scripts must show an absent player as an error."""
+    node = shutil.which("node")
+    assert node is not None
+    script = r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+(async () => {
+  for (const path of ['rpi_dashboard/static/js/app.js', 'webserver.py']) {
+    const source = fs.readFileSync(path, 'utf8');
+    const start = source.indexOf('async function restartMpv(){');
+    assert.ok(start >= 0, path);
+    const end = source.indexOf('\n}', start);
+    assert.ok(end > start, path);
+    const calls = [];
+    const context = {
+      confirm: () => true,
+      api: async () => ({ok: false, out: 'mpv process not found'}),
+      msg: (...args) => calls.push(args),
+    };
+    vm.createContext(context);
+    await vm.runInContext(source.slice(start, end + 2) + '\nrestartMpv()', context);
+    assert.deepEqual(calls, [['mpv process not found', 'err']], path);
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_audio_multi_output_uses_real_backend_state() -> None:
     """Multi-output must use the shared Audio API, not a cookie-only toggle."""
     app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
