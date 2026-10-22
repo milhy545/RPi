@@ -265,6 +265,42 @@ def _get_pid_by_name(name: str) -> str:
     return ""
 
 
+def _get_dashboard_mpv_pids() -> List[int]:
+    """Return exact mpv processes using the dashboard IPC socket."""
+    from .player import MSOCK
+
+    process_ids: List[int] = []
+    try:
+        proc_entries = os.listdir("/proc")
+    except OSError:
+        return process_ids
+
+    socket_argument = f"--input-ipc-server={MSOCK}".encode()
+    socket_path = MSOCK.encode()
+    for pid_entry in proc_entries:
+        if not pid_entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid_entry}/comm", "r", encoding="utf-8") as comm_file:
+                if comm_file.read().strip() != "mpv":
+                    continue
+            with open(f"/proc/{pid_entry}/cmdline", "rb") as cmdline_file:
+                arguments = [argument for argument in cmdline_file.read().split(b"\0") if argument]
+        except (OSError, UnicodeError):
+            continue
+
+        uses_dashboard_socket = socket_argument in arguments or any(
+            argument == b"--input-ipc-server"
+            and index + 1 < len(arguments)
+            and arguments[index + 1] == socket_path
+            for index, argument in enumerate(arguments)
+        )
+        if uses_dashboard_socket:
+            process_ids.append(int(pid_entry))
+
+    return sorted(process_ids)
+
+
 def get_system_status() -> Dict[str, Any]:
     """Return CPU affinity/status info used by the legacy WebUI."""
     # ⚡ Bolt Optimization: Use native Python procfs reading instead of `pgrep`
@@ -367,14 +403,36 @@ def get_https_info() -> Dict[str, Any]:
 
 
 def restart_mpv() -> Dict[str, Any]:
-    """Restart mpv player."""
-    try:
-        pid = _get_pid_by_name("mpv")
-        if pid.isdigit():
-            os.kill(int(pid), signal.SIGTERM)
-        return {"ok": True, "message": "mpv restarted"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    """Request shutdown of every dashboard-owned mpv process."""
+    process_ids = _get_dashboard_mpv_pids()
+    if not process_ids:
+        return {"ok": False, "error": "mpv process not found"}
+
+    signalled: List[int] = []
+    failures: List[str] = []
+    for pid in process_ids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except OSError as error:
+            failures.append(f"{pid}: {error}")
+        else:
+            signalled.append(pid)
+
+    if failures:
+        return {
+            "ok": False,
+            "error": "; ".join(failures),
+            "signalled_pids": signalled,
+        }
+    if not signalled:
+        return {"ok": True, "message": "Dashboard mpv processes already exited"}
+    return {
+        "ok": True,
+        "message": f"SIGTERM sent to {len(signalled)} dashboard mpv process(es)",
+        "signalled_pids": signalled,
+    }
 
 
 def restart_dashboard() -> Dict[str, Any]:
