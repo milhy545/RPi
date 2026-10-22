@@ -24,7 +24,9 @@ const bundle = [
 ].join('\n');
 
 const browser = await chromium.launch({
-  executablePath: '/usr/bin/chromium',
+  ...(process.env.CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.CHROMIUM_EXECUTABLE_PATH }
+    : {}),
   headless: true,
   args: ['--no-sandbox'],
 });
