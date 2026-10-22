@@ -275,8 +275,8 @@ def _get_dashboard_mpv_pids() -> List[int]:
     except OSError:
         return process_ids
 
-    socket_argument = f"--input-ipc-server={MSOCK}".encode()
-    socket_path = MSOCK.encode()
+    socket_paths = {MSOCK.encode(), b"/tmp/mpv-socket"}
+    socket_arguments = {b"--input-ipc-server=" + path for path in socket_paths}
     for pid_entry in proc_entries:
         if not pid_entry.isdigit():
             continue
@@ -289,10 +289,10 @@ def _get_dashboard_mpv_pids() -> List[int]:
         except (OSError, UnicodeError):
             continue
 
-        uses_dashboard_socket = socket_argument in arguments or any(
+        uses_dashboard_socket = bool(socket_arguments.intersection(arguments)) or any(
             argument == b"--input-ipc-server"
             and index + 1 < len(arguments)
-            and arguments[index + 1] == socket_path
+            and arguments[index + 1] in socket_paths
             for index, argument in enumerate(arguments)
         )
         if uses_dashboard_socket:

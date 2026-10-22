@@ -732,7 +732,7 @@ def handle_system_status(q: Dict[str, Any]) -> Dict[str, Any]:
 def handle_restart_mpv(q: Dict[str, Any]) -> Dict[str, Any]:
     """Restart mpv."""
     result = system.restart_mpv()
-    return {**result, "out": result.get("message", "mpv stopped")}
+    return {**result, "out": result.get("message") or result.get("error") or "mpv restart failed"}
 
 
 def handle_restart_dashboard(q: Dict[str, Any]) -> Dict[str, Any]:

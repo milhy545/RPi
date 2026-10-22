@@ -1619,7 +1619,7 @@ async function loadSysStatus(){
 async function restartMpv(){
     if(!confirm('Opravdu restartovat mpv?')) return;
     let r=await api('/system/restart-mpv');
-    msg(r.out||'mpv stopped','ok');
+    msg(r.out||r.error||'mpv restart failed',r.ok?'ok':'err');
 }
 
 async function restartDashboard(){

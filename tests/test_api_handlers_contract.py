@@ -9,6 +9,20 @@ import pytest
 from rpi_dashboard.api import handlers
 
 
+def test_restart_mpv_handler_exposes_failure_to_webui(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        handlers.system,
+        "restart_mpv",
+        lambda: {"ok": False, "error": "mpv process not found"},
+    )
+
+    assert handlers.handle_restart_mpv({}) == {
+        "ok": False,
+        "error": "mpv process not found",
+        "out": "mpv process not found",
+    }
+
+
 def q(**values: object) -> dict[str, list[str]]:
     return {key: [str(value)] for key, value in values.items()}
 
