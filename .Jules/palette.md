@@ -5,3 +5,7 @@
 ## 2026-06-20 - Redesigned Audio Mixer with animated lines and a11y improvements
 **Learning:** Found that static dashed lines in the audio mixer were difficult to read. Also discovered that screen readers couldn't understand the `<svg>` visualization of active routes.
 **Action:** Replaced static lines with flowing animated `<path>` elements. Added a `sr-only` class text summary element that accurately reads out all active paths. Ensure `aria-hidden="true"` is applied on purely decorative SVG representations so screen readers do not try to parse complex nodes.
+
+## 2026-10-23 - Dynamic aria-label translations for icon-only buttons
+**Learning:** Hardcoded static `aria-label`s on buttons in the UI break screen reader accessibility when switching languages, as they prevent dynamic translation. Icon-only buttons like modal close ('×') or zoom controls ('+', '-', '⛶') require screen-reader accessible names that update when the user changes the dashboard language.
+**Action:** When adding accessible labels to icon-only buttons in a dynamically localized UI, avoid static `aria-label` attributes. Instead, use the app's existing internationalization data attributes (`data-i18n` and `data-i18n-attr="aria-label"`) and add the translations to the global `I18N` dictionaries so the `app.js` localization logic can dynamically update the accessibility text.
