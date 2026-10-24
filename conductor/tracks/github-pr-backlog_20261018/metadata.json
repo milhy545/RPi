@@ -4,8 +4,8 @@
   "type": "maintenance",
   "status": "active",
   "created_at": "2026-10-18T15:14:25Z",
-  "updated_at": "2026-10-18T15:22:25Z",
-  "implementation_notes": "Resolve the open RPi Dashboard PR backlog from the Milhy-PC gateway. Preserve the four local-only main commits and every user-submitted Conductor report. Replace unconditional auto-merge with explicit merge-approved opt-in. Harden the local CI/receipt gates and upgrade audited lockfile packages before consolidating and merging candidates sequentially.",
+  "updated_at": "2026-10-24T06:39:54Z",
+  "implementation_notes": "Resolve the open RPi Dashboard PR backlog from the Milhy-PC gateway. Preserve the four local-only main commits and every user-submitted Conductor report. Replace unconditional auto-merge with explicit merge-approved opt-in. Harden the local CI/receipt gates and upgrade audited lockfile packages before consolidating and merging candidates sequentially. All GitHub PRs are resolved; the non-mutating RPi candidate smoke remains pending confirmation of the current host mapping.",
   "dependencies": ["rpi-safe-ci-workflow_20260805"],
   "blocks": []
 }
