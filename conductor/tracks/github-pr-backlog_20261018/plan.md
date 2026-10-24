@@ -5,7 +5,7 @@
 - [x] Disable the repository's unconditional auto-merge workflow.
 - [x] Disable all auto-merge requests active in the open PR snapshot.
 - [x] Add `merge-approved` label gating, reconcile current label/draft state on every PR event, and test revocation.
-- [ ] Re-enable the workflow only after the gated version is on `main`.
+- [x] Re-enable the gated workflow after its version was on `main` and the backlog had no open PRs or queued auto-merge requests.
 - [x] Repair the commit and receipt gates: prevent amend commits, reject runtime artifacts, and make missing receipts fail explicitly.
 - [x] Adapt GitHub CI to the repository's local-only Actions policy using direct Git fetch and repository scripts; keep the required `verify-done` context and import exact-main receipts from successful run metadata.
 - [x] Configure GitHub CodeQL default setup for Actions, JavaScript/TypeScript, and Python after the active `main` ruleset blocked merging while CodeQL was unconfigured; verify analysis on the exact PR revision before merging.
@@ -14,9 +14,9 @@
 
 - [x] Capture the initial open PR set and current GitHub `main` SHA.
 - [x] Preserve the four local-only commits and create a clean isolated worktree from GitHub `main`.
-- [ ] Record one disposition for every initial PR and recheck each PR before any close or merge.
+- [x] Record one disposition for every initial PR and recheck each PR before any close or merge.
 - [x] Close unrelated-project PRs #93 and #96 with `invalid` and a clear explanation.
-- [ ] Mark duplicates as `duplicate` only after naming the verified successor.
+- [x] Mark duplicates as `duplicate` only after naming the verified successor.
 
 ## Phase 3 — Consolidate and Verify Candidates
 
@@ -27,23 +27,24 @@
 - [x] Consolidate the TUI command helper and procfs process detection; add focused tests for PID ancestry, sustained CPU attribution, and candidate termination; exclude generated reports and duplicated tests.
 - [x] Audit the locked project environment and prepare fixed versions for the vulnerable `multidict`, `pip`, and `urllib3` packages represented in PR #62.
 - [x] Prepare a focused dependency successor for #62, #111, and #113: require patched aiohttp and certifi minimums and pip 26.2.2 in the development extra; keep merging and closing the source PRs gated on the successor.
-- [ ] Merge the tested lockfile candidate, then close PR #62 as superseded by that candidate.
-- [ ] Review remaining standalone service-status, Kodi-port, and DLNA updates individually.
-- [ ] Reject security or workflow changes with invalid YAML, broad permissions, unpinned third-party actions, or unresolved review findings.
+- [x] Merge the tested lockfile candidate, then close PRs #62, #111, and #113 as superseded; #62 closed on merge and the two ARIA/dependency PRs were closed after #117 passed exact-main CI.
+- [x] Review remaining standalone service-status, Kodi-port, and DLNA updates individually: #56 was closed as wontfix because procfs invocation state is not equivalent to `systemctl is-active`; #58 is superseded by the procfs lookup and tests in #109; #68 was already implemented in `main`.
+- [x] Reject security or workflow changes with invalid YAML, broad permissions, unpinned third-party actions, or unresolved review findings; #96 was closed as invalid after its exact diff audit.
 
 ## Phase 4 — Merge Sequentially
 
-- [ ] Update each selected PR against the latest `main` and inspect its exact diff.
-- [ ] Run the required local checks and candidate-specific tests on Milhy-PC; run safe RPi candidate checks where runtime behaviour is affected.
-- [ ] Wait for required GitHub checks and review to pass, then merge one PR at a time using rebase.
-- [ ] Recheck and refresh the next candidate after each merge advances `main`.
-- [ ] Close replaced duplicates only after the successor merge is confirmed.
+- [x] Update each selected PR against the latest `main` and inspect its exact diff.
+- [x] Run the required `github-safe` checks and focused tests on Milhy-PC for the selected candidates.
+- [ ] Run the non-mutating RPi candidate smoke for runtime-related changes after confirming the current RPi host mapping; the live SSH alias and stored device map disagree, so no hardware candidate has been staged.
+- [x] Wait for required GitHub checks and review to pass, then merge one PR at a time using rebase.
+- [x] Recheck and refresh the next candidate after each merge advances `main`.
+- [x] Close replaced duplicates only after the successor merge is confirmed.
 
 ## Phase 5 — Verify and Close the Track
 
-- [ ] Confirm the disposition of every PR from the initial snapshot and recheck the live open-PR list.
-- [ ] Confirm GitHub `main`, required checks, CI receipt, local worktree state, and the four preserved local-only commits.
-- [ ] Run `tools/verify-done.sh`; keep the track active and report exact blockers if any required evidence is unavailable.
+- [x] Confirm the disposition of every PR from the initial snapshot and recheck the live open-PR list; it is empty.
+- [x] Confirm GitHub `main`, required checks, CI receipt, isolated worktree state, and the four preserved local-only commits.
+- [x] Run `tools/verify-done.sh` for the current main SHA using its imported exact-main receipt and the isolated main worktree. Keep the track active only for the separate RPi candidate smoke above.
 
 ## Initial PR Inventory and Intended Direction
 
@@ -51,19 +52,18 @@
 |---|---|---|
 | #93 | Unrelated application/repository files | Closed as invalid after final diff check. |
 | #85 | Large sync bundle, app changes, and Conductor reports | Closed as invalid after current-diff audit: only placeholders, runtime state, and generated-report deletions remained; no valid code or report record needed splitting. |
-| #92, #94–#95, #97–#102 | Accessibility | Consolidate into a bilingual, tested successor; include the active feedback modal template fix. |
-| #42–#43 | TUI Bluetooth event rendering | Keep valid DHCP and Wi-Fi details with a non-empty service fallback; consolidate. |
-| #45–#46, #48–#49 | TUI network information | Retain subnet mask and settings/Tailscale semantics in one tested successor. |
-| #47, #60–#61, #64, #67 | TUI subprocess helper | Select a safe implementation, test argument handling and timeouts, and exclude reports. |
-| #54–#55, #65, #71–#73, #78–#91 excluding #85 | Backend network information | Consolidate behind the service API, preserve compatibility, and test fallback behaviour. |
+| #92, #94–#95, #97–#102, #110, #112 | Accessibility | Closed with the `duplicate` label after the valid changes were merged and tested in #106 (`5606ad2d2fb090676101fe9d8f3b2b2802f37867`). |
+| #42–#43, #45–#49, #60–#61, #64, #67 | TUI Bluetooth/network/subprocess helpers | Closed with the `duplicate` label after consolidation and tests in #105 (`c4384c5deb14cb6812d25650a26a7df201410414`). |
+| #54–#55, #65, #71–#73, #78–#91 excluding #85 | Backend network information | Closed with the `duplicate` label after consolidation and tests in #104 (`857cd80f6fa4673d16482667e712f026679a9251`). |
 | #77, #81 | RPi process enumeration | Implementation is present in main; focused unique regressions merged in #116 with an exact-main receipt. #77 closed automatically after #116 merged; #81 closed as superseded. No report deletions were carried over. |
-| #56 | Service state detection | Close unless semantics are shown equivalent to `systemctl is-active`. |
-| #58 | DLNA process lookup | Review and test procfs behaviour. |
-| #62 | Dependency update | #117 carries the current pip floor and patched aiohttp/certifi minima; close as superseded only after that candidate merges. |
-| #66 | MPV process signalling | Verify exact process matching and safe signal target; close only after the existing safe implementation in #108 is confirmed. |
-| #68 | Kodi port detection | Verify IPv4/IPv6 procfs parsing and call site. |
+| #56 | Service state detection | Closed as wontfix: internal systemd invocation-file presence is not equivalent to `systemctl is-active`. |
+| #58 | DLNA process lookup | Closed and labeled `duplicate`; the procfs lookup is in `main`, and #109 (`32f68c40d6bab7e2c8ffc68f2c3b51040cba8ce4`) unified status and PID with focused tests. |
+| #62 | Dependency update | Closed as superseded by #117, which merged as `f9b8a2ef7d3a325e6edef8670088730ddeeee2a8` with exact-main CI and receipt. |
+| #66 | MPV process signalling | Closed and labeled `duplicate` after the safer exact-process implementation merged in #108 (`36a6e50c79424fabb2d0273f3604e93587fc5113`). |
+| #68 | Kodi port detection | Closed and labeled `duplicate`; the current `main` already performs the IPv4/IPv6 procfs check and handles empty files. |
 | #96 | PR-agent workflow | Closed as invalid: duplicate `runs-on`, unpinned third-party action, broad write permissions, and secret exposure. |
-| #111, #113 | Modal-close ARIA labels and dependency floors | UI is superseded by #106; preserve the security minimums in #117, then close after the focused successor merges. |
+| #111, #113 | Modal-close ARIA labels and dependency floors | Closed and labeled `duplicate` after #106 retained the UI changes and #117 retained the dependency floors. |
+| #114, #115 | Bluetooth topology accessibility | #114 was closed and labeled `duplicate`; #115 merged as `d1dd878eebc9f02e88df4a40b319a6215d67eb44`. |
 
 ## Change Log
 
@@ -87,3 +87,4 @@
 
 - 2026-10-24: PR #116 merged as c0193130ede0aff820c85ea9608b7e8851ac4630 with tree 55ba040e8ea67ef1300fc30062d1a7205ed114b3; main push run 40069464037 passed and wrote conductor/ci/receipts/c0193130ede0aff820c85ea9608b7e8851ac4630-20261024-061627-push.json, with VERIFY-DONE: PASS. The successor adds five focused guard regressions; #77 closed on merge and #81 was closed as superseded.
 - 2026-10-24: Audited dependency payloads in #62, #111, and #113. The merged lock already has newer aiohttp and certifi versions, but the declared floors allow affected versions; the lock also has pip 26.2.1. A focused successor now raises the floors to aiohttp>=3.14.4, certifi>=2026.10.19, and pip>=26.2.2 in the development extra.
+- 2026-10-24: PR #117 merged as f9b8a2ef7d3a325e6edef8670088730ddeeee2a8 (tree d2b32dce9d93ec614abed7b39c8168136ad5841b). Main push CI run 40070217677 passed the full github-safe suite (819 tests, 69.26% coverage), pip-audit, and verify-done; receipt: conductor/ci/receipts/f9b8a2ef7d3a325e6edef8670088730ddeeee2a8-20261024-062804-push.json. PR #117's Kilo Code Review passed with no issues; required PR checks passed. The optional pr-title/grammar check returned an external 401 and is not a required branch-protection context. PRs #62, #111, and #113 are closed; duplicate successors were labeled only after verification. The gated Queue PR Auto-Merge workflow is active again after the open-PR list reached zero. The earlier #106 main run exposed the old pip-audit dependency-floor finding; #117 resolves it and the exact current-main audit passes. The root checkout remains untouched with four local-only commits; its first mirror check found stale local main, then verify-done passed against the isolated worktree matching f9b8a2e. A non-mutating RPi candidate smoke remains pending host-map confirmation.
