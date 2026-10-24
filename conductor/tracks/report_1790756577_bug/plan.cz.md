@@ -4,7 +4,7 @@
 
 Prošetřit a vyřešit uživatelské hlášení.
 
-**Popis:** rate-limit test
+**Popis:** rate‑limit test
 
 ## Úkoly
 
