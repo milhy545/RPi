@@ -21,13 +21,14 @@
 ## Phase 3 — Consolidate and Verify Candidates
 
 - [x] Re-audit PR #85: its current diff contains only placeholder report tracks, a runtime mode file, and generated-report deletions; it was closed as invalid because no application change or valid report record remained to preserve.
-- [ ] Consolidate accessibility changes, including translated accessible names and the feedback modal close control.
-- [ ] Consolidate TUI network information changes while retaining DHCP leases and the `RPi-service` fallback.
-- [ ] Consolidate network information service changes behind one implementation and test address, route, interface, and fallback behaviour.
+- [x] Consolidate accessibility changes, including translated accessible names and the feedback modal close control.
+- [x] Consolidate TUI network information changes while retaining DHCP leases and the RPi-service fallback.
+- [x] Consolidate network information service changes behind one implementation and test address, route, interface, and fallback behaviour.
 - [x] Consolidate the TUI command helper and procfs process detection; add focused tests for PID ancestry, sustained CPU attribution, and candidate termination; exclude generated reports and duplicated tests.
 - [x] Audit the locked project environment and prepare fixed versions for the vulnerable `multidict`, `pip`, and `urllib3` packages represented in PR #62.
+- [x] Prepare a focused dependency successor for #62, #111, and #113: require patched aiohttp and certifi minimums and pip 26.2.2 in the development extra; keep merging and closing the source PRs gated on the successor.
 - [ ] Merge the tested lockfile candidate, then close PR #62 as superseded by that candidate.
-- [ ] Review standalone process, service-status, Kodi-port, and DLNA updates individually.
+- [ ] Review remaining standalone service-status, Kodi-port, and DLNA updates individually.
 - [ ] Reject security or workflow changes with invalid YAML, broad permissions, unpinned third-party actions, or unresolved review findings.
 
 ## Phase 4 — Merge Sequentially
@@ -55,13 +56,14 @@
 | #45–#46, #48–#49 | TUI network information | Retain subnet mask and settings/Tailscale semantics in one tested successor. |
 | #47, #60–#61, #64, #67 | TUI subprocess helper | Select a safe implementation, test argument handling and timeouts, and exclude reports. |
 | #54–#55, #65, #71–#73, #78–#91 excluding #85 | Backend network information | Consolidate behind the service API, preserve compatibility, and test fallback behaviour. |
-| #77, #81 | RPi process enumeration | Keep exact procfs matching and focused tests; do not delete report data. |
+| #77, #81 | RPi process enumeration | Implementation is present in main; focused unique regressions merged in #116 with an exact-main receipt. #77 closed automatically after #116 merged; #81 closed as superseded. No report deletions were carried over. |
 | #56 | Service state detection | Close unless semantics are shown equivalent to `systemctl is-active`. |
 | #58 | DLNA process lookup | Review and test procfs behaviour. |
-| #62 | Dependency update | Preserve the pip bump in the corrected lockfile candidate; close as superseded only after that candidate merges. |
-| #66 | MPV process signalling | Verify exact process matching and safe signal target. |
+| #62 | Dependency update | #117 carries the current pip floor and patched aiohttp/certifi minima; close as superseded only after that candidate merges. |
+| #66 | MPV process signalling | Verify exact process matching and safe signal target; close only after the existing safe implementation in #108 is confirmed. |
 | #68 | Kodi port detection | Verify IPv4/IPv6 procfs parsing and call site. |
 | #96 | PR-agent workflow | Closed as invalid: duplicate `runs-on`, unpinned third-party action, broad write permissions, and secret exposure. |
+| #111, #113 | Modal-close ARIA labels and dependency floors | UI is superseded by #106; preserve the security minimums in #117, then close after the focused successor merges. |
 
 ## Change Log
 
@@ -82,3 +84,6 @@
 - 2026-10-18: GitHub's active `main` ruleset blocked #103 because the required CodeQL tool was not configured. Enabled GitHub default CodeQL setup for Actions, JavaScript/TypeScript, and Python without weakening branch rules; the initial scan is running, and PR-revision analysis must pass before merge.
 
 - 2026-10-24: Re-audited closed PR #85 against its current diff. It contains only placeholder report tracks, a runtime mode file, and generated-report deletions; no valid application change or user report needs preservation. Added focused procfs guard tests for PID ancestry, sustained CPU averaging, and graceful/forced candidate termination without importing PR report deletions or repeated cases.
+
+- 2026-10-24: PR #116 merged as c0193130ede0aff820c85ea9608b7e8851ac4630 with tree 55ba040e8ea67ef1300fc30062d1a7205ed114b3; main push run 40069464037 passed and wrote conductor/ci/receipts/c0193130ede0aff820c85ea9608b7e8851ac4630-20261024-061627-push.json, with VERIFY-DONE: PASS. The successor adds five focused guard regressions; #77 closed on merge and #81 was closed as superseded.
+- 2026-10-24: Audited dependency payloads in #62, #111, and #113. The merged lock already has newer aiohttp and certifi versions, but the declared floors allow affected versions; the lock also has pip 26.2.1. A focused successor now raises the floors to aiohttp>=3.14.4, certifi>=2026.10.19, and pip>=26.2.2 in the development extra.
