@@ -5,7 +5,8 @@ description = "RPi-TV Dashboard"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "aiohttp>=3.14.1",
+    "aiohttp>=3.14.4",
+    "certifi>=2026.10.19",
     "dbus-fast>=5.0.22",
     "pytest-asyncio>=1.4.0",
     "textual>=8.2.7",
@@ -24,6 +25,7 @@ dev = [
     "mypy>=1.10.0",
     "bandit>=1.7.9",
     "pip-audit>=2.6.1",
+    "pip>=26.2.2",
     "pyyaml>=6.0",
 ]
 

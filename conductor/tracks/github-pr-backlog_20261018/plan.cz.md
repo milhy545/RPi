@@ -21,13 +21,14 @@
 ## Fáze 3 — Sloučit změny a ověřit kandidáty
 
 - [x] Znovu prověřit PR #85: aktuální diff obsahoval jen zástupné report tracky, runtime soubor režimu a smazání generovaných reportů; PR byl uzavřen jako neplatný, protože nezůstala žádná změna aplikace ani platný report k zachování.
-- [ ] Sloučit změny přístupnosti včetně přeložených přístupných názvů a ovládání zavření formuláře zpětné vazby.
-- [ ] Sloučit změny síťových informací v TUI včetně DHCP leases a náhradní hodnoty `RPi-service`.
-- [ ] Sloučit službu pro síťové informace do jediné implementace a otestovat adresy, routy, rozhraní i fallback.
+- [x] Sloučit změny přístupnosti včetně přeložených přístupných názvů a ovládání zavření formuláře zpětné vazby.
+- [x] Sloučit změny síťových informací v TUI včetně DHCP leases a náhradní hodnoty RPi-service.
+- [x] Sloučit službu pro síťové informace do jediné implementace a otestovat adresy, routy, rozhraní i fallback.
 - [x] Sloučit TUI helper pro příkazy a procfs detekci procesů; doplnit cílené testy rodičovské PID rodiny, průměru CPU a ukončení kandidátního procesu; vynechat generované reporty a duplicitní testy.
 - [x] Prověřit zamčené prostředí projektu a připravit opravené verze zranitelných balíků `multidict`, `pip` a `urllib3`, které pokrývá PR #62.
+- [x] Připravit cíleného nástupce pro #62, #111 a #113: vyžadovat opravená minima aiohttp a certifi a pip 26.2.2 ve vývojovém extra; merge i uzavření původních PR podmínit úspěchem nástupce.
 - [ ] Sloučit otestovaný kandidát změny lockfile a potom uzavřít PR #62 jako nahrazený tímto kandidátem.
-- [ ] Samostatně prověřit změny procesů, stavů služeb, kontroly Kodi portu, DLNA a závislostí.
+- [ ] Samostatně prověřit zbývající změny stavů služeb, kontroly Kodi portu a DLNA.
 - [ ] Odmítnout změny workflow s neplatným YAML, příliš širokými oprávněními, nepřipnutými akcemi třetích stran nebo nevyřešenými připomínkami.
 
 ## Fáze 4 — Postupně sloučit
@@ -55,13 +56,14 @@
 | #45–#46, #48–#49 | Síťové informace v TUI | Zachovat masku podsítě, nastavení a Tailscale do jednoho testovaného nástupce. |
 | #47, #60–#61, #64, #67 | Helper příkazů v TUI | Vybrat bezpečnou variantu, otestovat argumenty a timeouty a vynechat reporty. |
 | #54–#55, #65, #71–#73, #78–#91 bez #85 | Backend síťové informace | Sloučit přes service API, zachovat kompatibilitu a otestovat fallback. |
-| #77, #81 | Enumerace procesů na RPi | Zachovat přesné procfs porovnání a testy; nemažte reporty. |
+| #77, #81 | Enumerace procesů na RPi | Implementace je v main; cílené jedinečné regresní testy byly sloučeny v #116 s přesným main receipt. #77 se zavřel při merge #116, #81 je uzavřen jako nahrazený. Mazání reportů převzato nebylo. |
 | #56 | Zjišťování stavu služby | Uzavřít, pokud se neprokáže ekvivalence `systemctl is-active`. |
 | #58 | Vyhledání DLNA procesu | Zkontrolovat a otestovat procfs chování. |
-| #62 | Aktualizace závislosti | Zachovat upgrade pipu v opraveném lockfile; jako nahrazené uzavřít až po sloučení nástupce. |
-| #66 | Signalizace MPV procesu | Ověřit přesné nalezení procesu a bezpečný cíl signálu. |
+| #62 | Aktualizace závislostí | #117 přináší aktuální minimum pipu i opravená minima aiohttp/certifi; uzavřít jako nahrazený až po merge kandidáta. |
+| #66 | Signalizace MPV procesu | Ověřit přesné nalezení procesu a bezpečný cíl signálu; zavřít až po potvrzení bezpečné implementace v #108. |
 | #68 | Detekce Kodi portu | Ověřit IPv4/IPv6 procfs parsing a místo volání. |
 | #96 | PR-agent workflow | Uzavřen jako neplatný: duplicitní `runs-on`, nepřipnutá akce třetí strany, široká oprávnění pro zápis a předání tajného klíče. |
+| #111, #113 | ARIA štítky zavírání modálních oken a minima závislostí | UI nahrazuje #106; bezpečnostní minima zachovává #117 a poté se PR zavřou. |
 
 ## Záznam změn
 
@@ -81,4 +83,7 @@
 - 2026-10-18: CI dispatch gateway pro feature větev používá `workflow_dispatch` a jeho receipt má jiný zdroj než PR nebo main-push. `verify-done.sh` jej nyní přijme jen pro přesné SHA v odpovídající události Actions; lokální dokončení stále vyžaduje původ main-push. Přibyl samostatný regresní test; cílená a plná CI ještě čekají.
 - 2026-10-18: Aktivní ruleset GitHub `main` blokoval #103, protože požadovaný nástroj CodeQL nebyl nastaven. Zapnuli jsme GitHub default setup pro Actions, JavaScript/TypeScript a Python bez oslabení pravidel větve; běží úvodní scan a před merge je nutné ověřit analýzu revize PR.
 
-- 2026-10-24: Znovu jsem prověřil uzavřený PR #85 podle aktuálního diffu. Obsahuje pouze zástupné report tracky, runtime soubor režimu a smazání generovaných reportů; nezůstala žádná platná změna aplikace ani uživatelský report k zachování. Doplnil jsem cílené testy procfs guardu pro rodičovské PID, průměr CPU a graceful/nucené ukončení kandidáta, bez převzetí mazání reportů a opakovaných případů.
+- 2026-10-24: Znovu jsem prověřil uzavřený PR #85 podle aktuálního diffu. Obsahuje pouze zástupné report tracky, runtime soubor režimu a smazání generovaných reportů; nezůstala žádná platná změna aplikace ani uživatelský report k zachování. Doplnil jsem cílené testy procfs guardu pro rodičovské PID, průměr CPU a řádné/nucené ukončení kandidáta, bez převzetí mazání reportů a opakovaných případů.
+
+- 2026-10-24: PR #116 byl sloučen jako c0193130ede0aff820c85ea9608b7e8851ac4630 se stromem 55ba040e8ea67ef1300fc30062d1a7205ed114b3; main push run 40069464037 prošel a vytvořil conductor/ci/receipts/c0193130ede0aff820c85ea9608b7e8851ac4630-20261024-061627-push.json, výsledek VERIFY-DONE: PASS. Nástupce přidal pět cílených regresních testů guardu; #77 se zavřel při merge, #81 byl uzavřen jako nahrazený.
+- 2026-10-24: Prověřil jsem závislosti v #62, #111 a #113. Sloučený lock už obsahuje novější aiohttp a certifi, ale deklarovaná minima stále dovolují zranitelné verze; lock má také pip 26.2.1. Cílený nástupce nyní zvyšuje minima na aiohttp>=3.14.4, certifi>=2026.10.19 a pip>=26.2.2 ve vývojovém extra.
