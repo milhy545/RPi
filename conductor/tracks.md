@@ -88,3 +88,7 @@
 - [x] **Track: bt-dbus-resilience_20260804** — BT D-Bus Resilience & Multi-Speaker Stability: crash recovery, adapter profiling, codec lock engine, Playwright E2E | [Plan](./tracks/bt-dbus-resilience_20260804/plan.md)
 
 - [ ] **Track: bt-topology-accessible-controls_20261024** — Add Czech and English accessible names to Bluetooth topology controls | [Plan](./tracks/bt-topology-accessible-controls_20261024/plan.md)
+
+- [ ] **Track: report_1790756494_bug** — RPi report placeholder: test (retained at the user's request) | [Plan](./tracks/report_1790756494_bug/plan.md)
+- [ ] **Track: report_1790756577_bug** — RPi report placeholder: rate-limit test (retained at the user's request) | [Plan](./tracks/report_1790756577_bug/plan.md)
+- [ ] **Track: rpi-production-sync_20261024** — Reconcile the RPi checkout with GitHub main while preserving its local audio mode | [Plan](./tracks/rpi-production-sync_20261024/plan.md)
