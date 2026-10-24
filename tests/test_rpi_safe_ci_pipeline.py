@@ -1074,3 +1074,82 @@ def test_ci_agent_supports_no_push_mode():
     assert "NO_PUSH" in content
     assert "NO_PUSH mode enabled" in content
     assert "--no-push" in content
+
+
+def test_run_protected_command_does_not_kill_after_graceful_termination(
+    monkeypatch,
+) -> None:
+    """Při spuštění přehrávání ukončí kandidáta a počká na graceful exit."""
+    snapshots = iter(
+        [
+            [],
+            [{"pid": 777, "ppid": 1, "pcpu": 10.0, "comm": "mpv", "args": "mpv video.mp4"}],
+        ]
+    )
+    guard = RPiGuard(
+        proc_provider=lambda: next(snapshots),
+        ram_provider=lambda: 300.0,
+        temp_provider=lambda: 45.0,
+    )
+    command = ["candidate-check"]
+    process = MagicMock()
+    process.pid = 9001
+    process.args = command
+    process.poll.side_effect = [None, 0]
+    cancel_callback = MagicMock()
+    monkeypatch.setattr("rpi_dashboard.ci.rpi_guard.get_active_mode", lambda _path=None: None)
+    monkeypatch.setattr("rpi_dashboard.ci.rpi_guard.time.sleep", lambda _delay: None)
+    monkeypatch.setattr(
+        "rpi_dashboard.ci.rpi_guard.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    with pytest.raises(RPiPlaybackStartedInterrupt):
+        guard.run_protected_command(
+            command, cancel_callback=cancel_callback, exclude_pids=set()
+        )
+
+    process.terminate.assert_called_once_with()
+    process.wait.assert_called_once_with(timeout=2.0)
+    process.kill.assert_not_called()
+    cancel_callback.assert_called_once_with()
+
+
+def test_run_protected_command_kills_candidate_when_termination_times_out(
+    monkeypatch,
+) -> None:
+    """Po timeoutu graceful exit vynutí ukončení pouze kandidátního procesu."""
+    snapshots = iter(
+        [
+            [],
+            [{"pid": 777, "ppid": 1, "pcpu": 10.0, "comm": "mpv", "args": "mpv video.mp4"}],
+        ]
+    )
+    guard = RPiGuard(
+        proc_provider=lambda: next(snapshots),
+        ram_provider=lambda: 300.0,
+        temp_provider=lambda: 45.0,
+    )
+    command = ["candidate-check"]
+    process = MagicMock()
+    process.pid = 9002
+    process.args = command
+    process.poll.side_effect = [None, 0]
+    process.wait.side_effect = subprocess.TimeoutExpired(cmd=command, timeout=2.0)
+    cancel_callback = MagicMock()
+    monkeypatch.setattr("rpi_dashboard.ci.rpi_guard.get_active_mode", lambda _path=None: None)
+    monkeypatch.setattr("rpi_dashboard.ci.rpi_guard.time.sleep", lambda _delay: None)
+    monkeypatch.setattr(
+        "rpi_dashboard.ci.rpi_guard.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    with pytest.raises(RPiPlaybackStartedInterrupt):
+        guard.run_protected_command(
+            command, cancel_callback=cancel_callback, exclude_pids=set()
+        )
+
+    process.terminate.assert_called_once_with()
+    process.wait.assert_called_once_with(timeout=2.0)
+    process.kill.assert_called_once_with()
+    cancel_callback.assert_called_once_with()

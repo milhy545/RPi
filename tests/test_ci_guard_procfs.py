@@ -209,3 +209,66 @@ def test_process_scan_uses_default_clock_rate_when_sysconf_is_nonpositive(monkey
             "args": "worker --safe",
         }
     ]
+
+
+def test_process_family_walks_parent_pids_and_stops_before_init(monkeypatch) -> None:
+    """Rodina procesu obsahuje rodiče, ale nikdy neinicializační PID 1."""
+    opened_paths: list[str] = []
+    stat_entries = {
+        "/proc/303/stat": "303 (python runner) S 202",
+        "/proc/202/stat": "202 (shell) S 1",
+    }
+
+    def open_proc(path: str, *_args: Any, **_kwargs: Any) -> Any:
+        opened_paths.append(path)
+        if path not in stat_entries:
+            raise FileNotFoundError(path)
+        return io.StringIO(stat_entries[path])
+
+    monkeypatch.setattr(rpi_guard.os, "getpid", lambda: 303)
+    with patch("builtins.open", side_effect=open_proc):
+        assert rpi_guard.get_current_pid_family() == {303, 202}
+
+    assert opened_paths == ["/proc/303/stat", "/proc/202/stat"]
+
+
+def test_process_family_falls_back_to_current_pid_when_procfs_is_unavailable(
+    monkeypatch,
+) -> None:
+    """Nedostupné procfs nesmí odstranit PID aktuálního procesu z výsledku."""
+    monkeypatch.setattr(rpi_guard.os, "getpid", lambda: 303)
+
+    with patch("builtins.open", side_effect=PermissionError("procfs unavailable")):
+        assert rpi_guard.get_current_pid_family() == {303}
+
+
+def test_sustained_cpu_averages_samples_and_excludes_runner_and_diagnostics(
+    monkeypatch,
+) -> None:
+    """Více vzorků průměruje jen CPU uživatelských procesů."""
+    samples = iter(
+        [
+            [
+                {"pid": 10, "comm": "python3", "pcpu": 90.0},
+                {"pid": 20, "comm": "ffmpeg", "pcpu": 30.0},
+                {"pid": 30, "comm": "ps", "pcpu": 80.0},
+            ],
+            [
+                {"pid": 10, "comm": "python3", "pcpu": 90.0},
+                {"pid": 20, "comm": "ffmpeg", "pcpu": 0.0},
+                {"pid": 30, "comm": "ps", "pcpu": 80.0},
+            ],
+            [
+                {"pid": 10, "comm": "python3", "pcpu": 90.0},
+                {"pid": 20, "comm": "ffmpeg", "pcpu": 60.0},
+                {"pid": 30, "comm": "ps", "pcpu": 80.0},
+            ],
+        ]
+    )
+    sleep = Mock()
+    monkeypatch.setattr(rpi_guard.time, "sleep", sleep)
+    guard = rpi_guard.RPiGuard(proc_provider=lambda: next(samples))
+
+    assert guard._get_sustained_user_cpu_pct({10}, sample_count=3, sample_delay=0.25) == 30.0
+    assert sleep.call_count == 2
+    sleep.assert_called_with(0.25)

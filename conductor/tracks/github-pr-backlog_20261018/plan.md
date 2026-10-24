@@ -20,11 +20,11 @@
 
 ## Phase 3 — Consolidate and Verify Candidates
 
-- [ ] Split PR #85 into focused code and report changes; retain valid user report records and exclude runtime artifacts.
+- [x] Re-audit PR #85: its current diff contains only placeholder report tracks, a runtime mode file, and generated-report deletions; it was closed as invalid because no application change or valid report record remained to preserve.
 - [ ] Consolidate accessibility changes, including translated accessible names and the feedback modal close control.
 - [ ] Consolidate TUI network information changes while retaining DHCP leases and the `RPi-service` fallback.
 - [ ] Consolidate network information service changes behind one implementation and test address, route, interface, and fallback behaviour.
-- [ ] Consolidate the TUI command helper and procfs process detection; do not include generated report files.
+- [x] Consolidate the TUI command helper and procfs process detection; add focused tests for PID ancestry, sustained CPU attribution, and candidate termination; exclude generated reports and duplicated tests.
 - [x] Audit the locked project environment and prepare fixed versions for the vulnerable `multidict`, `pip`, and `urllib3` packages represented in PR #62.
 - [ ] Merge the tested lockfile candidate, then close PR #62 as superseded by that candidate.
 - [ ] Review standalone process, service-status, Kodi-port, and DLNA updates individually.
@@ -49,7 +49,7 @@
 | PRs | Topic | Planned handling |
 |---|---|---|
 | #93 | Unrelated application/repository files | Closed as invalid after final diff check. |
-| #85 | Large sync bundle, app changes, and Conductor reports | Split; inspect failing Ruff and review findings; preserve valid reports. |
+| #85 | Large sync bundle, app changes, and Conductor reports | Closed as invalid after current-diff audit: only placeholders, runtime state, and generated-report deletions remained; no valid code or report record needed splitting. |
 | #92, #94–#95, #97–#102 | Accessibility | Consolidate into a bilingual, tested successor; include the active feedback modal template fix. |
 | #42–#43 | TUI Bluetooth event rendering | Keep valid DHCP and Wi-Fi details with a non-empty service fallback; consolidate. |
 | #45–#46, #48–#49 | TUI network information | Retain subnet mask and settings/Tailscale semantics in one tested successor. |
@@ -80,3 +80,5 @@
 - 2026-10-18: The focused gateway, workflow, verifier, and handoff set passes (69 tests) after setting the repository `PYTHONPATH`; full `github-safe` and fresh hosted reviews remain required.
 - 2026-10-18: The gateway's feature-branch CI dispatch uses `workflow_dispatch`, whose receipt source is distinct from both PR and main-push receipts. `verify-done.sh` now accepts that receipt only for the exact SHA inside the matching Actions event; local completion still requires main-push provenance. A dedicated regression test is added; focused and full CI are pending.
 - 2026-10-18: GitHub's active `main` ruleset blocked #103 because the required CodeQL tool was not configured. Enabled GitHub default CodeQL setup for Actions, JavaScript/TypeScript, and Python without weakening branch rules; the initial scan is running, and PR-revision analysis must pass before merge.
+
+- 2026-10-24: Re-audited closed PR #85 against its current diff. It contains only placeholder report tracks, a runtime mode file, and generated-report deletions; no valid application change or user report needs preservation. Added focused procfs guard tests for PID ancestry, sustained CPU averaging, and graceful/forced candidate termination without importing PR report deletions or repeated cases.

@@ -20,11 +20,11 @@
 
 ## Fáze 3 — Sloučit změny a ověřit kandidáty
 
-- [ ] Rozdělit PR #85 na konkrétní změny kódu a reporty; zachovat platné uživatelské reporty a vynechat runtime artefakty.
+- [x] Znovu prověřit PR #85: aktuální diff obsahoval jen zástupné report tracky, runtime soubor režimu a smazání generovaných reportů; PR byl uzavřen jako neplatný, protože nezůstala žádná změna aplikace ani platný report k zachování.
 - [ ] Sloučit změny přístupnosti včetně přeložených přístupných názvů a ovládání zavření formuláře zpětné vazby.
 - [ ] Sloučit změny síťových informací v TUI včetně DHCP leases a náhradní hodnoty `RPi-service`.
 - [ ] Sloučit službu pro síťové informace do jediné implementace a otestovat adresy, routy, rozhraní i fallback.
-- [ ] Sloučit TUI helper pro příkazy a procfs detekci procesů; nepřidávat generované reporty.
+- [x] Sloučit TUI helper pro příkazy a procfs detekci procesů; doplnit cílené testy rodičovské PID rodiny, průměru CPU a ukončení kandidátního procesu; vynechat generované reporty a duplicitní testy.
 - [x] Prověřit zamčené prostředí projektu a připravit opravené verze zranitelných balíků `multidict`, `pip` a `urllib3`, které pokrývá PR #62.
 - [ ] Sloučit otestovaný kandidát změny lockfile a potom uzavřít PR #62 jako nahrazený tímto kandidátem.
 - [ ] Samostatně prověřit změny procesů, stavů služeb, kontroly Kodi portu, DLNA a závislostí.
@@ -49,7 +49,7 @@
 | PR | Téma | Plán |
 |---|---|---|
 | #93 | Nesouvisející aplikační/repozitářové soubory | Po poslední kontrole diffu uzavřen jako neplatný. |
-| #85 | Velký sync balík, změny aplikace a Conductor reporty | Rozdělit; prověřit Ruff a review; zachovat platné reporty. |
+| #85 | Velký sync balík, změny aplikace a Conductor reporty | Uzavřen jako neplatný po kontrole aktuálního diffu: zůstaly jen zástupné soubory, runtime stav a smazané generované reporty; nebyl důvod rozdělovat platný kód ani report. |
 | #92, #94–#95, #97–#102 | Přístupnost | Sloučit do přeloženého a otestovaného nástupce včetně aktivní feedback šablony. |
 | #42–#43 | Vykreslování Bluetooth událostí v TUI | Zachovat platná DHCP/Wi-Fi data a neprázdný fallback služby. |
 | #45–#46, #48–#49 | Síťové informace v TUI | Zachovat masku podsítě, nastavení a Tailscale do jednoho testovaného nástupce. |
@@ -80,3 +80,5 @@
 - 2026-10-18: Cílená sada gateway, workflow, verifieru a handoffu prochází (69 testů) po nastavení projektového `PYTHONPATH`; stále je nutné zopakovat plné `github-safe` a nové hosted review.
 - 2026-10-18: CI dispatch gateway pro feature větev používá `workflow_dispatch` a jeho receipt má jiný zdroj než PR nebo main-push. `verify-done.sh` jej nyní přijme jen pro přesné SHA v odpovídající události Actions; lokální dokončení stále vyžaduje původ main-push. Přibyl samostatný regresní test; cílená a plná CI ještě čekají.
 - 2026-10-18: Aktivní ruleset GitHub `main` blokoval #103, protože požadovaný nástroj CodeQL nebyl nastaven. Zapnuli jsme GitHub default setup pro Actions, JavaScript/TypeScript a Python bez oslabení pravidel větve; běží úvodní scan a před merge je nutné ověřit analýzu revize PR.
+
+- 2026-10-24: Znovu jsem prověřil uzavřený PR #85 podle aktuálního diffu. Obsahuje pouze zástupné report tracky, runtime soubor režimu a smazání generovaných reportů; nezůstala žádná platná změna aplikace ani uživatelský report k zachování. Doplnil jsem cílené testy procfs guardu pro rodičovské PID, průměr CPU a graceful/nucené ukončení kandidáta, bez převzetí mazání reportů a opakovaných případů.
