@@ -157,6 +157,22 @@ def test_dashboard_accessible_names_are_localised_and_labels_are_associated() ->
     assert 'for="feedback-desc"' in fallback
 
 
+def test_bluetooth_topology_controls_have_localised_accessible_names() -> None:
+    """Ověří překlady přístupných názvů ovládání Bluetooth topologie."""
+    index_html = (REPO_ROOT / "rpi_dashboard/static/index.html").read_text()
+    app_js = (REPO_ROOT / "rpi_dashboard/static/js/app.js").read_text()
+
+    controls = {
+        "btZoomTopo(0.1)": ("zoomIn", "Přiblížit", "Zoom in"),
+        "btZoomTopo(-0.1)": ("zoomOut", "Oddálit", "Zoom out"),
+        "btResetTopo()": ("resetTopo", "Obnovit topologii", "Reset topology"),
+    }
+    for action, (key, czech, english) in controls.items():
+        assert f'onclick="{action}" data-i18n="{key}" data-i18n-attr="aria-label"' in index_html
+        assert f"{key}:'{czech}'" in app_js
+        assert f"{key}:'{english}'" in app_js
+
+
 def test_small_controls_have_touch_target_floor() -> None:
     """Small topbar/help controls should stay usable on touch screens."""
     main_css = (REPO_ROOT / "rpi_dashboard/static/css/main.css").read_text()

@@ -42,6 +42,9 @@ try {
       'label[for="login-role"]',
       'label[for="login-password"]',
       '#wifi-ssid',
+      'button[onclick="btZoomTopo(0.1)"]',
+      'button[onclick="btZoomTopo(-0.1)"]',
+      'button[onclick="btResetTopo()"]',
     ]) {
       const element = template.querySelector(selector);
       assert(element, `Missing ${selector}`);
@@ -54,8 +57,8 @@ try {
   await page.addScriptTag({ content: bundle });
 
   for (const [language, expected] of [
-    ['cz', { paste: 'Vložit schránku', lines: 'Počet řádků logu', title: 'Počet řádků k načtení', delay: 'Zpoždění zvuku (ms):', password: 'Heslo:' }],
-    ['en', { paste: 'Paste clipboard', lines: 'Number of log lines', title: 'Lines to fetch', delay: 'Audio delay (ms):', password: 'Password:' }],
+    ['cz', { paste: 'Vložit schránku', zoomIn: 'Přiblížit', zoomOut: 'Oddálit', resetTopo: 'Obnovit topologii', lines: 'Počet řádků logu', title: 'Počet řádků k načtení', delay: 'Zpoždění zvuku (ms):', password: 'Heslo:' }],
+    ['en', { paste: 'Paste clipboard', zoomIn: 'Zoom in', zoomOut: 'Zoom out', resetTopo: 'Reset topology', lines: 'Number of log lines', title: 'Lines to fetch', delay: 'Audio delay (ms):', password: 'Password:' }],
   ]) {
     const actual = await page.evaluate((code) => {
       LANG = code;
@@ -64,6 +67,12 @@ try {
         paste: document.querySelector('.url-paste').getAttribute('aria-label'),
         pasteTitle: document.querySelector('.url-paste').title,
         pasteIcon: document.querySelector('.url-paste').textContent,
+        zoomIn: document.querySelector('button[onclick="btZoomTopo(0.1)"]').getAttribute('aria-label'),
+        zoomInIcon: document.querySelector('button[onclick="btZoomTopo(0.1)"]').textContent,
+        zoomOut: document.querySelector('button[onclick="btZoomTopo(-0.1)"]').getAttribute('aria-label'),
+        zoomOutIcon: document.querySelector('button[onclick="btZoomTopo(-0.1)"]').textContent,
+        resetTopo: document.querySelector('button[onclick="btResetTopo()"]').getAttribute('aria-label'),
+        resetTopoIcon: document.querySelector('button[onclick="btResetTopo()"]').textContent,
         lines: document.querySelector('#log-lines').getAttribute('aria-label'),
         title: document.querySelector('#log-lines').title,
         delay: document.querySelector('label[for="ta-lat-dlna-offset"]').textContent,
@@ -75,6 +84,12 @@ try {
     assert.equal(actual.paste, expected.paste);
     assert.equal(actual.pasteTitle, expected.paste);
     assert.equal(actual.pasteIcon, '📋');
+    assert.equal(actual.zoomIn, expected.zoomIn);
+    assert.equal(actual.zoomInIcon, '＋');
+    assert.equal(actual.zoomOut, expected.zoomOut);
+    assert.equal(actual.zoomOutIcon, '−');
+    assert.equal(actual.resetTopo, expected.resetTopo);
+    assert.equal(actual.resetTopoIcon, '⛶');
     assert.equal(actual.lines, expected.lines);
     assert.equal(actual.title, expected.title);
     assert.equal(actual.delay, expected.delay);
