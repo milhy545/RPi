@@ -1,10 +1,10 @@
-"""Regression tests for hostnames included in the TLS certificate."""
+"""Regresní testy hostitelů zahrnutých v TLS certifikátu."""
 
 from unittest.mock import patch
 
 
 def test_https_san_uses_shared_network_discovery() -> None:
-    """Use the shared network service when building certificate SANs."""
+    """Při tvorbě SAN certifikátu použije sdílenou síťovou službu."""
     import webserver
 
     names = ["localhost", "rpi-tv"]

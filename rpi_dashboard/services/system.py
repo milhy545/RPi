@@ -245,7 +245,7 @@ _IfAddrs._fields_ = [
 
 
 def _get_interface_addresses_native() -> List[str]:
-    """Return every usable IPv4 and IPv6 interface address without subprocesses."""
+    """Vrátí všechny použitelné IPv4 a IPv6 adresy rozhraní bez subprocesů."""
     addresses: List[str] = []
     seen: set[str] = set()
     interfaces = ctypes.POINTER(_IfAddrs)()
@@ -308,7 +308,7 @@ def _get_interface_addresses_native() -> List[str]:
 
 
 def _get_default_gateway_native() -> Optional[str]:
-    """Return the default IPv4 gateway from the procfs route table."""
+    """Vrátí výchozí IPv4 bránu z routovací tabulky procfs."""
     candidates: List[Tuple[int, str]] = []
     try:
         with open("/proc/net/route", "r", encoding="ascii") as routes_file:
@@ -341,7 +341,7 @@ def _get_default_gateway_native() -> Optional[str]:
 
 
 def _parse_default_gateway(output: str) -> Optional[str]:
-    """Extract the IPv4 gateway from ``ip route`` output."""
+    """Získá IPv4 bránu z výstupu příkazu ``ip route``."""
     for line in output.splitlines():
         fields = line.split()
         if fields and fields[0] == "default" and "via" in fields:

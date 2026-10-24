@@ -2636,7 +2636,7 @@ def start_ws_server():
     print(f"Terminal WS on ws://0.0.0.0:{WS_PORT}", flush=True)
 
 def _dashboard_hostnames_and_ips():
-    """Return certificate hostnames and IP addresses through the shared service."""
+    """Vrátí názvy hostitelů a IP adresy certifikátu přes sdílenou službu."""
     return system_service.dashboard_hostnames_and_ips()
 
 def _https_san():
