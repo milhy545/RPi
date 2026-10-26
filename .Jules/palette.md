@@ -5,3 +5,7 @@
 ## 2026-06-20 - Redesigned Audio Mixer with animated lines and a11y improvements
 **Learning:** Found that static dashed lines in the audio mixer were difficult to read. Also discovered that screen readers couldn't understand the `<svg>` visualization of active routes.
 **Action:** Replaced static lines with flowing animated `<path>` elements. Added a `sr-only` class text summary element that accurately reads out all active paths. Ensure `aria-hidden="true"` is applied on purely decorative SVG representations so screen readers do not try to parse complex nodes.
+
+## 2026-10-26 - Fix silent DOM failure and dynamic aria-labels
+**Learning:** Dynamically generated UI elements (like the theme toggle) failed silently because they relied on a non-existent DOM ID (`topbar`). Additionally, dynamic audio mixer range inputs lacked accessible names, making them unreadable for screen readers.
+**Action:** Ensure dynamic elements attach to guaranteed container IDs, and always explicitly assign `aria-label`s to dynamically generated form controls since static HTML accessibility scanners will miss them.
