@@ -81,8 +81,10 @@ logServiceAll:'All (journalctl -u)'}}
 Object.assign(I18N.cz,{zoomIn:'Přiblížit',zoomOut:'Oddálit',resetTopo:'Obnovit topologii',bluetooth:'Bluetooth',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesDesc:'Wi-Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj v Bluetooth, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj v Bluetooth pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.'});
 Object.assign(I18N.en,{zoomIn:'Zoom in',zoomOut:'Zoom out',resetTopo:'Reset topology',bluetooth:'Bluetooth',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust in Bluetooth, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust in Bluetooth for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.'});
 
-Object.assign(I18N.cz,{audioDelay:'Zpoždění zvuku (ms):',logLinesTitle:'Počet řádků k načtení',loginRoleLabel:'Role:',loginPasswordLabel:'Heslo:'});
-Object.assign(I18N.en,{audioDelay:'Audio delay (ms):',logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:'});
+
+Object.assign(I18N.cz,{audioDelay:'Zpoždění zvuku (ms):',logLinesTitle:'Počet řádků k načtení',loginRoleLabel:'Role:',loginPasswordLabel:'Heslo:',themeToggle:'Přepnout téma vzhledu'});
+Object.assign(I18N.en,{audioDelay:'Audio delay (ms):',logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:',themeToggle:'Toggle theme'});
+
 
 const HELPERS={
 cz:{
@@ -691,20 +693,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Add theme toggle to topbar
 function addThemeToggle() {
-    const topbar = document.getElementById('topbar');
+    const topbar = document.querySelector('.app-topbar');
     if (!topbar) return;
 
     const themeBtn = document.createElement('button');
     themeBtn.className = 'lang-btn';
-    themeBtn.title = 'Toggle theme';
-    themeBtn.setAttribute('aria-label', 'Toggle theme');
-    themeBtn.innerHTML = '🌓';
+    themeBtn.dataset.i18nAttr = 'title'; themeBtn.dataset.i18n = 'themeToggle'; themeBtn.title = L('themeToggle');
+    themeBtn.dataset.i18nAriaLabel = 'themeToggle'; themeBtn.setAttribute('aria-label', ariaText('themeToggle', L('themeToggle')));
+    themeBtn.innerHTML = '<span aria-hidden="true">🌓</span>';
     themeBtn.onclick = () => ThemeManager.toggle();
     themeBtn.style.cssText = 'font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer';
 
     const langSwitch = document.getElementById('lang-switch');
     if (langSwitch) {
-        langSwitch.parentNode.insertBefore(themeBtn, langSwitch);
+        langSwitch.insertBefore(themeBtn, langSwitch.firstChild);
     }
 }
 
