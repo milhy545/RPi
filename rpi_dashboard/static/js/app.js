@@ -81,8 +81,8 @@ logServiceAll:'All (journalctl -u)'}}
 Object.assign(I18N.cz,{zoomIn:'Přiblížit',zoomOut:'Oddálit',resetTopo:'Obnovit topologii',bluetooth:'Bluetooth',audioDesc:'Hlavní směrování zvuku a mixer. Párování reproduktorů je v Bluetooth; směrování výstupu je zde.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Páruj reproduktory, ovladače a vstupní zařízení zde. Směrování zvuku zůstává v Audio.',btControllerTitle:'Xbox / ovladače připravenost',btControllerDesc:'Kontroluje připojené ovladače, input zařízení, ovladače/kernel moduly, ERTM a dostupnost Steam Linku.',btReady:'Připraveno',btNotReady:'Není připraveno',btErtm:'ERTM vypnuto',btDriver:'Ovladač',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'Žádná Bluetooth zařízení.',devicesDesc:'Wi-Fi a obecný přehled hardwaru. Párování Bluetooth je v samostatné kartě Bluetooth.',rolesDesc:'• Reproduktory/sluchátka/soundbary: páruj/připoj/důvěřuj v Bluetooth, pak zvol routování v Audio.<br>• Xbox ovladače/gamepady: páruj/připoj/důvěřuj v Bluetooth pro vstupní použití; žádné audio routování se neprovádí.<br>• Remote mikrofon a USB Alexa input jsou zobrazeny v Audio jako zdroje.<br>• Budoucí doplnění: HDMI-CEC inventář, Tailscale stav, health USB/storage zařízení.'});
 Object.assign(I18N.en,{zoomIn:'Zoom in',zoomOut:'Zoom out',resetTopo:'Reset topology',bluetooth:'Bluetooth',audioDesc:'Primary audio routing and mixer. Speaker pairing lives in Bluetooth; output routing lives here.',bluetoothTitle:'Bluetooth',bluetoothDesc:'Pair speakers, controllers, and input devices here. Audio routing remains in Audio.',btControllerTitle:'Xbox / Controller Readiness',btControllerDesc:'Checks connected controllers, input devices, driver hints, ERTM, and Steam Link availability.',btReady:'Ready',btNotReady:'Not ready',btErtm:'ERTM disabled',btDriver:'Driver',btInput:'Input',btSteamLink:'Steam Link',noBtDevices:'No Bluetooth devices listed.',devicesDesc:'Wi-Fi and general hardware overview. Bluetooth pairing lives in the Bluetooth tab.',rolesDesc:'• Speakers/headphones/soundbars: pair/connect/trust in Bluetooth, then choose routing in Audio.<br>• Xbox controllers/gamepads: pair/connect/trust in Bluetooth for input use; no audio routing is applied.<br>• Remote microphone and USB Alexa input are shown in Audio as sources.<br>• Future additions: HDMI-CEC device inventory, Tailscale status, storage/USB device health.'});
 
-Object.assign(I18N.cz,{audioDelay:'Zpoždění zvuku (ms):',logLinesTitle:'Počet řádků k načtení',loginRoleLabel:'Role:',loginPasswordLabel:'Heslo:'});
-Object.assign(I18N.en,{audioDelay:'Audio delay (ms):',logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:'});
+Object.assign(I18N.cz,{audioDelay:'Zpoždění zvuku (ms):',logLinesTitle:'Počet řádků k načtení',loginRoleLabel:'Role:',loginPasswordLabel:'Heslo:',helpButton:'Nápověda',toggleTheme:'Přepnout vzhled'});
+Object.assign(I18N.en,{audioDelay:'Audio delay (ms):',logLinesTitle:'Lines to fetch',loginRoleLabel:'Role:',loginPasswordLabel:'Password:',helpButton:'Help',toggleTheme:'Toggle theme'});
 
 const HELPERS={
 cz:{
@@ -149,9 +149,9 @@ function helperText(k){return (HELPERS[LANG]&&HELPERS[LANG][k])||((HELPERS.cz&&H
 
 let LANG=(localStorage.getItem(LANG_KEY)||'cz').toLowerCase()==='en'?'en':'cz'
 function L(k){return (I18N[LANG]&&I18N[LANG][k])||((I18N.cz&&I18N.cz[k])||k)}
-function ariaText(k,txt){if(txt!==k)return txt;let m={cz:{pause:'Pozastavit',stop:'Zastavit',rewind10:'Zpět 10 sekund',forward10:'Vpřed 10 sekund',volumedown:'Snížit hlasitost',volumeup:'Zvýšit hlasitost',mute:'Ztlumit',closeModal:'Zavřít okno',mediaUrl:'Adresa média',mediaQuality:'Kvalita přehrávání',seekPosition:'Pozice přehrávání',ageCheckUrl:'YouTube adresa pro kontrolu věku',wifiSsidLabel:'Název Wi-Fi sítě',wifiPasswordLabel:'Heslo Wi-Fi',logServiceLabel:'Služba pro zobrazení logů',logLinesLabel:'Počet řádků logu'},en:{pause:'Pause',stop:'Stop',rewind10:'Rewind 10 seconds',forward10:'Forward 10 seconds',volumedown:'Volume down',volumeup:'Volume up',mute:'Mute',closeModal:'Close modal',mediaUrl:'Media URL',mediaQuality:'Playback quality',seekPosition:'Playback position',ageCheckUrl:'YouTube URL for age check',wifiSsidLabel:'Wi-Fi network name',wifiPasswordLabel:'Wi-Fi password',logServiceLabel:'Log service',logLinesLabel:'Number of log lines'}};return (m[LANG]&&m[LANG][k])||((m.en&&m.en[k])||txt)}
+function ariaText(k,txt){if(txt!==k)return txt;let m={cz:{pause:'Pozastavit',stop:'Zastavit',rewind10:'Zpět 10 sekund',forward10:'Vpřed 10 sekund',volumedown:'Snížit hlasitost',volumeup:'Zvýšit hlasitost',mute:'Ztlumit',closeModal:'Zavřít okno',mediaUrl:'Adresa média',mediaQuality:'Kvalita přehrávání',seekPosition:'Pozice přehrávání',ageCheckUrl:'YouTube adresa pro kontrolu věku',wifiSsidLabel:'Název Wi-Fi sítě',wifiPasswordLabel:'Heslo Wi-Fi',logServiceLabel:'Služba pro zobrazení logů',logLinesLabel:'Počet řádků logu',enLang:'Angličtina',czLang:'Čeština',helpButton:'Nápověda',toggleTheme:'Přepnout vzhled'},en:{pause:'Pause',stop:'Stop',rewind10:'Rewind 10 seconds',forward10:'Forward 10 seconds',volumedown:'Volume down',volumeup:'Volume up',mute:'Mute',closeModal:'Close modal',mediaUrl:'Media URL',mediaQuality:'Playback quality',seekPosition:'Playback position',ageCheckUrl:'YouTube URL for age check',wifiSsidLabel:'Wi-Fi network name',wifiPasswordLabel:'Wi-Fi password',logServiceLabel:'Log service',logLinesLabel:'Number of log lines',enLang:'English',czLang:'Czech',helpButton:'Help',toggleTheme:'Toggle theme'}};return (m[LANG]&&m[LANG][k])||((m.en&&m.en[k])||txt)}
 function formatMsg(k,vars){let s=L(k);Object.entries(vars||{}).forEach(([key,val])=>{s=s.replaceAll('{'+key+'}',String(val))});return s}
-function tip(el,key){let w=document.createElement('span');w.className='tip-wrap';let b=document.createElement('button');b.className='info-btn';b.textContent='i';b.setAttribute('aria-label','Help');b.setAttribute('type','button');let box=document.createElement('div');box.className='tip-box';box.dataset.tipBox=key;box.textContent=helperText(key);b.addEventListener('click',function(e){e.stopPropagation();document.querySelectorAll('.tip-box.show').forEach(x=>{if(x!==box)x.classList.remove('show')});box.classList.toggle('show')});w.appendChild(b);w.appendChild(box);el.insertAdjacentElement('afterend',w)}
+function tip(el,key){let w=document.createElement('span');w.className='tip-wrap';let b=document.createElement('button');b.className='info-btn';b.innerHTML='<span aria-hidden="true">i</span>';b.dataset.i18nAriaLabel='helpButton';b.setAttribute('type','button');let box=document.createElement('div');box.className='tip-box';box.dataset.tipBox=key;box.textContent=helperText(key);b.addEventListener('click',function(e){e.stopPropagation();document.querySelectorAll('.tip-box.show').forEach(x=>{if(x!==box)x.classList.remove('show')});box.classList.toggle('show')});w.appendChild(b);w.appendChild(box);el.insertAdjacentElement('afterend',w)}
 function addTips(){document.querySelectorAll('[data-tip]').forEach(el=>{if(!el.nextElementSibling||!el.nextElementSibling.classList.contains('tip-wrap'))tip(el,el.dataset.tip)})}
 function setLang(code){LANG=(code||'cz').toLowerCase()==='en'?'en':'cz';try{localStorage.setItem(LANG_KEY,LANG)}catch{};applyLang()}
 function applyLang(){document.documentElement.lang=LANG==='en'?'en':'cs';document.querySelectorAll('[data-i18n]').forEach(el=>{let key=el.dataset.i18n;let txt=L(key);if(el.dataset.i18nAttr==='placeholder'){el.placeholder=txt;return}if(el.dataset.i18nAttr==='title'){el.title=txt;return}if(el.dataset.i18nAttr==='aria-label'){el.setAttribute('aria-label',ariaText(key,txt));return}let icon=el.dataset.icon||'';el.innerHTML=(icon?icon+' ':'')+txt});document.querySelectorAll('[data-i18n-aria-label]').forEach(el=>{let key=el.dataset.i18nAriaLabel;el.setAttribute('aria-label',ariaText(key,L(key)))});document.querySelectorAll('[data-tip]').forEach(el=>{if(el.nextElementSibling&&el.nextElementSibling.classList.contains('tip-wrap')){let box=el.nextElementSibling.querySelector('.tip-box');if(box)box.textContent=helperText(el.dataset.tip)}});document.querySelectorAll('[data-lang-btn]').forEach(btn=>btn.classList.toggle('active',btn.dataset.langBtn===LANG));let ls=$('#lang-status');if(ls)ls.textContent=LANG==='en'?'EN':'CZ';updateSecurityBanner()}
@@ -691,21 +691,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Add theme toggle to topbar
 function addThemeToggle() {
-    const topbar = document.getElementById('topbar');
-    if (!topbar) return;
+    const langSwitch = document.getElementById('lang-switch');
+    if (!langSwitch) return;
 
     const themeBtn = document.createElement('button');
     themeBtn.className = 'lang-btn';
-    themeBtn.title = 'Toggle theme';
-    themeBtn.setAttribute('aria-label', 'Toggle theme');
-    themeBtn.innerHTML = '🌓';
+    themeBtn.dataset.i18nAttr = 'title';
+    themeBtn.dataset.i18n = 'toggleTheme';
+    themeBtn.dataset.i18nAriaLabel = 'toggleTheme';
+    themeBtn.innerHTML = '<span aria-hidden="true">🌓</span>';
     themeBtn.onclick = () => ThemeManager.toggle();
-    themeBtn.style.cssText = 'font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;cursor:pointer';
+    themeBtn.style.cssText = 'font-size:.78rem;padding:.22rem .42rem;border-radius:999px;border:1px solid var(--app-border);background:var(--app-panel-2);color:var(--app-text);cursor:pointer';
 
-    const langSwitch = document.getElementById('lang-switch');
-    if (langSwitch) {
-        langSwitch.parentNode.insertBefore(themeBtn, langSwitch);
-    }
+    langSwitch.parentNode.insertBefore(themeBtn, langSwitch);
 }
 
 // Call on load
