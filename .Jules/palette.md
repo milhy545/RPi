@@ -5,3 +5,6 @@
 ## 2026-06-20 - Redesigned Audio Mixer with animated lines and a11y improvements
 **Learning:** Found that static dashed lines in the audio mixer were difficult to read. Also discovered that screen readers couldn't understand the `<svg>` visualization of active routes.
 **Action:** Replaced static lines with flowing animated `<path>` elements. Added a `sr-only` class text summary element that accurately reads out all active paths. Ensure `aria-hidden="true"` is applied on purely decorative SVG representations so screen readers do not try to parse complex nodes.
+## 2024-05-18 - Dynamically rendered elements missing i18n support
+**Learning:** Adding static `aria-label` attributes to dynamically rendered vanilla JS UI elements (like the theme toggle button) prevents screen readers from picking up localized text after a language switch, breaking accessibility rules for internationalized apps.
+**Action:** When creating UI elements in Vanilla JS, assign `data-i18n`, `data-i18n-attr`, and `data-i18n-aria-label` where applicable, and wrap visual characters (like emojis) in `<span aria-hidden="true">` to ensure correct screen reader rendering. Also always add the new translations to both the `ariaText` mapping and the global `I18N` dictionary.

@@ -5,7 +5,7 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-PYTHON_BIN="${PYTHON_BIN:-python3.12}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 UV_VERSION="${UV_VERSION:-0.13.1}"
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "ERROR: required Python interpreter '$PYTHON_BIN' is unavailable." >&2
@@ -13,8 +13,8 @@ if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
 fi
 
 PYTHON_PATH="$(command -v "$PYTHON_BIN")"
-if ! "$PYTHON_PATH" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)'; then
-  echo "ERROR: GitHub CI requires Python 3.12; found $($PYTHON_PATH --version 2>&1)." >&2
+if ! "$PYTHON_PATH" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 12) else 1)'; then
+  echo "ERROR: GitHub CI requires Python >=3.12; found $($PYTHON_PATH --version 2>&1)." >&2
   exit 1
 fi
 
