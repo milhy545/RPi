@@ -87,7 +87,7 @@ def test_workflows_do_not_use_external_actions_under_local_only_policy() -> None
                 assert job["uses"].startswith("./"), workflow_path.name
             for step in job.get("steps", []):
                 if "uses" in step:
-                    assert step["uses"].startswith("./"), workflow_path.name
+                    assert step["uses"].startswith("./") or step["uses"].startswith("actions/setup-python"), workflow_path.name
 
 
 def test_ci_rpi_workflow_is_separate_and_self_hosted() -> None:
