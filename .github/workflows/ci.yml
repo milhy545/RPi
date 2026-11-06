@@ -33,6 +33,5 @@ jobs:
       - name: Run locked CI and receipt verification
         env:
           CI_PROFILE: github-safe
-          PYTHON_BIN: python3.12
           VERIFY_BASE_SHA: "${{ github.event.pull_request.base.sha || github.event.before || '' }}"
         run: tools/github-actions-ci.sh
