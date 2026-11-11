@@ -4,6 +4,11 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /home/milhy777/rpi-dashboard/tools/process_reports.py
+# NOTE: User= deliberately omitted. This is a system unit; hardcoding
+# User=milhy777 caused 216/GROUP failures on every 1-minute timer tick.
+# Prefer systemd/user/report-processor.service (no User=, runs as invoking user)
+# for per-user installations; keep this system unit aligned with it.
+ExecStart=/usr/bin/flock -n /tmp/report-processor.lock /usr/bin/python3 /home/milhy777/rpi-dashboard/tools/process_reports.py
 WorkingDirectory=/home/milhy777/rpi-dashboard
-User=milhy777
+# flock prevents overlapping runs when the 1-minute timer fires faster than
+# a prior invocation completes, eliminating the log storm.
